@@ -9,3 +9,6 @@ analysis/raw/
 
 # Logs
 *.log
+
+# Agent evidence
+.artifacts/
