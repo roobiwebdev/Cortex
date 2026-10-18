@@ -1,0 +1,74 @@
+:root {
+	--bg: #fbfbfa;
+	--fg: #141416;
+	--muted: #63636b;
+	--line: #e6e6e3;
+	--card: #ffffff;
+	--accent: #d92c26;
+	--accent-hover: #c4241f;
+	--rec: #ff3b30;
+	--glow: rgb(255 59 48 / 0.09);
+	--shadow: rgb(24 24 32 / 0.16);
+	--sans: 'Geist Variable', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+	--mono: 'Geist Mono Variable', ui-monospace, 'SF Mono', Menlo, monospace;
+	color-scheme: light;
+}
+
+@media (prefers-color-scheme: dark) {
+	:root:not([data-theme='light']) {
+		--bg: #0e0e10;
+		--fg: #f2f2f3;
+		--muted: #a1a1aa;
+		--line: #27272b;
+		--card: #161618;
+		--accent-hover: #e8362f;
+		--glow: rgb(255 59 48 / 0.14);
+		--shadow: rgb(0 0 0 / 0.5);
+		color-scheme: dark;
+	}
+}
+
+:root[data-theme='dark'] {
+	--bg: #0e0e10;
+	--fg: #f2f2f3;
+	--muted: #a1a1aa;
+	--line: #27272b;
+	--card: #161618;
+	--accent-hover: #e8362f;
+	--glow: rgb(255 59 48 / 0.14);
+	--shadow: rgb(0 0 0 / 0.5);
+	color-scheme: dark;
+}
+
+* {
+	box-sizing: border-box;
+}
+
+html,
+body {
+	margin: 0;
+}
+
+body {
+	background:
+		radial-gradient(56rem 30rem at 50% -6rem, var(--glow), transparent 70%) no-repeat,
+		var(--bg);
+	color: var(--fg);
+	font: 16px/1.55 var(--sans);
+	-webkit-font-smoothing: antialiased;
+	-moz-osx-font-smoothing: grayscale;
+	text-rendering: optimizeLegibility;
+}
+
+::selection {
+	background: rgb(255 59 48 / 0.22);
+}
+
+a {
+	color: inherit;
+}
+
+:focus-visible {
+	outline: 2px solid var(--rec);
+	outline-offset: 3px;
+}

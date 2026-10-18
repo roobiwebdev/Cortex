@@ -401,4 +401,5 @@ rec-rs record --no-record --stream rtmp://localhost/live --stream http://localho
 | `src/synth.rs` | Test pattern with flash + beep |
 | `src/scale.rs` | Native-resolution screen scaling (Metal Performance Shaders Lanczos, VideoToolbox fallback) |
 | `scripts/` | Build, self-test, soak, sync checks (`synccheck.py` with ffmpeg, `avsync.swift` with AVFoundation) and quality metrics (`quality.sh`, `encquality.sh`, `testcard.swift`) |
+| `site/` | Download page: SvelteKit, deployed to Vercel (see [site/README.md](site/README.md)) |
 | `analysis/OBS_ARCHITECTURE.md` | OBS study |
