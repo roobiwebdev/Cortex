@@ -78,6 +78,14 @@
 				srcset="{darkSmall} 1200w, {darkLarge} 2160w"
 				{sizes}
 			/>
+			<!-- Must stay between the <source> and the <img>: it runs during parsing, before the
+			     browser picks an image, so a saved theme that differs from the OS gets the
+			     matching screenshot before hydration. -->
+			<script>
+				if (document.documentElement.dataset.theme)
+					document.currentScript.previousElementSibling.media =
+						document.documentElement.dataset.theme === 'dark' ? 'all' : 'not all';
+			</script>
 			<img
 				src={lightLarge}
 				srcset="{lightSmall} 1200w, {lightLarge} 2160w"
