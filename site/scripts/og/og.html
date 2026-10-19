@@ -1,0 +1,129 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="utf-8" />
+		<style>
+			@font-face {
+				font-family: 'Geist';
+				font-weight: 100 900;
+				src: url('../../node_modules/@fontsource-variable/geist/files/geist-latin-wght-normal.woff2')
+					format('woff2');
+			}
+
+			@font-face {
+				font-family: 'Geist Mono';
+				font-weight: 100 900;
+				src: url('../../node_modules/@fontsource-variable/geist-mono/files/geist-mono-latin-wght-normal.woff2')
+					format('woff2');
+			}
+
+			* {
+				box-sizing: border-box;
+			}
+
+			html,
+			body {
+				width: 1200px;
+				height: 630px;
+				margin: 0;
+				overflow: hidden;
+			}
+
+			body {
+				position: relative;
+				background:
+					radial-gradient(44rem 26rem at 8% -14%, rgb(255 59 48 / 0.2), transparent 70%) no-repeat,
+					#0e0e10;
+				color: #f2f2f3;
+				font-family: 'Geist', sans-serif;
+				-webkit-font-smoothing: antialiased;
+			}
+
+			main {
+				position: absolute;
+				top: 0;
+				bottom: 0;
+				left: 72px;
+				display: flex;
+				flex-direction: column;
+				justify-content: center;
+				width: 440px;
+			}
+
+			.brand {
+				display: flex;
+				align-items: center;
+				gap: 16px;
+			}
+
+			.brand img {
+				width: 84px;
+				height: 84px;
+				margin: -6px;
+				filter: drop-shadow(0 10px 24px rgb(0 0 0 / 0.4));
+			}
+
+			.brand span {
+				font-size: 46px;
+				font-weight: 600;
+				letter-spacing: -0.03em;
+			}
+
+			h1 {
+				margin: 40px 0 22px;
+				font-size: 70px;
+				font-weight: 600;
+				line-height: 1.04;
+				letter-spacing: -0.04em;
+			}
+
+			.lede {
+				margin: 0;
+				color: #a1a1aa;
+				font-size: 25px;
+				line-height: 1.4;
+			}
+
+			.meta {
+				display: flex;
+				align-items: center;
+				gap: 12px;
+				margin: 30px 0 0;
+				color: #a1a1aa;
+				font: 500 18px/1 'Geist Mono', monospace;
+				letter-spacing: 0.04em;
+			}
+
+			.meta::before {
+				content: '';
+				width: 10px;
+				height: 10px;
+				border-radius: 50%;
+				background: #ff3b30;
+			}
+
+			.shot {
+				position: absolute;
+				top: 120px;
+				left: 552px;
+				width: 726px;
+				border-radius: 12px;
+				box-shadow:
+					0 0 0 1px rgb(255 255 255 / 0.1),
+					0 30px 80px rgb(0 0 0 / 0.6);
+			}
+		</style>
+	</head>
+	<body>
+		<main>
+			<div class="brand">
+				<img src="../../src/lib/assets/icon.webp" alt="" />
+				<span>Rec</span>
+			</div>
+			<h1>Hit record.<br />That's it.</h1>
+			<p class="lede">A simple screen and camera recorder for the Mac.</p>
+			<p class="meta">REC · Free · Apple Silicon</p>
+		</main>
+		<img class="shot" src="../../src/lib/assets/rec-dark-2160.webp" alt="" />
+	</body>
+</html>

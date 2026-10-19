@@ -5,7 +5,27 @@
 	import lightLarge from '#lib/assets/rec-light-2160.webp';
 	import lightSmall from '#lib/assets/rec-light-1200.webp';
 	import ThemeToggle, { type Theme } from '#lib/ThemeToggle.svelte';
-	import { DESCRIPTION, REPO_URL, SITE_URL, TITLE, VERSION } from '#lib/site.ts';
+	import { DESCRIPTION, NAME, REPO_URL, SITE_URL, TITLE, VERSION } from '#lib/site.ts';
+
+	const pageUrl = `${SITE_URL}/`;
+	const ogImage = `${SITE_URL}/og.jpg`;
+	const ogImageAlt =
+		'The Rec icon and name above "Hit record. That\'s it." and "A simple screen and camera recorder for the Mac", beside a screenshot of the Rec window recording a slide.';
+	const jsonLd = JSON.stringify({
+		'@context': 'https://schema.org',
+		'@type': 'SoftwareApplication',
+		name: NAME,
+		description: DESCRIPTION,
+		url: pageUrl,
+		image: ogImage,
+		operatingSystem: 'macOS',
+		applicationCategory: 'MultimediaApplication',
+		offers: { '@type': 'Offer', price: '0', priceCurrency: 'USD' },
+		downloadUrl: `${SITE_URL}/download`,
+		softwareVersion: VERSION
+	}).replaceAll('<', '\\u003c');
+	// `<\/script>`: a literal closing tag would end this component's <script> block.
+	const jsonLdTag = `<script type="application/ld+json">${jsonLd}<\/script>`;
 
 	let theme = $state<Theme | null>(null);
 
@@ -21,23 +41,25 @@
 <svelte:head>
 	<title>{TITLE}</title>
 	<meta name="description" content={DESCRIPTION} />
-	<link rel="canonical" href={SITE_URL} />
+	<link rel="canonical" href={pageUrl} />
 	<meta property="og:type" content="website" />
-	<meta property="og:url" content={SITE_URL} />
-	<meta property="og:site_name" content="Rec" />
+	<meta property="og:url" content={pageUrl} />
+	<meta property="og:site_name" content={NAME} />
+	<meta property="og:locale" content="en_US" />
 	<meta property="og:title" content={TITLE} />
 	<meta property="og:description" content={DESCRIPTION} />
-	<meta property="og:image" content="{SITE_URL}/og.jpg" />
+	<meta property="og:image" content={ogImage} />
 	<meta property="og:image:width" content="1200" />
 	<meta property="og:image:height" content="630" />
-	<meta
-		property="og:image:alt"
-		content="Rec: Hit record. That's it. A simple screen and camera recorder for the Mac, beside a screenshot of the app."
-	/>
+	<meta property="og:image:type" content="image/jpeg" />
+	<meta property="og:image:alt" content={ogImageAlt} />
 	<meta name="twitter:card" content="summary_large_image" />
 	<meta name="twitter:title" content={TITLE} />
 	<meta name="twitter:description" content={DESCRIPTION} />
-	<meta name="twitter:image" content="{SITE_URL}/og.jpg" />
+	<meta name="twitter:image" content={ogImage} />
+	<meta name="twitter:image:alt" content={ogImageAlt} />
+	<!-- eslint-disable-next-line svelte/no-at-html-tags -->
+	{@html jsonLdTag}
 </svelte:head>
 
 <div class="wrap">

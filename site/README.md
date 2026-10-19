@@ -19,7 +19,10 @@ outside the synced checkout.
   `https://github.com/michaelshimeles/rec-rs/releases/latest/download/rec-rs-universal.dmg`.
   Every GitHub release must include an asset with exactly that name.
 - The version, URLs, title and description live in `src/lib/site.ts`. Update `VERSION` with
-  each release, and `SITE_URL` if the site gets another domain (Open Graph tags use it).
+  each release. If the site gets another domain, update `SITE_URL` (the canonical, Open Graph
+  and JSON-LD tags use it) and the domain in `static/robots.txt` and `static/sitemap.xml`.
+- `static/og.jpg` is the 1200x630 share image. Edit `scripts/og/og.html` and run
+  `scripts/og/render.sh` to regenerate it; it needs Google Chrome and `npm install`.
 - The screenshots in `src/lib/assets/` are the Rec window at 1200x800 pt, captured from the app
   in light and dark appearance and encoded as WebP at 2160 and 1200 px wide.
 - Fonts (Geist, Geist Mono) are bundled from `@fontsource-variable`, so the page makes no
