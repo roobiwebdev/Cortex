@@ -22,7 +22,8 @@ outside the synced checkout.
   each release. If the site gets another domain, update `SITE_URL` (the canonical, Open Graph
   and JSON-LD tags use it) and the domain in `static/robots.txt` and `static/sitemap.xml`.
 - `static/og.jpg` is the 1200x630 share image. Edit `scripts/og/og.html` and run
-  `scripts/og/render.sh` to regenerate it; it needs Google Chrome and `npm install`.
+  `scripts/og/render.sh` to regenerate it; it needs macOS (for `sips`), Google Chrome and
+  `npm install`.
 - The screenshots in `src/lib/assets/` are the Rec window at 1200x800 pt, captured from the app
   in light and dark appearance and encoded as WebP at 2160 and 1200 px wide.
 - Fonts (Geist, Geist Mono) are bundled from `@fontsource-variable`, so the page makes no

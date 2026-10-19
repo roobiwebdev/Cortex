@@ -1,5 +1,5 @@
 #!/bin/sh
-# Render og.html to static/og.jpg (1200x630) with headless Chrome.
+# Render og.html to static/og.jpg (1200x630) with headless Chrome. Needs macOS for `sips`.
 # Run `npm install` first: the template loads its fonts from node_modules.
 set -eu
 cd "$(dirname "$0")"
