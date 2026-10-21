@@ -21,9 +21,10 @@ export const envelope = (t: number, inStart: number, inEnd: number, outStart: nu
 
 export type Keyframe = { t: number; x: number; y: number };
 
-/** The point at `t` along `frames`, easing in and out between each pair. */
+/** The point at `t` along `frames`, easing in and out between each pair and holding the last. */
 export function along(frames: Keyframe[], t: number) {
-	const i = Math.max(0, frames.findIndex((f) => f.t > t) - 1);
+	const next = frames.findIndex((f) => f.t > t);
+	const i = next === -1 ? frames.length - 1 : Math.max(0, next - 1);
 	const a = frames[i];
 	const b = frames[i + 1] ?? a;
 	const p = b === a ? 0 : easeInOut(span(t, a.t, b.t));
