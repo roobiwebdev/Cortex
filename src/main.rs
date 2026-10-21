@@ -80,6 +80,9 @@ enum Cmd {
         #[arg(long, default_value_t = 60)]
         wait: u64,
     },
+    /// Request Screen & System Audio Recording (run by `permissions --request`).
+    #[command(hide = true)]
+    RequestScreen,
     /// Check a recording with AVFoundation (the engine QuickTime uses).
     Probe { file: PathBuf },
     /// Play a file in an AVPlayer window (reference player for sync tests).
@@ -661,6 +664,10 @@ fn main() {
             println!("screen recording : {s}");
             println!("microphone       : {m}");
             println!("camera           : {c}");
+            Ok(())
+        }
+        Cmd::RequestScreen => {
+            tcc::request_screen_here();
             Ok(())
         }
         Cmd::Probe { file } => probe::probe(&file),

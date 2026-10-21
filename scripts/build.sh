@@ -1,6 +1,11 @@
 #!/bin/sh
 # Build rec, assemble dist/Rec.app, and code-sign it with a stable identity so
 # macOS privacy grants (screen/mic/camera) survive rebuilds.
+#
+# The build is "Rec Dev" (com.heyfabrika.rec.dev), apart from the release's
+# com.heyfabrika.rec. macOS ties each privacy grant to the certificate of the
+# app that got it. A copy signed with another certificate under the same bundle
+# ID sees the grant switched on in System Settings, but it never applies.
 set -eu
 cd "$(dirname "$0")/.."
 PROFILE="${PROFILE:-release}"
@@ -9,11 +14,15 @@ export CARGO_TARGET_DIR="${CARGO_TARGET_DIR:-$HOME/.cache/rec-rs-target}"
 if [ "$PROFILE" = release ]; then cargo build --release; else cargo build; fi
 APP=dist/Rec.app
 STAGE=dist/.Rec.app.new
+BUNDLE_ID=com.heyfabrika.rec.dev
 # Build the bundle beside the old one and swap it in atomically: overwriting a
 # running binary in place makes macOS kill an in-progress recording.
 rm -rf "$STAGE"
 mkdir -p "$STAGE/Contents/MacOS" "$STAGE/Contents/Resources"
 cp support/Info.plist "$STAGE/Contents/Info.plist"
+plutil -replace CFBundleIdentifier -string "$BUNDLE_ID" "$STAGE/Contents/Info.plist"
+plutil -replace CFBundleName -string "Rec Dev" "$STAGE/Contents/Info.plist"
+plutil -replace CFBundleDisplayName -string "Rec Dev" "$STAGE/Contents/Info.plist"
 cp support/AppIcon.icns "$STAGE/Contents/Resources/AppIcon.icns"
 cp "$CARGO_TARGET_DIR/$PROFILE/rec-rs" "$STAGE/Contents/MacOS/rec-rs"
 IDENTITY="${REC_SIGN_IDENTITY:-$(security find-identity -v -p codesigning | awk -F'"' '/Apple Development|Developer ID Application/ {print $2; exit}')}"
@@ -21,7 +30,7 @@ if [ -z "$IDENTITY" ]; then
   echo "warning: no signing identity found; ad-hoc signing (permissions reset on every rebuild)" >&2
   IDENTITY=-
 fi
-codesign --force --sign "$IDENTITY" --identifier com.heyfabrika.rec "$STAGE"
+codesign --force --sign "$IDENTITY" --identifier "$BUNDLE_ID" "$STAGE"
 codesign --verify --strict "$STAGE"
 mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources"
 cp "$STAGE/Contents/Resources/AppIcon.icns" "$APP/Contents/Resources/AppIcon.icns.new" && mv -f "$APP/Contents/Resources/AppIcon.icns.new" "$APP/Contents/Resources/AppIcon.icns"
