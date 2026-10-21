@@ -61,7 +61,7 @@ enum Cmd {
     /// key from stdin; never echoed or logged).
     StreamKey {
         /// Stream URL (rtmp://, rtmps://, https://.../whip) or a service:
-        /// youtube, twitch.
+        /// youtube, twitch, kick.
         dest: String,
         /// Remove the stored key instead.
         #[arg(long)]
@@ -210,8 +210,9 @@ pub struct RecordArgs {
     #[arg(long, value_name = "SECS")]
     replay: Option<f64>,
     /// Stream to an RTMP(S) URL or a WHIP endpoint (http(s)://.../whip).
-    /// youtube and twitch are shortcuts. The key comes from
-    /// $REC_STREAM_KEY or the Keychain (`rec-rs stream-key URL`).
+    /// youtube, twitch and kick are shortcuts. Repeat it to stream to
+    /// several at once. The key comes from $REC_STREAM_KEY or the Keychain
+    /// (`rec-rs stream-key URL`).
     #[arg(long, value_name = "URL")]
     stream: Vec<String>,
     /// Do not write a recording file (replay buffer / streaming only).
@@ -222,7 +223,8 @@ pub struct RecordArgs {
     live_resolution: String,
     /// Live video bitrate in kb/s. Default: the platform's recommendation
     /// for the size and frame rate (YouTube 4K60 45 Mb/s H.264 or 35 HEVC,
-    /// Twitch at most 6 Mb/s), else YouTube's.
+    /// Twitch at most 6 Mb/s, Kick at most 8), else YouTube's. With several
+    /// destinations, the lowest of them.
     #[arg(long)]
     stream_bitrate: Option<u32>,
     /// Live video codec: auto (HEVC when every destination is YouTube),
@@ -491,21 +493,9 @@ pub fn prepare(a: RecordArgs) -> Result<(record::Options, Option<screen::Target>
     if a.replay.is_some() || !a.stream.is_empty() {
         let live = live::Live::new();
         let (lw, lh) = live_box(&a.live_resolution)?;
-        let urls: Vec<String> = a.stream.iter().map(|d| live::destination_url(d)).collect();
-        let platforms: Vec<live::Platform> = urls.iter().map(|u| live::platform(u)).collect();
-        let want_hevc = match a.stream_codec.as_str() {
-            "hevc" => true,
-            "h264" => false,
-            _ => !platforms.is_empty() && platforms.iter().all(|p| *p == live::Platform::YouTube),
-        };
-        // Every destination's limits: the smallest bitrate and size, HEVC
-        // only if all of them take it.
-        let presets: Vec<(u32, usize, bool)> = if platforms.is_empty() { vec![live::preset(live::Platform::Other, lh.min(h), a.fps.min(60), want_hevc)] } else {
-            platforms.iter().map(|p| live::preset(*p, lh.min(h), a.fps.min(60), want_hevc)).collect()
-        };
-        let kbps = a.stream_bitrate.unwrap_or_else(|| presets.iter().map(|p| p.0).min().unwrap_or(6000));
-        let max_h = presets.iter().map(|p| p.1).min().unwrap_or(lh);
-        let hevc = presets.iter().all(|p| p.2);
+        let platforms: Vec<live::Platform> = a.stream.iter().map(|d| live::platform(&live::destination_url(d))).collect();
+        let (preset_kbps, max_h, hevc) = live::shared_preset(&platforms, lh.min(h), a.fps.min(60), &a.stream_codec);
+        let kbps = a.stream_bitrate.unwrap_or(preset_kbps);
         let (lw, lh) = if lh.min(h) > max_h { (max_h * 16 / 9, max_h) } else { (lw.min(w), lh.min(h)) };
         live.set_config(live::LiveConfig {
             width: lw,

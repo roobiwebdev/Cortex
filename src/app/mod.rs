@@ -135,6 +135,14 @@ pub struct Device {
     pub name: String,
 }
 
+/// A running stream to one destination.
+pub struct Stream {
+    /// Output ID in the live hub.
+    pub id: u64,
+    pub url: String,
+    pub status: Option<crate::live::OutputStatus>,
+}
+
 /// Everything the UI shows and edits.
 pub struct State {
     pub settings: Settings,
@@ -176,12 +184,13 @@ pub struct State {
     /// ⇧⌘S is registered (it is only held while the replay buffer is on).
     pub replay_hotkey: Option<bool>,
     replay_saves: Vec<std::thread::JoinHandle<Result<PathBuf>>>,
-    pub stream_id: Option<u64>,
-    pub stream_status: Option<crate::live::OutputStatus>,
-    /// Stream key being typed; moved to the Keychain on save and cleared.
-    pub stream_key_input: String,
-    /// (destination URL, whether the Keychain has a key for it).
-    pub key_saved: Option<(String, bool)>,
+    /// One per destination enabled at Go Live; empty when not streaming.
+    pub streams: Vec<Stream>,
+    /// Stream keys being typed, by destination URL; moved to the Keychain
+    /// on save and cleared.
+    pub key_inputs: std::collections::HashMap<String, String>,
+    /// Whether the Keychain has a key, by destination URL.
+    key_saved: std::collections::HashMap<String, bool>,
     /// A short confirmation (replay saved) and when it was shown.
     pub notice: Option<(String, Instant)>,
     /// The mic the running session opened (None = system default), and the
@@ -191,38 +200,37 @@ pub struct State {
 }
 
 impl State {
-    /// Whether the Keychain holds a stream key for the current destination
-    /// (looked up once per destination).
-    pub fn has_stream_key(&mut self) -> bool {
-        let url = self.settings.stream_url();
-        match &self.key_saved {
-            Some((u, has)) if *u == url => *has,
-            _ => {
-                let has = !url.is_empty() && crate::live::keychain::get(&url).is_some();
-                self.key_saved = Some((url, has));
-                has
-            }
+    /// Whether the Keychain holds a stream key for the destination `url`
+    /// (looked up once per URL).
+    pub fn has_stream_key(&mut self, url: &str) -> bool {
+        if url.is_empty() {
+            return false;
         }
+        *self.key_saved.entry(url.to_string()).or_insert_with(|| crate::live::keychain::get(url).is_some())
     }
 
-    /// Store the typed stream key in the Keychain and forget it.
-    pub fn save_stream_key(&mut self) {
-        let url = self.settings.stream_url();
-        let key = std::mem::take(&mut self.stream_key_input);
+    /// Store the key typed for `url` in the Keychain and forget it.
+    pub fn save_stream_key(&mut self, url: &str) {
+        let key = self.key_inputs.remove(url).unwrap_or_default();
         let key = key.trim();
         if url.is_empty() || key.is_empty() {
             return;
         }
-        match crate::live::keychain::set(&url, key) {
-            Ok(()) => self.key_saved = Some((url, true)),
+        match crate::live::keychain::set(url, key) {
+            Ok(()) => {
+                self.key_saved.insert(url.to_string(), true);
+            }
             Err(e) => self.error = Some(format!("Could not save the stream key: {e:#}")),
         }
     }
 
-    pub fn delete_stream_key(&mut self) {
-        let url = self.settings.stream_url();
-        let _ = crate::live::keychain::delete(&url);
-        self.key_saved = Some((url, false));
+    pub fn delete_stream_key(&mut self, url: &str) {
+        let _ = crate::live::keychain::delete(url);
+        self.key_saved.insert(url.to_string(), false);
+    }
+
+    pub fn streaming(&self) -> bool {
+        !self.streams.is_empty()
     }
 
     pub fn is_paused(&self) -> bool {
@@ -349,10 +357,9 @@ impl App {
             replay_stats: None,
             replay_hotkey: None,
             replay_saves: vec![],
-            stream_id: None,
-            stream_status: None,
-            stream_key_input: String::new(),
-            key_saved: None,
+            streams: vec![],
+            key_inputs: Default::default(),
+            key_saved: Default::default(),
             notice: None,
             mic_in_use: None,
             mic_warned: None,
@@ -567,7 +574,7 @@ impl App {
 
     /// Whether the live encode needs a capture session (replay or stream).
     fn live_wanted(&self) -> bool {
-        self.st.settings.replay_enabled || self.st.stream_id.is_some()
+        self.st.settings.replay_enabled || self.st.streaming()
     }
 
     /// Apply the replay and live-encode settings, and hold ⇧⌘S while the
@@ -599,7 +606,12 @@ impl App {
             }
             _ => {}
         }
-        self.st.stream_status = self.st.stream_id.and_then(|id| self.st.live.statuses().into_iter().find(|(i, _)| *i == id).map(|(_, s)| s));
+        if self.st.streaming() {
+            let statuses = self.st.live.statuses();
+            for s in &mut self.st.streams {
+                s.status = statuses.iter().find(|(i, _)| *i == s.id).map(|(_, st)| st.clone());
+            }
+        }
     }
 
     fn save_replay(&mut self) {
@@ -616,22 +628,31 @@ impl App {
         }
     }
 
+    /// Go live on every enabled destination, or stop them all. Starting is
+    /// all or nothing: one that can't start (no key, bad URL) stops the
+    /// rest, so a stream never runs on only some of them by accident.
+    /// Network failures later show in each one's status instead.
     fn toggle_stream(&mut self) {
-        if let Some(id) = self.st.stream_id.take() {
-            self.st.live.remove_output(id);
-            self.st.stream_status = None;
+        if self.st.streaming() {
+            for s in std::mem::take(&mut self.st.streams) {
+                self.st.live.remove_output(s.id);
+            }
             return;
         }
-        let url = self.st.settings.stream_url();
-        let r = crate::live::resolve_destination(&url).and_then(|(url, key)| crate::live::start_output(&url, &key));
-        match r {
-            Ok(o) => {
-                self.st.stream_id = Some(self.st.live.add_output(o));
-                self.st.error = None;
-            }
-            Err(e) => self.st.error = Some(format!("Could not go live: {e:#}")),
+        let urls = self.st.settings.stream_urls();
+        if urls.is_empty() {
+            self.st.error = Some("Could not go live: turn on a destination in Stream first".into());
+            return;
         }
-        self.sync_preview();
+        let start = |url: &str| crate::live::resolve_destination(url).and_then(|(u, key)| crate::live::start_output(&u, &key));
+        match self.st.live.add_outputs(&urls, start) {
+            Ok(added) => {
+                self.st.streams = added.into_iter().map(|(id, url)| Stream { id, url, status: None }).collect();
+                self.st.error = None;
+                self.sync_preview();
+            }
+            Err(e) => self.st.error = Some(format!("{e:#}")),
+        }
     }
 
     /// Run a preview session while the window is visible and nothing is
@@ -888,7 +909,7 @@ impl App {
             clock: &clock,
             has_last: self.st.last_file.is_some(),
             replay: self.st.replay_stats.is_some(),
-            live: self.st.stream_id.is_some(),
+            live: self.st.streaming(),
         };
         if let Some(m) = &mut self.menubar {
             m.update(&view);
@@ -1096,7 +1117,7 @@ impl ApplicationHandler for App {
         }
         // Animate while capturing (preview, meters, timer); otherwise idle
         // with a slow tick for signals.
-        let live = self.st.recording.is_some() || self.st.preview.is_some() || self.st.finishing || self.st.stream_id.is_some();
+        let live = self.st.recording.is_some() || self.st.preview.is_some() || self.st.finishing || self.st.streaming();
         let now = Instant::now();
         let mut next = now + Duration::from_millis(if live { 100 } else { 250 });
         // The occlusion event only reports changes (not a window created
@@ -1163,11 +1184,12 @@ impl SelfTest {
             }
             return;
         }
-        // REC_GUI_SELFTEST=live: replay buffer and (if the settings name a
-        // destination) a stream keep running across window close and a
-        // recording; then the replay is saved with the hotkey's command.
+        // REC_GUI_SELFTEST=live: replay buffer and a stream to every enabled
+        // destination keep running across window close and a recording;
+        // then the replay is saved with the hotkey's command.
         if std::env::var("REC_GUI_SELFTEST").as_deref() == Ok("live") {
-            let streaming = !app.st.settings.stream_url().is_empty();
+            let streaming = !app.st.settings.stream_urls().is_empty();
+            let live = app.st.streams.iter().filter(|s| s.status.as_ref().is_some_and(|s| s.live)).count();
             match self.step {
                 0 if t > 2.0 => {
                     println!("selftest: replay on={}", app.st.replay_stats.is_some());
@@ -1176,36 +1198,44 @@ impl SelfTest {
                     }
                     self.step = 1;
                 }
-                1 if t > 4.0 => {
+                // The window stays open until t = 6 s, so the live state
+                // can be looked at.
+                1 if live == app.st.streams.len() || t > 6.0 => {
+                    println!("selftest: live on {live} of {} destinations, window open, error={:?}", app.st.streams.len(), app.st.error);
+                    self.step = 2;
+                }
+                2 if t > 6.0 => {
                     app.hide_main();
                     println!("selftest: window hidden, live session={}", app.st.preview.is_some());
                     push(Cmd::ToggleRecording);
-                    self.step = 2;
-                }
-                2 if t > 7.0 => {
-                    push(Cmd::ToggleRecording);
                     self.step = 3;
                 }
-                3 if t > 9.0 && !app.st.finishing => {
-                    println!("selftest: after recording live session={} saved={:?}", app.st.preview.is_some(), app.st.last_file);
-                    push(Cmd::SaveReplay);
+                3 if t > 9.0 => {
+                    push(Cmd::ToggleRecording);
                     self.step = 4;
                 }
-                4 if app.st.notice.is_some() || app.st.error.is_some() || t > 25.0 => {
+                4 if t > 11.0 && !app.st.finishing => {
+                    println!("selftest: after recording live session={} saved={:?}", app.st.preview.is_some(), app.st.last_file);
+                    push(Cmd::SaveReplay);
+                    self.step = 5;
+                }
+                5 if app.st.notice.is_some() || app.st.error.is_some() || t > 27.0 => {
                     let held = app.st.replay_stats.map_or(0.0, |r| r.0);
                     println!("selftest: replay saved={:?} held={held:.1}s error={:?}", app.st.last_file, app.st.error);
-                    if let Some(s) = &app.st.stream_status {
+                    for s in &app.st.streams {
+                        let Some(st) = &s.status else { continue };
                         println!(
-                            "selftest: stream live={} state={} bitrate={:.1}Mb/s dropped={} reconnects={}",
-                            s.live,
-                            s.state,
-                            s.bitrate / 1e6,
-                            s.dropped_frames,
-                            s.reconnects
+                            "selftest: stream {} live={} state={} bitrate={:.1}Mb/s dropped={} reconnects={}",
+                            crate::live::destination_name(&s.url),
+                            st.live,
+                            st.state,
+                            st.bitrate / 1e6,
+                            st.dropped_frames,
+                            st.reconnects
                         );
                     }
                     push(Cmd::Quit);
-                    self.step = 5;
+                    self.step = 6;
                 }
                 _ => {}
             }

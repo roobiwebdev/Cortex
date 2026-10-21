@@ -6,10 +6,10 @@ use egui::{Align, Color32, CornerRadius, Layout, Margin, RichText, Sense, Stroke
 
 use super::theme::{self, BODY, SECONDARY, TOOLBAR_H, TRAFFIC_LIGHTS_W};
 use super::widgets::{self as w, Icon};
-use super::{Cmd, Meter, State};
+use super::{Cmd, Meter, State, Stream};
 use crate::compose::{self, Corner, Place, Scene, Shape};
-use crate::settings::Settings;
 use crate::settings::{FPS, RESOLUTIONS};
+use crate::settings::{Settings, StreamDest};
 use crate::writer::{AudioLayout, Codec};
 
 const RED: Color32 = Color32::from_rgb(0xff, 0x3b, 0x30);
@@ -77,9 +77,11 @@ pub fn main_window(ui: &mut Ui, st: &mut State) {
                 } else if st.preview.is_some() {
                     pill(ui, "PREVIEW", p.control, p.secondary);
                 }
-                if st.stream_status.as_ref().is_some_and(|s| s.live) {
+                let live = st.streams.iter().filter(|s| s.status.as_ref().is_some_and(|s| s.live)).count();
+                if live > 0 {
                     ui.add_space(4.0);
-                    pill(ui, "LIVE", RED, Color32::WHITE);
+                    let text = if live == st.streams.len() { "LIVE".to_string() } else { format!("LIVE {live}/{}", st.streams.len()) };
+                    pill(ui, &text, RED, Color32::WHITE);
                 }
                 if let Some((text, at)) = &st.notice
                     && at.elapsed().as_secs_f32() < 4.0
@@ -610,8 +612,6 @@ fn bytes_text(b: usize) -> String {
     if b >= 1 << 30 { format!("{:.1} GB", b as f64 / (1u64 << 30) as f64) } else { format!("{:.0} MB", b as f64 / (1u64 << 20) as f64) }
 }
 
-pub const STREAM_DESTS: [(&str, &str); 3] = [("youtube", "YouTube"), ("twitch", "Twitch"), ("custom", "Custom (RTMP or WHIP URL)")];
-
 /// Replay buffer and streaming: both use the shared live encode and run
 /// with or without a recording.
 fn live_controls(ui: &mut Ui, st: &mut State, s: &mut Settings) {
@@ -640,71 +640,153 @@ fn live_controls(ui: &mut Ui, st: &mut State, s: &mut Settings) {
     });
 
     w::header(ui, Icon::Stream, "Stream");
-    w::card(ui, |ui| {
-        let live = st.stream_id.is_some();
-        let dests: Vec<(String, String)> = STREAM_DESTS.iter().map(|(v, l)| (v.to_string(), l.to_string())).collect();
-        combo(ui, "stream-dest", &mut s.stream_dest, &dests, !live);
-        if s.stream_dest == "custom" {
-            ui.add_enabled(
-                !live,
-                egui::TextEdit::singleline(&mut s.stream_custom_url)
-                    .hint_text("rtmp://… or https://…/whip")
-                    .margin(vec2(8.0, 4.0))
-                    .desired_width(f32::INFINITY),
-            );
+    w::card(ui, |ui| stream_controls(ui, st, s));
+}
+
+/// Every destination with a switch, and under each one that's on, its key
+/// (or, while live, its status). One Go Live starts them all.
+fn stream_controls(ui: &mut Ui, st: &mut State, s: &mut Settings) {
+    let p = theme::pal(ui);
+    let live = st.streaming();
+    let mut on = 0;
+    // Why Go Live can't start yet.
+    let mut blocker: Option<String> = None;
+    let mut remove = None;
+    for (i, d) in s.stream_dests.iter_mut().enumerate() {
+        if i > 0 {
+            w::divider(ui);
+        }
+        let url = crate::live::destination_url(&d.dest);
+        if d.is_service() {
+            w::row(ui, &crate::live::destination_name(&url), |ui| w::switch(ui, &mut d.enabled, !live));
+        } else {
+            let width = ui.available_width();
+            ui.allocate_ui_with_layout(vec2(width, w::ROW_H), Layout::right_to_left(Align::Center), |ui| {
+                w::switch(ui, &mut d.enabled, !live);
+                if ui.add_enabled(!live, egui::Button::new("×").min_size(vec2(24.0, 24.0))).on_hover_text("Remove this server").clicked() {
+                    remove = Some(i);
+                }
+                ui.add_enabled(
+                    !live,
+                    egui::TextEdit::singleline(&mut d.dest)
+                        .id_salt(("stream-url", i))
+                        .hint_text("rtmp://… or https://…/whip")
+                        .margin(vec2(8.0, 4.0))
+                        .desired_width(ui.available_width()),
+                );
+            });
+        }
+        if !d.enabled {
+            continue;
+        }
+        on += 1;
+        if live {
+            stream_status(ui, st.streams.iter().find(|x| x.url == url));
+            continue;
+        }
+        if url.is_empty() {
+            blocker.get_or_insert_with(|| "Enter the server's URL".into());
+            continue;
         }
         // The key goes to the Keychain (per destination URL), never to settings.
-        let url = s.stream_url();
-        let has_key = if url == st.settings.stream_url() { st.has_stream_key() } else { false };
-        if has_key && st.stream_key_input.is_empty() {
-            w::row(ui, "Stream key", |ui| {
-                if ui.add_enabled(!live, egui::Button::new("Remove")).clicked() {
-                    st.delete_stream_key();
-                }
-                ui.label(RichText::new("In Keychain").size(SECONDARY).color(p.secondary));
+        let whip = url.starts_with("http");
+        if st.has_stream_key(&url) {
+            let width = ui.available_width();
+            ui.allocate_ui_with_layout(vec2(width, 24.0), Layout::left_to_right(Align::Center), |ui| {
+                ui.label(RichText::new("Stream key in Keychain").size(SECONDARY).color(p.secondary));
+                ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
+                    if ui.button("Remove").clicked() {
+                        st.delete_stream_key(&url);
+                    }
+                });
             });
         } else {
+            if !whip {
+                blocker.get_or_insert_with(|| format!("Save the stream key for {}", crate::live::destination_name(&url)));
+            }
             ui.horizontal(|ui| {
                 let bw = 52.0;
+                let input = st.key_inputs.entry(url.clone()).or_default();
                 ui.add_sized(
                     vec2(ui.available_width() - bw - ui.spacing().item_spacing.x, 24.0),
-                    egui::TextEdit::singleline(&mut st.stream_key_input).password(true).margin(vec2(8.0, 4.0)).hint_text("Stream key"),
+                    egui::TextEdit::singleline(input)
+                        .id_salt(("stream-key", i))
+                        .password(true)
+                        .margin(vec2(8.0, 4.0))
+                        .hint_text(if whip { "Token (if the server needs one)" } else { "Stream key" }),
                 );
-                if ui.add_enabled(!st.stream_key_input.trim().is_empty(), egui::Button::new("Save").min_size(vec2(bw, 24.0))).clicked() {
-                    st.save_stream_key();
+                if ui.add_enabled(!input.trim().is_empty(), egui::Button::new("Save").min_size(vec2(bw, 24.0))).clicked() {
+                    st.save_stream_key(&url);
                 }
             });
         }
-        w::divider(ui);
-        let whip = url.starts_with("http");
-        let ready = !url.is_empty() && (has_key || whip);
-        let label = if live { "Stop Stream" } else { "Go Live" };
-        let (fill, fg) = if live {
-            (RED, Color32::WHITE)
-        } else if ready {
-            (theme::accent(), Color32::WHITE)
-        } else {
-            (p.control, p.secondary)
-        };
-        // Growable atoms on both sides center the label.
-        let b = egui::Button::new((egui::Atom::grow(), RichText::new(label).font(theme::semibold(BODY)).color(fg), egui::Atom::grow())).fill(fill).corner_radius(7).min_size(vec2(ui.available_width(), 28.0));
-        let resp = ui.add_enabled(live || ready, b);
-        let resp = if ready || live { resp } else { resp.on_disabled_hover_text("Save a stream key first") };
-        if resp.clicked() {
-            st.cmds.push(Cmd::ToggleStream);
-        }
-        if let Some(status) = &st.stream_status {
-            let text = if status.live {
-                format!("{}  {:.1} Mb/s  {} dropped", crate::record::clock(status.duration), status.bitrate / 1e6, status.dropped_frames)
-            } else {
-                status.state.clone()
-            };
-            ui.label(RichText::new(text).size(SECONDARY).color(if status.live { p.text } else { p.secondary }));
-        }
-        if let Some(e) = st.stream_status.as_ref().and_then(|s| (!s.live).then_some(s.error.as_ref()).flatten()) {
+    }
+    if let Some(i) = remove {
+        s.stream_dests.remove(i);
+    }
+    w::divider(ui);
+    if ui.add_enabled(!live, egui::Button::new("+ Add Server")).on_hover_text("Another platform's RTMP or RTMPS server, or a WHIP endpoint").clicked() {
+        s.stream_dests.push(StreamDest { dest: String::new(), enabled: true });
+    }
+    w::divider(ui);
+    let ready = on > 0 && blocker.is_none();
+    // Rows with the same server are one stream.
+    let n = s.stream_urls().len();
+    let label = match (live, n) {
+        (true, _) => "Stop Streaming".to_string(),
+        (false, n) if n > 1 => format!("Go Live on {n} Destinations"),
+        _ => "Go Live".to_string(),
+    };
+    let (fill, fg) = if live {
+        (RED, Color32::WHITE)
+    } else if ready {
+        (theme::accent(), Color32::WHITE)
+    } else {
+        (p.control, p.secondary)
+    };
+    // Growable atoms on both sides center the label.
+    let b = egui::Button::new((egui::Atom::grow(), RichText::new(label).font(theme::semibold(BODY)).color(fg), egui::Atom::grow())).fill(fill).corner_radius(7).min_size(vec2(ui.available_width(), 28.0));
+    let resp = ui.add_enabled(live || ready, b);
+    let resp = if ready || live { resp } else { resp.on_disabled_hover_text(blocker.unwrap_or_else(|| "Turn on a destination".into())) };
+    if resp.clicked() {
+        st.cmds.push(Cmd::ToggleStream);
+    }
+    if n > 1 {
+        let c = s.live_config();
+        w::hint(
+            ui,
+            &format!(
+                "One encode feeds them all: up to {}p {} at {:.1} Mb/s, within every destination's limits.",
+                c.height,
+                if c.hevc { "HEVC" } else { "H.264" },
+                c.bitrate as f64 / 1e6
+            ),
+        );
+    }
+}
+
+/// A destination's status while live: time, rate and drops, or what it's
+/// doing (connecting, reconnecting) and its last error.
+fn stream_status(ui: &mut Ui, stream: Option<&Stream>) {
+    let p = theme::pal(ui);
+    let Some(stream) = stream else { return };
+    let Some(status) = &stream.status else {
+        w::hint(ui, "starting…");
+        return;
+    };
+    if status.live {
+        ui.horizontal(|ui| {
+            ui.spacing_mut().item_spacing.x = 4.0;
+            ui.label(RichText::new("●").size(SECONDARY).color(RED));
+            let text = format!("{}  {:.1} Mb/s  {} dropped", crate::record::clock(status.duration), status.bitrate / 1e6, status.dropped_frames);
+            ui.label(RichText::new(text).size(SECONDARY).color(p.text));
+        });
+    } else {
+        w::hint(ui, &status.state);
+        if let Some(e) = &status.error {
             ui.add(egui::Label::new(RichText::new(e).size(SECONDARY).color(RED)).wrap());
         }
-    });
+    }
 }
 
 pub fn settings_window(ui: &mut Ui, st: &mut State) {
@@ -835,7 +917,7 @@ fn settings_form(ui: &mut Ui, st: &mut State) {
     });
 
     section(ui, "LIVE ENCODE (REPLAY & STREAMING)");
-    let streaming = st.stream_id.is_some();
+    let streaming = st.streaming();
     ui.add_enabled_ui(!streaming, |ui| {
         grid(ui, "live", &mut |ui| {
             ui.label("Resolution");
@@ -844,7 +926,7 @@ fn settings_form(ui: &mut Ui, st: &mut State) {
             combo(ui, "live-res", &mut s.live_resolution, &opts, true);
             ui.end_row();
             ui.label("Codec");
-            let opts: Vec<(String, String)> = [("auto", "Auto (HEVC for YouTube, else H.264)"), ("h264", "H.264"), ("hevc", "HEVC (falls back to H.264)")]
+            let opts: Vec<(String, String)> = [("auto", "Auto (HEVC when streaming only to YouTube)"), ("h264", "H.264"), ("hevc", "HEVC (falls back to H.264)")]
                 .iter()
                 .map(|(v, l)| (v.to_string(), l.to_string()))
                 .collect();
@@ -885,7 +967,7 @@ fn settings_form(ui: &mut Ui, st: &mut State) {
         });
     });
     if streaming {
-        ui.label(RichText::new("Stop the stream to change the live encode.").size(SECONDARY).color(theme::pal(ui).secondary));
+        ui.label(RichText::new("Stop streaming to change the live encode.").size(SECONDARY).color(theme::pal(ui).secondary));
     }
 
     section(ui, "CAMERA");
@@ -898,7 +980,7 @@ fn settings_form(ui: &mut Ui, st: &mut State) {
     });
     ui.add_space(12.0);
     if ui.button("Restore Defaults").clicked() {
-        s = crate::settings::Settings { output_dir: s.output_dir.clone(), ..Default::default() };
+        s = crate::settings::Settings { output_dir: s.output_dir.clone(), stream_dests: s.stream_dests.clone(), ..Default::default() };
     }
     if s != st.settings {
         st.settings = s;
