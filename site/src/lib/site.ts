@@ -12,10 +12,15 @@ export const REPO_URL = 'https://github.com/michaelshimeles/rec-rs';
 
 export const NAME = 'Rec';
 
+export const AUTHOR = 'Micky';
+export const AUTHOR_URL = 'https://rasmic.xyz';
+// For twitter:creator.
+export const AUTHOR_X = '@Rasmic';
+
 export const TITLE = `${NAME}: a simple screen and camera recorder for the Mac`;
 
 export const DESCRIPTION =
 	'A simple alternative to OBS for your Mac that records your screen, system audio, mic and webcam into one file, ready for Final Cut, Premiere or Resolve.';
 
 export const OG_IMAGE_ALT =
-	'The Rec icon and name above "Hit record. That\'s it." and "A simple screen and camera recorder for the Mac", beside a screenshot of the Rec window recording a slide.';
+	'The Rec icon and name above "Hit record. That\'s it." and "A fast, simple screen and camera recorder for the Mac, written in Rust.", beside a screenshot of the Rec window previewing a slide, with the red record button below it.';

@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { resolve } from '$app/paths';
 	import icon from '#lib/assets/icon.webp';
+	import shareImage from '#lib/assets/og.jpg';
 	import CameraCard from '#lib/cards/CameraCard.svelte';
 	import FileCard from '#lib/cards/FileCard.svelte';
 	import LightCard from '#lib/cards/LightCard.svelte';
@@ -15,6 +16,9 @@
 	import { theme } from '#lib/theme.svelte.js';
 	import {
 		ARCH,
+		AUTHOR,
+		AUTHOR_URL,
+		AUTHOR_X,
 		DESCRIPTION,
 		MIN_MACOS,
 		NAME,
@@ -26,7 +30,9 @@
 	} from '#lib/site.js';
 
 	const url = `${SITE_URL}/`;
-	const image = `${SITE_URL}/og.jpg`;
+	// Imported, so the URL carries a content hash and changes with the image. The browser resolves
+	// the import against its own origin, so keep only the path.
+	const image = `${SITE_URL}${new URL(shareImage, SITE_URL).pathname}`;
 	const app = JSON.stringify({
 		'@context': 'https://schema.org',
 		'@type': 'SoftwareApplication',
@@ -34,11 +40,12 @@
 		description: DESCRIPTION,
 		url,
 		image,
-		operatingSystem: 'macOS',
+		operatingSystem: `macOS ${MIN_MACOS} or later`,
 		applicationCategory: 'MultimediaApplication',
 		offers: { '@type': 'Offer', price: '0', priceCurrency: 'USD' },
 		downloadUrl: `${SITE_URL}/download`,
-		softwareVersion: VERSION
+		softwareVersion: VERSION,
+		author: { '@type': 'Person', name: AUTHOR, url: AUTHOR_URL }
 	}).replaceAll('<', '\\u003c');
 	// A literal closing tag here would end this <script> block.
 	const jsonLd = `<script type="application/ld+json">${app}<\/script>`;
@@ -131,6 +138,7 @@
 	<meta name="twitter:description" content={DESCRIPTION} />
 	<meta name="twitter:image" content={image} />
 	<meta name="twitter:image:alt" content={OG_IMAGE_ALT} />
+	<meta name="twitter:creator" content={AUTHOR_X} />
 	<!-- eslint-disable-next-line svelte/no-at-html-tags -->
 	{@html jsonLd}
 </svelte:head>
@@ -294,7 +302,7 @@
 		<img src={icon} width="20" height="20" alt="" />
 		<span>{NAME}</span>
 	</div>
-	<p>Free and open source under the MIT or Apache 2.0 license. Made by <a href="https://rasmic.xyz">Micky</a>.</p>
+	<p>Free and open source under the MIT or Apache 2.0 license. Made by <a href={AUTHOR_URL}>{AUTHOR}</a>.</p>
 	<a class="link" href={REPO_URL}>
 		{@render github()}
 		GitHub
