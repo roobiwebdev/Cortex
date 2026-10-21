@@ -122,6 +122,24 @@ pub enum MicBackend {
     Avcapture,
 }
 
+/// The privacy grants a session needs and doesn't have. It displays as the CLI's
+/// error. The app writes its own banner, which points at its Request
+/// Permissions button.
+#[derive(Debug)]
+pub struct MissingPermissions(pub Vec<&'static str>);
+
+impl std::fmt::Display for MissingPermissions {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(
+            f,
+            "missing permission(s): {}\n  run `rec permissions --request`, then enable Rec in System Settings > Privacy & Security",
+            self.0.join(", ")
+        )
+    }
+}
+
+impl std::error::Error for MissingPermissions {}
+
 pub fn check_permissions(o: &Options) -> Result<()> {
     let mut missing = vec![];
     if o.test_pattern.is_none() && tcc::screen_status() != Status::Granted {
@@ -134,10 +152,7 @@ pub fn check_permissions(o: &Options) -> Result<()> {
         missing.push("Camera");
     }
     if !missing.is_empty() {
-        bail!(
-            "missing permission(s): {}\n  run `rec permissions --request`, then enable Rec in System Settings > Privacy & Security",
-            missing.join(", ")
-        );
+        return Err(MissingPermissions(missing).into());
     }
     Ok(())
 }
