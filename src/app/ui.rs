@@ -730,7 +730,9 @@ fn stream_controls(ui: &mut Ui, st: &mut State, s: &mut Settings) {
     }
     w::divider(ui);
     let ready = on > 0 && blocker.is_none();
-    let label = match (live, on) {
+    // Rows with the same server are one stream.
+    let n = s.stream_urls().len();
+    let label = match (live, n) {
         (true, _) => "Stop Streaming".to_string(),
         (false, n) if n > 1 => format!("Go Live on {n} Destinations"),
         _ => "Go Live".to_string(),
@@ -749,7 +751,7 @@ fn stream_controls(ui: &mut Ui, st: &mut State, s: &mut Settings) {
     if resp.clicked() {
         st.cmds.push(Cmd::ToggleStream);
     }
-    if on > 1 {
+    if n > 1 {
         let c = s.live_config();
         w::hint(
             ui,

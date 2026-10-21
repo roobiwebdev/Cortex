@@ -644,22 +644,15 @@ impl App {
             self.st.error = Some("Could not go live: turn on a destination in Stream first".into());
             return;
         }
-        let mut started = vec![];
-        for url in urls {
-            match crate::live::resolve_destination(&url).and_then(|(u, key)| crate::live::start_output(&u, &key)) {
-                Ok(o) => started.push(Stream { id: self.st.live.add_output(o), url, status: None }),
-                Err(e) => {
-                    for s in started {
-                        self.st.live.remove_output(s.id);
-                    }
-                    self.st.error = Some(format!("Could not go live on {}: {e:#}", crate::live::destination_name(&url)));
-                    return;
-                }
+        let start = |url: &str| crate::live::resolve_destination(url).and_then(|(u, key)| crate::live::start_output(&u, &key));
+        match self.st.live.add_outputs(&urls, start) {
+            Ok(added) => {
+                self.st.streams = added.into_iter().map(|(id, url)| Stream { id, url, status: None }).collect();
+                self.st.error = None;
+                self.sync_preview();
             }
+            Err(e) => self.st.error = Some(format!("{e:#}")),
         }
-        self.st.streams = started;
-        self.st.error = None;
-        self.sync_preview();
     }
 
     /// Run a preview session while the window is visible and nothing is
@@ -1208,7 +1201,7 @@ impl SelfTest {
                 // The window stays open until t = 6 s, so the live state
                 // can be looked at.
                 1 if live == app.st.streams.len() || t > 6.0 => {
-                    println!("selftest: live on {live} of {} destinations, window open", app.st.streams.len());
+                    println!("selftest: live on {live} of {} destinations, window open, error={:?}", app.st.streams.len(), app.st.error);
                     self.step = 2;
                 }
                 2 if t > 6.0 => {

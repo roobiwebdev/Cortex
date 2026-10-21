@@ -510,6 +510,25 @@ impl Live {
         id
     }
 
+    /// Start and add an output for every URL, all or nothing: when one can't
+    /// start, the ones added before it are removed again and the error names
+    /// it. Returns each output's ID with its URL.
+    pub fn add_outputs(&self, urls: &[String], start: impl Fn(&str) -> Result<Box<dyn Output>>) -> Result<Vec<(u64, String)>> {
+        let mut added = vec![];
+        for url in urls {
+            match start(url) {
+                Ok(o) => added.push((self.add_output(o), url.clone())),
+                Err(e) => {
+                    for (id, _) in added {
+                        self.remove_output(id);
+                    }
+                    return Err(e.context(format!("Could not go live on {}", destination_name(url))));
+                }
+            }
+        }
+        Ok(added)
+    }
+
     pub fn remove_output(&self, id: u64) {
         let removed = {
             let mut hub = self.hub.lock().unwrap();
@@ -778,6 +797,48 @@ mod tests {
             OutputStatus::default()
         }
         fn stop(&mut self) {}
+    }
+
+    /// Named by its URL; notes when it is stopped.
+    struct Probe(String, Arc<Mutex<Vec<String>>>);
+
+    impl Output for Probe {
+        fn packet(&mut self, _p: &Packet, _f: &Formats) {}
+        fn status(&self) -> OutputStatus {
+            OutputStatus { name: self.0.clone(), ..Default::default() }
+        }
+        fn stop(&mut self) {
+            self.1.lock().unwrap().push(self.0.clone());
+        }
+    }
+
+    /// Go Live is all or nothing: when a destination can't start, the ones
+    /// before it are stopped and removed, and the ones after it never start.
+    #[test]
+    fn outputs_start_all_or_nothing() {
+        let live = Live::new();
+        let stopped = Arc::new(Mutex::new(vec![]));
+        let tried = Mutex::new(vec![]);
+        let start = |url: &str| -> Result<Box<dyn Output>> {
+            tried.lock().unwrap().push(url.to_string());
+            if platform(url) == Platform::YouTube {
+                anyhow::bail!("no stream key");
+            }
+            Ok(Box::new(Probe(url.to_string(), stopped.clone())))
+        };
+        let urls = ["rtmp://a/live".to_string(), destination_url("youtube"), "rtmp://c/live".to_string()];
+        let e = live.add_outputs(&urls, start).unwrap_err();
+        assert_eq!(format!("{e:#}"), "Could not go live on YouTube: no stream key");
+        assert_eq!(*tried.lock().unwrap(), ["rtmp://a/live", "rtmps://a.rtmps.youtube.com:443/live2"]);
+        assert_eq!(*stopped.lock().unwrap(), ["rtmp://a/live"]);
+        assert!(live.statuses().is_empty() && !live.active());
+
+        let urls = ["rtmp://a/live".to_string(), "https://b/whip".to_string()];
+        let added = live.add_outputs(&urls, start).unwrap();
+        assert_eq!(added.iter().map(|(_, u)| u.as_str()).collect::<Vec<_>>(), urls);
+        assert_eq!(live.statuses().into_iter().map(|(_, s)| s.name).collect::<Vec<_>>(), urls);
+        assert!(live.active() && stopped.lock().unwrap().len() == 1);
+        live.stop_all();
     }
 
     /// Swapping capture sessions leaves a hole of a few hundred ms; the
