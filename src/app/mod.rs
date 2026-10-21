@@ -302,6 +302,23 @@ fn load_devices(st: &mut State) {
     st.mics = crate::camera::microphones().into_iter().map(|d| Device { id: d.id, name: d.name }).collect();
 }
 
+/// The banner for a preview that didn't start, and whether it failed for
+/// missing privacy grants, which shows the Request Permissions button. The
+/// CLI's wording names a `rec` command, and installing the app doesn't put one
+/// on the PATH.
+fn preview_error(e: &anyhow::Error) -> (String, bool) {
+    match e.downcast_ref::<record::MissingPermissions>() {
+        Some(m) => (
+            format!(
+                "Preview unavailable: Rec needs permission for {}. Click Request Permissions, then allow Rec when macOS asks or in System Settings > Privacy & Security.",
+                m.0.join(", ")
+            ),
+            true,
+        ),
+        None => (format!("Preview unavailable: {e:#}"), false),
+    }
+}
+
 impl App {
     fn new(start_recording: bool) -> App {
         let mut st = State {
@@ -644,9 +661,9 @@ impl App {
                     self.st.permissions_missing = false;
                 }
                 Err(e) => {
-                    let msg = format!("{e:#}");
-                    self.st.permissions_missing = msg.contains("missing permission");
-                    self.st.error = Some(format!("Preview unavailable: {msg}"));
+                    let (msg, missing) = preview_error(&e);
+                    self.st.permissions_missing = missing;
+                    self.st.error = Some(msg);
                 }
             }
             self.st.preview_settings = Some(self.st.settings.clone());
@@ -1279,4 +1296,25 @@ pub fn run(start_recording: bool, settings: bool, window: Option<u32>) -> Result
     el.run_app(&mut app)?;
     let _ = std::fs::remove_file(record::pidfile_path());
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn missing_permissions_banner_points_at_its_button() {
+        let e = anyhow::Error::from(record::MissingPermissions(vec!["Screen & System Audio Recording", "Microphone"]));
+        // The CLI keeps telling people to run `rec permissions --request`.
+        assert!(format!("{e:#}").contains("run `rec permissions --request`"));
+        let (msg, missing) = preview_error(&e);
+        assert!(missing);
+        assert_eq!(
+            msg,
+            "Preview unavailable: Rec needs permission for Screen & System Audio Recording, Microphone. Click Request Permissions, then allow Rec when macOS asks or in System Settings > Privacy & Security."
+        );
+        let (msg, missing) = preview_error(&anyhow::anyhow!("no displays"));
+        assert!(!missing);
+        assert_eq!(msg, "Preview unavailable: no displays");
+    }
 }
