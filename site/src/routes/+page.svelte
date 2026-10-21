@@ -4,6 +4,7 @@
 	import darkSmall from '#lib/assets/rec-dark-1200.webp';
 	import lightLarge from '#lib/assets/rec-light-2160.webp';
 	import lightSmall from '#lib/assets/rec-light-1200.webp';
+	import DownloadCount from '#lib/DownloadCount.svelte';
 	import ThemeToggle, { type Theme } from '#lib/ThemeToggle.svelte';
 	import { DESCRIPTION, NAME, REPO_URL, SITE_URL, TITLE, VERSION } from '#lib/site.ts';
 
@@ -87,7 +88,7 @@
 		</a>
 		<p class="meta">
 			<span>Version {VERSION}</span> · <span>Apple Silicon</span> · <span>macOS 15 or later</span> ·
-			<span>Free</span>
+			<span>Free</span><DownloadCount repo={REPO_URL} />
 		</p>
 	</header>
 
