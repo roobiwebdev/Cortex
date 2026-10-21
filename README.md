@@ -71,7 +71,8 @@ dist/rec-rs --help          # dist/rec is a short alias
 Build output goes to `~/.cache/rec-rs-target` (`CARGO_TARGET_DIR`), never into the repo,
 because the repo is synced between machines. The script signs `dist/Rec.app` with your Apple
 Development identity, so the macOS privacy grants survive rebuilds. Override it with
-`REC_SIGN_IDENTITY`.
+`REC_SIGN_IDENTITY`. The build is named **Rec Dev** (`com.heyfabrika.rec.dev`), so its grants
+stay apart from those of an installed release, which is signed with another certificate.
 
 `scripts/release-macos.sh` builds the universal (Apple Silicon + Intel) app for macOS 15 and
 later, signs it with a Developer ID certificate, notarizes it and packages `Rec.dmg`, plus the
@@ -98,8 +99,10 @@ Test recordings go to `~/Movies/rec-rs-tests/`.
 dist/rec-rs permissions --request
 ```
 
-Then enable **Rec** under **System Settings → Privacy & Security → Screen & System Audio
-Recording**. Microphone and camera are approved from the system prompts.
+Then enable **Rec Dev** (or **Rec**, for the installed app) under **System Settings → Privacy &
+Security → Screen & System Audio Recording**. Microphone and camera are approved from the
+system prompts. Requesting again, here or with the app's Request Permissions button, first clears
+any earlier Screen Recording decision so that macOS asks again.
 
 - `rec-rs` re-launches itself with responsibility disclaimed. macOS therefore asks about and
   remembers the signed **Rec** app rather than your terminal.

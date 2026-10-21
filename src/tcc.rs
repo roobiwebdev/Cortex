@@ -1,6 +1,8 @@
 //! Privacy (TCC) handling: responsibility disclaim, permission status, requests.
 
 use std::ffi::{CString, c_char, c_int, c_void};
+use std::path::Path;
+use std::process::{Command, Stdio};
 use std::sync::mpsc;
 use std::time::Duration;
 
@@ -10,6 +12,9 @@ use objc2_av_foundation::{
     AVAuthorizationStatus, AVCaptureDevice, AVMediaTypeAudio, AVMediaTypeVideo,
 };
 use objc2_core_graphics::{CGPreflightScreenCaptureAccess, CGRequestScreenCaptureAccess};
+use objc2_foundation::NSBundle;
+
+use crate::util::ns;
 
 const DISCLAIM_ENV: &str = "REC_DISCLAIMED";
 
@@ -175,6 +180,59 @@ fn av_request_async(video: bool) -> mpsc::Receiver<bool> {
     rx
 }
 
+/// Ask for Screen & System Audio Recording after forgetting this app's earlier
+/// decision. macOS prompts only when there is no decision. A decision recorded
+/// for another signature of the same bundle ID, such as a local build used
+/// before installing a release, shows as on in System Settings but never
+/// applies to this one, and toggling it doesn't replace it.
+///
+/// A new process asks, attributed to this one. Once a process has been told
+/// "denied", macOS answers its later requests from that without asking again.
+fn request_screen() {
+    if let Some(id) = app_bundle_id() {
+        let r = Command::new("/usr/bin/tccutil")
+            .args(["reset", "ScreenCapture", &id])
+            .stdout(Stdio::null())
+            .status();
+        if !r.as_ref().is_ok_and(|s| s.success()) {
+            eprintln!("rec: warning: could not reset the screen recording decision: {r:?}");
+        }
+    }
+    let r = std::env::current_exe().and_then(|exe| {
+        Command::new(exe)
+            .arg("request-screen")
+            .env("REC_NO_DISCLAIM", "1")
+            .status()
+    });
+    if !r.as_ref().is_ok_and(|s| s.success()) {
+        eprintln!("rec: warning: could not request screen recording: {r:?}");
+    }
+}
+
+/// The bundle ID of the .app this binary is in. Run through a symlink such as
+/// `dist/rec-rs`, `NSBundle::mainBundle` finds no bundle and reads the
+/// Info.plist embedded in the binary, which names the release.
+fn app_bundle_id() -> Option<String> {
+    bundle_id_of(&std::env::current_exe().ok()?)
+}
+
+fn bundle_id_of(exe: &Path) -> Option<String> {
+    let exe = exe.canonicalize().ok()?;
+    let app = exe
+        .ancestors()
+        .nth(3)
+        .filter(|p| p.extension().is_some_and(|e| e == "app"))?;
+    let id = NSBundle::bundleWithPath(&ns(app.to_str()?))?.bundleIdentifier()?;
+    Some(id.to_string())
+}
+
+/// The `request-screen` command. It adds Rec to the Screen & System Audio
+/// Recording list in System Settings and shows the system's prompt.
+pub fn request_screen_here() {
+    let ok = CGRequestScreenCaptureAccess();
+    eprintln!("screen recording: request issued (granted now: {ok})");
+}
+
 /// Request every permission not yet granted, all at once so the user sees every
 /// prompt in one go. Screen recording cannot be granted inline: the request
 /// registers `rec` in System Settings > Privacy & Security > Screen & System
@@ -183,8 +241,7 @@ pub fn request_all(screen: bool, mic: bool, camera: bool, wait: Duration) {
     let mic_rx = (mic && mic_status() == Status::NotDetermined).then(|| av_request_async(false));
     let cam_rx = (camera && camera_status() == Status::NotDetermined).then(|| av_request_async(true));
     if screen && screen_status() != Status::Granted {
-        let ok = CGRequestScreenCaptureAccess();
-        eprintln!("screen recording: request issued (granted now: {ok})");
+        request_screen();
     }
     let deadline = std::time::Instant::now() + wait;
     for (name, rx) in [("microphone", mic_rx), ("camera", cam_rx)] {
@@ -199,4 +256,34 @@ pub fn request_all(screen: bool, mic: bool, camera: bool, wait: Duration) {
 
 pub fn report() -> (Status, Status, Status) {
     (screen_status(), mic_status(), camera_status())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn bundle_id_comes_from_the_app_behind_a_symlink() {
+        let dir = std::env::temp_dir().join(format!("rec-tcc-test-{}", std::process::id()));
+        let macos = dir.join("Rec.app/Contents/MacOS");
+        std::fs::create_dir_all(&macos).unwrap();
+        std::fs::write(
+            dir.join("Rec.app/Contents/Info.plist"),
+            r#"<plist version="1.0"><dict><key>CFBundleIdentifier</key><string>com.example.rec.test</string></dict></plist>"#,
+        )
+        .unwrap();
+        std::fs::write(macos.join("rec-rs"), "").unwrap();
+        std::fs::write(dir.join("loose"), "").unwrap();
+        std::os::unix::fs::symlink("Rec.app/Contents/MacOS/rec-rs", dir.join("rec-rs")).unwrap();
+        assert_eq!(
+            bundle_id_of(&dir.join("rec-rs")).as_deref(),
+            Some("com.example.rec.test")
+        );
+        assert_eq!(
+            bundle_id_of(&macos.join("rec-rs")).as_deref(),
+            Some("com.example.rec.test")
+        );
+        assert_eq!(bundle_id_of(&dir.join("loose")), None);
+        std::fs::remove_dir_all(&dir).unwrap();
+    }
 }
