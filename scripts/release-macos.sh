@@ -76,6 +76,7 @@ cleanup() {
     fi
   done
   rm -rf "$tmp"
+  [ -z "${work:-}" ] || rm -rf "$work"
 }
 trap cleanup EXIT
 
@@ -97,16 +98,18 @@ for target in aarch64-apple-darwin x86_64-apple-darwin; do
   cargo build --release --locked --target "$target"
 done
 out=$CARGO_TARGET_DIR/universal-apple-darwin/release
-# Everything is built in $work and moves to $out only after the last step passes, so a failed run
-# leaves the previous build's files in place.
-work=$tmp/out
+# Everything is built in $work, beside $out on the same volume, and replaces $out by renaming once
+# the last step has passed, so a failed run leaves the previous build's files in place.
+mkdir -p "$(dirname "$out")"
+work=$(mktemp -d "$out.new.XXXXXX")
 finish() {
-  mkdir -p "$out"
-  rm -rf "$out/Rec.app" "$out"/Rec-*.zip "$out/Rec.dmg" "$out/appcast.xml"
+  rm -rf "$out.old"
+  [ ! -e "$out" ] || mv "$out" "$out.old"
+  mv "$work" "$out" || { [ ! -e "$out.old" ] || mv "$out.old" "$out"; exit 1; }
+  rm -rf "$out.old"
   local f
-  for f in "$work"/*; do
-    mv "$f" "$out/"
-    echo "built $out/$(basename "$f")"
+  for f in "$out"/*; do
+    echo "built $f"
   done
 }
 app=$work/Rec.app
