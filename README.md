@@ -26,8 +26,8 @@ It uses only Apple frameworks:
 There is no FFmpeg, OBS or Electron at runtime. The UI is egui on wgpu in the paper-rs style:
 transparent titlebar and the Inter font.
 
-It needs macOS 15 or later on Apple Silicon. It was developed and tested on macOS 27 on an M4
-Pro MacBook Pro.
+It needs macOS 15 or later, and the download runs on Apple Silicon and Intel. It was developed
+and tested on macOS 27 on an M4 Pro MacBook Pro.
 
 The code is a clean-room implementation, licensed MIT OR Apache-2.0. OBS (GPL-2.0) was studied
 for its architecture only and no OBS code was copied. See
@@ -72,6 +72,13 @@ Build output goes to `~/.cache/rec-rs-target` (`CARGO_TARGET_DIR`), never into t
 because the repo is synced between machines. The script signs `dist/Rec.app` with your Apple
 Development identity, so the macOS privacy grants survive rebuilds. Override it with
 `REC_SIGN_IDENTITY`.
+
+`scripts/release-macos.sh` builds the universal (Apple Silicon + Intel) app for macOS 15 and
+later, signs it with a Developer ID certificate, notarizes it and packages `Rec.dmg`, plus the
+zip and signed `appcast.xml` that installed copies update from (one-time credential setup is at
+the top of the script). Installed copies check that feed once a day through
+[Sparkle](https://sparkle-project.org) and offer to install a newer release; Rec › Check for
+Updates…, also in the menu bar item's menu, checks at once.
 
 Tests:
 

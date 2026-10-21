@@ -49,6 +49,10 @@ define_class!(
         fn open_folder(&self, _s: Option<&AnyObject>) {
             super::push(Cmd::OpenFolder);
         }
+        #[unsafe(method(checkUpdates:))]
+        fn check_updates(&self, _s: Option<&AnyObject>) {
+            super::push(Cmd::CheckForUpdates);
+        }
         #[unsafe(method(quit:))]
         fn quit(&self, _s: Option<&AnyObject>) {
             super::push(Cmd::Quit);
@@ -119,6 +123,7 @@ impl MenuBar {
         let reveal = item("Reveal Last Recording", Some(sel!(revealLast:)), "");
         menu.addItem(&reveal);
         menu.addItem(&item("Open Recordings Folder", Some(sel!(openFolder:)), ""));
+        menu.addItem(&item("Check for Updates…", Some(sel!(checkUpdates:)), ""));
         menu.addItem(&NSMenuItem::separatorItem(mtm));
         let hotkey = item("Global hotkey: ⇧⌘R", None, "");
         hotkey.setEnabled(false);

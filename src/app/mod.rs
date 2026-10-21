@@ -13,6 +13,7 @@ mod menubar;
 mod preview;
 mod theme;
 mod ui;
+mod updater;
 mod widgets;
 
 use std::path::PathBuf;
@@ -43,6 +44,9 @@ pub enum Cmd {
     OpenFolder,
     SaveReplay,
     ToggleStream,
+    /// Start Sparkle, queued at launch so it doesn't hold up the first frame.
+    StartUpdater,
+    CheckForUpdates,
     Quit,
 }
 
@@ -762,6 +766,8 @@ impl App {
             Cmd::OpenFolder => macos::open_folder(&self.st.settings.output_dir),
             Cmd::SaveReplay => self.save_replay(),
             Cmd::ToggleStream => self.toggle_stream(),
+            Cmd::StartUpdater => updater::start(),
+            Cmd::CheckForUpdates => updater::check_for_updates(),
             Cmd::Quit => self.quit(el),
         }
     }
@@ -996,6 +1002,9 @@ impl ApplicationHandler for App {
         }
         if self.start_recording {
             push(Cmd::ToggleRecording);
+        }
+        if self.selftest.is_none() {
+            push(Cmd::StartUpdater);
         }
         eprintln!("rec: app running (⇧⌘R toggles recording)");
     }
