@@ -19,12 +19,15 @@ outside the synced checkout.
   `https://github.com/michaelshimeles/rec-rs/releases/latest/download/Rec.dmg`, which
   `scripts/release-macos.sh` builds. Every GitHub release must include an asset with exactly
   that name.
-- The version, URLs, title and description live in `src/lib/site.ts`. Update `VERSION` with
-  each release. If the site gets another domain, update `SITE_URL` (the canonical, Open Graph
-  and JSON-LD tags use it) and the domain in `static/robots.txt` and `static/sitemap.xml`.
-- `static/og.jpg` is the 1200x630 share image. Edit `scripts/og/og.html` and run
-  `scripts/og/render.sh` to regenerate it; it needs macOS (for `sips`) and Google Chrome.
-  `scripts/og/shot.webp` is the Rec window captured from the app in dark appearance.
+- The version, URLs, title, description and author live in `src/lib/site.ts`. Update
+  `VERSION` with each release. If the site gets another domain, update `SITE_URL` (the
+  canonical, Open Graph and JSON-LD tags use it) and the domain in `static/robots.txt` and
+  `static/sitemap.xml`.
+- `src/lib/assets/og.jpg` is the 1200x630 share image. The page imports it, so its URL has a
+  content hash and changes with the image. `/og.jpg` redirects to it for old links. Edit
+  `scripts/og/og.html` and run `scripts/og/render.sh` to regenerate it; it needs macOS (for
+  `sips`) and Google Chrome. `scripts/og/shot.webp` is the Rec window captured from the app in
+  dark appearance.
 - The demo and the feature cards are HTML and CSS that recreate the Rec window, not
   screenshots or video. The demo's timeline, cursor path, captions and sounds live in
   `src/lib/demo/script.ts`; its sounds are synthesized with Web Audio in `src/lib/demo/sound.ts`.
