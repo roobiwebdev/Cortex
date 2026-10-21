@@ -1,11 +1,12 @@
 export const SITE_URL = 'https://rec.rasmic.xyz';
 
 export const VERSION = '0.1.0';
-export const ARCH = 'Apple Silicon';
+export const ARCH = 'Apple Silicon and Intel';
 export const MIN_MACOS = '15';
 
+// The universal app that scripts/release-macos.sh builds and every release uploads.
 export const DOWNLOAD_URL =
-	'https://github.com/michaelshimeles/rec-rs/releases/latest/download/rec-rs-universal.dmg';
+	'https://github.com/michaelshimeles/rec-rs/releases/latest/download/Rec.dmg';
 
 export const REPO_URL = 'https://github.com/michaelshimeles/rec-rs';
 

@@ -49,6 +49,10 @@ define_class!(
         fn open_folder(&self, _s: Option<&AnyObject>) {
             super::push(Cmd::OpenFolder);
         }
+        #[unsafe(method(checkUpdates:))]
+        fn check_updates(&self, _s: Option<&AnyObject>) {
+            super::push(Cmd::CheckForUpdates);
+        }
         #[unsafe(method(quit:))]
         fn quit(&self, _s: Option<&AnyObject>) {
             super::push(Cmd::Quit);
@@ -119,6 +123,7 @@ impl MenuBar {
         let reveal = item("Reveal Last Recording", Some(sel!(revealLast:)), "");
         menu.addItem(&reveal);
         menu.addItem(&item("Open Recordings Folder", Some(sel!(openFolder:)), ""));
+        menu.addItem(&item("Check for Updates…", Some(sel!(checkUpdates:)), ""));
         menu.addItem(&NSMenuItem::separatorItem(mtm));
         let hotkey = item("Global hotkey: ⇧⌘R", None, "");
         hotkey.setEnabled(false);
@@ -191,9 +196,9 @@ impl MenuBar {
 }
 
 /// The app's main menu (it has a Dock icon, so it needs a menu bar):
-/// Rec (About, Settings…, Hide, Quit) and Window (Minimize, Close, Show).
-/// Settings, Show and Quit go through `Cmd`s; the rest are standard
-/// first-responder actions.
+/// Rec (About, Check for Updates…, Settings…, Hide, Quit) and Window
+/// (Minimize, Close, Show). Check for Updates, Settings, Show and Quit go
+/// through `Cmd`s; the rest are standard first-responder actions.
 pub fn install_main_menu(mtm: MainThreadMarker) -> Retained<Target> {
     let target = Target::new(mtm);
     let item = |title: &str, action: Option<Sel>, key: &str, ours: bool| {
@@ -220,6 +225,7 @@ pub fn install_main_menu(mtm: MainThreadMarker) -> Retained<Target> {
         "Rec",
         vec![
             item("About Rec", Some(sel!(orderFrontStandardAboutPanel:)), "", false),
+            item("Check for Updates…", Some(sel!(checkUpdates:)), "", true),
             NSMenuItem::separatorItem(mtm),
             item("Settings…", Some(sel!(showSettings:)), ",", true),
             NSMenuItem::separatorItem(mtm),
