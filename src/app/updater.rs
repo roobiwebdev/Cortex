@@ -9,8 +9,8 @@ use std::cell::OnceCell;
 
 use objc2::rc::{Allocated, Retained};
 use objc2::runtime::{AnyClass, AnyObject, Bool};
-use objc2::{MainThreadMarker, MainThreadOnly, msg_send, sel};
-use objc2_app_kit::{NSApplication, NSMenuItem, NSWorkspace};
+use objc2::{MainThreadMarker, msg_send};
+use objc2_app_kit::NSWorkspace;
 use objc2_foundation::{NSBundle, NSURL};
 
 use crate::util::ns;
@@ -23,8 +23,7 @@ thread_local! {
 }
 
 /// Starts Sparkle, which checks the feed once a day and shows its update window when a newer
-/// release is out, and adds "Check for Updates…" to the app menu. Main thread; later calls do
-/// nothing.
+/// release is out. Main thread; later calls do nothing.
 pub fn start() {
     with(|_| ());
 }
@@ -50,7 +49,6 @@ fn with<R>(f: impl FnOnce(&AnyObject) -> R) -> Option<R> {
 }
 
 fn load() -> Option<Retained<AnyObject>> {
-    let mtm = MainThreadMarker::new()?;
     let frameworks = NSBundle::mainBundle().privateFrameworksPath()?;
     let bundle = NSBundle::bundleWithPath(&ns(&format!("{frameworks}/Sparkle.framework")))?;
     // SAFETY: the framework is sealed in this app's signature; loading it registers its classes.
@@ -61,7 +59,7 @@ fn load() -> Option<Retained<AnyObject>> {
     let class = AnyClass::get(c"SPUStandardUpdaterController")?;
     // SAFETY: `initWithStartingUpdater:updaterDelegate:userDriverDelegate:` takes a BOOL and two
     // nullable delegates, and returns the initialised controller.
-    let controller: Retained<AnyObject> = unsafe {
+    unsafe {
         let controller: Allocated<AnyObject> = msg_send![class, alloc];
         msg_send![
             controller,
@@ -69,29 +67,5 @@ fn load() -> Option<Retained<AnyObject>> {
             updaterDelegate: None::<&AnyObject>,
             userDriverDelegate: None::<&AnyObject>
         ]
-    };
-    add_menu_item(mtm, &controller);
-    Some(controller)
-}
-
-/// "Check for Updates…" under "About Rec" in the app menu. The controller is the item's target,
-/// so Sparkle also greys it out while a check is running.
-fn add_menu_item(mtm: MainThreadMarker, controller: &AnyObject) {
-    let Some(app_menu) =
-        NSApplication::sharedApplication(mtm).mainMenu().and_then(|m| m.itemAtIndex(0)).and_then(|i| i.submenu())
-    else {
-        return;
-    };
-    // SAFETY: `checkForUpdates:` is the controller's action method; the menu holds its target
-    // weakly, and `CONTROLLER` keeps it alive for the life of the app.
-    unsafe {
-        let item = NSMenuItem::initWithTitle_action_keyEquivalent(
-            NSMenuItem::alloc(mtm),
-            &ns("Check for Updates…"),
-            Some(sel!(checkForUpdates:)),
-            &ns(""),
-        );
-        item.setTarget(Some(controller));
-        app_menu.insertItem_atIndex(&item, 1);
     }
 }
