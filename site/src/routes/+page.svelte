@@ -257,7 +257,10 @@
 	<section class="section split" aria-labelledby="cli-title">
 		<div class="intro" {@attach reveal}>
 			<h2 id="cli-title">Command line</h2>
-			<p>Every control works from a shell too, with the rec-rs tool inside Rec.app.</p>
+			<p>
+				Every control works from a shell too, with the rec-rs tool inside Rec.app. To run it by name, add
+				/Applications/Rec.app/Contents/MacOS to your PATH.
+			</p>
 		</div>
 		<ul class="commands" {@attach reveal}>
 			{#each commands as row (row.command)}
