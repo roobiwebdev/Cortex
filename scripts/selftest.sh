@@ -66,11 +66,11 @@ if [ -n "$r" ] && "$REC" probe "$r" >"$OUT/replay.probe" 2>&1 \
 else
   echo "FAIL  replay  (see $OUT/replay.log / .check)"; fail=$((fail+1))
 fi
-# Streaming: RTMP and WHIP from one encode to a private MediaMTX (spare
-# ports), checked through the server's own recordings.
-if command -v mediamtx >/dev/null; then
-  M="$OUT/mediamtx"; mkdir -p "$M"
-  cat >"$M/mediamtx.yml" <<YML
+# A private MediaMTX (spare ports) that records every path under $1/rec:
+# streams are checked through the server's own recordings.
+mediamtx_start() {
+  mkdir -p "$1"
+  cat >"$1/mediamtx.yml" <<YML
 logLevel: warn
 rtsp: false
 hls: false
@@ -81,16 +81,21 @@ webrtcAddress: :18889
 webrtcLocalUDPAddress: :18189
 pathDefaults:
   record: yes
-  recordPath: $M/rec/%path/%Y-%m-%d_%H-%M-%S-%f
+  recordPath: $1/rec/%path/%Y-%m-%d_%H-%M-%S-%f
   recordFormat: fmp4
 paths:
   all_others:
 YML
-  (cd "$M" && exec mediamtx mediamtx.yml >"$M/server.log" 2>&1) &
+  (cd "$1" && exec mediamtx mediamtx.yml >"$1/server.log" 2>&1) &
   mpid=$!; sleep 2
+}
+mediamtx_stop() { sleep 2; kill "$mpid" 2>/dev/null || true; wait "$mpid" 2>/dev/null || true; }
+# Streaming: RTMP and WHIP from one encode.
+if command -v mediamtx >/dev/null; then
+  M="$OUT/mediamtx"; mediamtx_start "$M"
   REC_STREAM_KEY=selftest "$REC" record -q --test-pattern --no-mic --no-record -t 10 -o "$M/none.mov" \
     --stream rtmp://127.0.0.1:19350/live --stream http://127.0.0.1:18889/whiptest/whip >/dev/null 2>"$OUT/stream.log" || true
-  sleep 2; kill "$mpid" 2>/dev/null || true; wait "$mpid" 2>/dev/null || true
+  mediamtx_stop
   for kind in rtmp:live/selftest:1 whip:whiptest:20; do
     name=${kind%%:*}; rest=${kind#*:}; path=${rest%:*}; max=${rest##*:}
     f=$(ls "$M/rec/$path"/*.mp4 2>/dev/null | head -1 || true)
@@ -152,12 +157,23 @@ PY
   fi
 fi
 # App: replay buffer kept across window close and a recording, saved with
-# the hotkey's command (no stream: that is covered above).
+# the hotkey's command. With mediamtx, one Go Live also streams to three
+# destinations at once (two RTMP, one WHIP; YouTube listed but off), and
+# they keep going across the window close and the recording.
 if [ "${1:-}" != "--no-screen" ] && has "screen recording"; then
-  mkdir -p "$OUT/guilive"
-  echo '{"scene": "screen", "mic_enabled": false, "replay_enabled": true, "replay_secs": 15}' >"$OUT/guilive/settings.json"
-  if REC_GUI_SELFTEST=live REC_GUI_BACKGROUND=1 REC_OUTPUT_DIR="$OUT/guilive" REC_SETTINGS="$OUT/guilive/settings.json" \
-       "$REC" gui >"$OUT/guilive.log" 2>&1 \
+  G="$OUT/guilive"; mkdir -p "$G"
+  dests='[]'
+  if command -v mediamtx >/dev/null; then
+    mediamtx_start "$G/mediamtx"
+    dests='[{"dest": "youtube", "enabled": false}, {"dest": "rtmp://127.0.0.1:19350/gui1", "enabled": true},
+      {"dest": "rtmp://127.0.0.1:19350/gui2", "enabled": true}, {"dest": "http://127.0.0.1:18889/guiwhip/whip", "enabled": true}]'
+  fi
+  echo "{\"scene\": \"screen\", \"mic_enabled\": false, \"replay_enabled\": true, \"replay_secs\": 15, \"stream_dests\": $dests}" >"$G/settings.json"
+  ok=0
+  REC_GUI_SELFTEST=live REC_GUI_BACKGROUND=1 REC_STREAM_KEY=selftest REC_OUTPUT_DIR="$G" REC_SETTINGS="$G/settings.json" \
+    "$REC" gui >"$OUT/guilive.log" 2>&1 || ok=1
+  [ "$dests" = '[]' ] || mediamtx_stop
+  if [ $ok = 0 ] \
      && grep -q 'window hidden, live session=true' "$OUT/guilive.log" \
      && grep -q 'after recording live session=true' "$OUT/guilive.log" \
      && f=$(sed -n 's/.*replay saved=Some("\(.*\)") held.*/\1/p' "$OUT/guilive.log") && [ -n "$f" ] \
@@ -165,6 +181,24 @@ if [ "${1:-}" != "--no-screen" ] && has "screen recording"; then
     echo "PASS  gui-replay  (kept across window close and a recording, saved with the hotkey's command)"; pass=$((pass+1))
   else
     echo "FAIL  gui-replay  (see $OUT/guilive.log)"; fail=$((fail+1))
+  fi
+  if [ "$dests" != '[]' ]; then
+    # Each path has video and audio for most of the ~9 s the app streamed.
+    got=""
+    for path in gui1/selftest gui2/selftest guiwhip; do
+      r=$(ls "$G/mediamtx/rec/$path"/*.mp4 2>/dev/null | head -1 || true)
+      [ -n "$r" ] || continue
+      kinds=$(ffprobe -v error -show_entries stream=codec_type -of csv=p=0 "$r" | sort -u | tr '\n' ' ')
+      dur=$(ffprobe -v error -show_entries format=duration -of csv=p=0 "$r")
+      [ "$kinds" = "audio video " ] && awk -v d="$dur" 'BEGIN { exit !(d > 6) }' && got="$got $path"
+    done
+    if grep -q 'live on 3 of 3 destinations, window open' "$OUT/guilive.log" \
+       && [ "$(grep -c 'selftest: stream .* live=true' "$OUT/guilive.log")" = 3 ] \
+       && [ "$got" = " gui1/selftest gui2/selftest guiwhip" ]; then
+      echo "PASS  gui-stream-all  (one Go Live streamed to 3 destinations, all kept across window close and a recording)"; pass=$((pass+1))
+    else
+      echo "FAIL  gui-stream-all  (received:$got; see $OUT/guilive.log)"; fail=$((fail+1))
+    fi
   fi
 fi
 echo "$pass passed, $fail failed, $skip skipped"

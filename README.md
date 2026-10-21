@@ -4,8 +4,8 @@ A simple, fast, reliable screen and camera recorder for macOS, written in Rust, 
 to OBS for recording YouTube videos. It records the screen, system audio, microphone and webcam
 into one `.mov` or `.mp4` that plays in QuickTime and imports into Final Cut, Premiere and
 DaVinci Resolve. It can also keep a **replay buffer** of the last seconds and **stream** over
-RTMP/RTMPS (YouTube, Twitch, any server) or WHIP (WebRTC), from one shared hardware encode,
-with or without recording.
+RTMP/RTMPS (YouTube, Twitch, Kick, any server) or WHIP (WebRTC) to as many destinations as you
+like at once, from one shared hardware encode, with or without recording.
 
 It uses only Apple frameworks:
 
@@ -150,10 +150,17 @@ The **main window** contains:
   **Save Replay** or **⇧⌘S** from anywhere writes it to an MP4 in the output folder without
   stopping anything. ⇧⌘S is only taken while the buffer is on, because it is Save As in most
   apps.
-- **Stream**: YouTube, Twitch or a custom RTMP/RTMPS or WHIP URL. The stream key is typed once
-  and stored in the Keychain (per destination URL), never in the settings file or logs. **Go
-  Live** / **Stop Stream**, with the stream's duration, bitrate and dropped frames, and a LIVE
-  badge.
+- **Stream**: a switch for each of YouTube, Twitch and Kick, plus **Add Server** for any other
+  RTMP/RTMPS server or WHIP endpoint. **Go Live** streams to every destination that's on at
+  once, and **Stop Streaming** stops them all. If one can't start (a missing key, say), none
+  start. Each destination's stream key is typed once and stored in the Keychain (per
+  destination URL), never in the settings file or logs. While live, each destination shows its
+  duration, bitrate and dropped frames, or its reconnect state and last error. The LIVE badge
+  reads LIVE 2/3 when only some of them are up.
+
+  One encode feeds every destination, so it fits all of their limits: YouTube with Twitch
+  streams 1080p H.264 at 6 Mb/s to both. The card shows the shared encode when more than one
+  destination is on.
 
   The replay buffer and the stream run with or without a recording. Starting or stopping a
   recording, or closing the window, doesn't interrupt them: the capture keeps running for them
@@ -241,10 +248,10 @@ frames, and pauses don't count.
 | `--mic-backend` | `sck` | `sck` (ScreenCaptureKit) or `avcapture`. |
 | `--test-pattern [--noise]` | | Synthetic source: the frame flashes white and the "system audio" beeps once a second, for self-tests and sync checks. |
 | `--replay SECS` | off | Keep the last 15–300 s of the live encode in memory; `rec-rs save-replay` writes them to an MP4 next to the output. |
-| `--stream DEST` | | Stream to `youtube`, `twitch`, an `rtmp://`/`rtmps://` URL or a WHIP `http(s)://` URL. Repeatable: one encode feeds every destination. |
+| `--stream DEST` | | Stream to `youtube`, `twitch`, `kick`, an `rtmp://`/`rtmps://` URL or a WHIP `http(s)://` URL. Repeatable: one encode feeds every destination. |
 | `--no-record` | | Write no file (replay buffer and/or streaming only). |
 | `--live-resolution` | `1080p` | Live encode bounding size: the frame keeps its shape and is never above the capture. |
-| `--stream-bitrate` | platform preset | Live video kb/s. By default the platform's recommendation for the size and frame rate: YouTube 2160p60 45 Mb/s H.264 or 35 HEVC (2160p30 35/25, 1440p 24/16, 1080p 12/10); Twitch at most 6 Mb/s and 1080p; others like YouTube. |
+| `--stream-bitrate` | platform preset | Live video kb/s. By default the platform's recommendation for the size and frame rate: YouTube 2160p60 45 Mb/s H.264 or 35 HEVC (2160p30 35/25, 1440p 24/16, 1080p 12/10); Twitch at most 6 Mb/s and 1080p; Kick at most 8 Mb/s and 1080p; others like YouTube. With several destinations, the lowest bitrate and size among them. |
 | `--stream-codec` | `auto` | `auto` (HEVC when every destination is YouTube), `h264` or `hevc` (HEVC Main10 over enhanced RTMP or WHIP H.265; a server that refuses it gets H.264). |
 | `--keyframe` | `2` | Live keyframe interval in seconds (0.5–4). |
 | `--vbr` | CBR | Average bitrate instead of constant. |
@@ -259,13 +266,15 @@ Other commands:
 - `rec-rs stop`, `rec-rs pause` and `rec-rs resume` control a running recording.
 - `rec-rs save-replay` saves the replay buffer of the running recorder (CLI or app).
 - `rec-rs stream-key DEST [--delete]` stores a stream key in the Keychain (read from the
-  terminal with echo off). `REC_STREAM_KEY` overrides it for one run.
+  terminal with echo off). `REC_STREAM_KEY` overrides it for one run. The app reads and writes
+  the same keys.
 
 ### Replay buffer and streaming
 
 ```sh
-rec-rs stream-key youtube                         # once; key goes to the Keychain
+rec-rs stream-key youtube                         # once per destination; key goes to the Keychain
 rec-rs record --stream youtube --replay 60        # record, stream and keep a replay buffer
+rec-rs record --stream youtube --stream twitch --stream kick   # three platforms, one encode
 rec-rs record --no-record --stream rtmp://localhost/live --stream http://localhost:8889/live/whip
 ```
 
@@ -291,9 +300,10 @@ rec-rs record --no-record --stream rtmp://localhost/live --stream http://localho
 - **Tested** against a local MediaMTX (`brew install mediamtx`), RTMP, RTMPS and WHIP at
   once from one encode: A/V offset in the server's own recordings −0.5 ms (RTMP) and within
   −13 ms (WHIP, of which 6.5 ms is the Opus pre-skip MediaMTX writes into its MP4). Restarting
-  the server reconnects within a few seconds. `scripts/selftest.sh` runs these checks when
-  `mediamtx` is installed. YouTube and Twitch use the same RTMPS path but were not streamed
-  to in testing.
+  the server reconnects within a few seconds. In the app, one Go Live streams to two RTMP paths
+  and a WHIP endpoint at once and keeps all three across a window close and a recording.
+  `scripts/selftest.sh` runs these checks when `mediamtx` is installed. YouTube, Twitch and
+  Kick use the same RTMPS path but were not streamed to in testing.
 
 ## Output format
 
@@ -360,7 +370,7 @@ rec-rs record --no-record --stream rtmp://localhost/live --stream http://localho
 | Crash-safe files | ✅ hybrid/fragmented MP4 | ✅ fragments every 2 s |
 | Pause / resume | ✅ | ✅ sample-accurate, app and CLI; the pause is cut from the file, audio stays in sync |
 | Replay buffer | ✅ | ✅ 15–300 s in memory, ⇧⌘S or `save-replay` writes an MP4 without stopping, memory use shown |
-| Streaming | ✅ RTMP, WHIP, SRT, multitrack | ✅ RTMP/RTMPS (YouTube, Twitch, custom) and WHIP, several at once from one encode, H.264 or HEVC Main10 (enhanced RTMP), platform bitrate presets up to 4K60, auto-reconnect, live status; key in the Keychain |
+| Streaming | ✅ RTMP, WHIP, SRT, multitrack | ✅ RTMP/RTMPS (YouTube, Twitch, Kick, custom) and WHIP, any number at once from one encode and one Go Live, H.264 or HEVC Main10 (enhanced RTMP), platform bitrate presets up to 4K60, auto-reconnect, live status; key in the Keychain |
 | Screen scaling | GPU bilinear/bicubic/Lanczos | ✅ native capture, Metal Lanczos per plane (5K→4K VMAF 100 vs 90 for ScreenCaptureKit) |
 | Live preview | ✅ | ✅ |
 | Level meters | ✅ | ✅ peak with hold |
@@ -378,10 +388,11 @@ rec-rs record --no-record --stream rtmp://localhost/live --stream http://localho
   is CLI-only.
 - **Missing features.** There are no audio filters, and the hotkeys aren't configurable.
 - **Streaming.** RTMP/RTMPS (with enhanced-RTMP HEVC) and WHIP only, with no SRT or
-  multitrack. The app streams to one destination at a time; the CLI takes several. The live
-  encode is never larger than the recording size, so a 4K stream needs the 4K output setting.
-  Changing the live encode settings needs the stream stopped. HEVC to YouTube was tested only
-  against a local server, not YouTube itself.
+  multitrack. Every destination gets the same encode, at the lowest limits among them, so
+  adding Twitch caps a 4K YouTube stream at 1080p. The live encode is never larger than the
+  recording size, so a 4K stream needs the 4K output setting. Changing the live encode settings
+  or the destinations needs streaming stopped. HEVC to YouTube was tested only against a local
+  server, not YouTube itself.
 - **8-bit SDR only.** HDR displays are tone-mapped by ScreenCaptureKit.
 - **Webcam overlay.** The overlay is burned into the video; there is no separate camera track.
 - **Output latency read once.** It is read when recording starts. Switching output devices
