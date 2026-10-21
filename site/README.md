@@ -16,8 +16,9 @@ outside the synced checkout.
 
 - Deploy it as a Vercel project with the Root Directory set to `site`.
 - `/download` (`src/routes/download/+server.ts`) answers with a 302 to
-  `https://github.com/michaelshimeles/rec-rs/releases/latest/download/rec-rs-universal.dmg`.
-  Every GitHub release must include an asset with exactly that name.
+  `https://github.com/michaelshimeles/rec-rs/releases/latest/download/Rec.dmg`, which
+  `scripts/release-macos.sh` builds. Every GitHub release must include an asset with exactly
+  that name.
 - The version, URLs, title and description live in `src/lib/site.ts`. Update `VERSION` with
   each release. If the site gets another domain, update `SITE_URL` (the canonical, Open Graph
   and JSON-LD tags use it) and the domain in `static/robots.txt` and `static/sitemap.xml`.
