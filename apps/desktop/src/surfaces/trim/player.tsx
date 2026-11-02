@@ -120,7 +120,7 @@ export function TrimPlayer({
 
 function bubblePosition(place: PipPlace, w: number, h: number, box: { w: number; h: number }) {
   const m = box.w * MARGIN;
-  if ("corner" in place) {
+  if (place.corner !== undefined) {
     const left = place.corner.endsWith("left") ? m : box.w - w - m;
     const top = place.corner.startsWith("top") ? m : box.h - h - m;
     return { left, top };

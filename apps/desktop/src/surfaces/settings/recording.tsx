@@ -20,7 +20,7 @@ const FPS: readonly Fps[] = [24, 30, 60];
 const LONG_EDGE: Record<Resolution, number> = { "720p": 1280, "1080p": 1920, "1440p": 2560, "4k": 3840, native: 3456 };
 
 /** Estimated automatic bitrate (Mb/s), shown so "Auto" is not a black box. */
-export function autoBitrate(res: Resolution, fps: Fps) {
+export function autoBitrate(res: Resolution, fps: number) {
   const px = LONG_EDGE[res] * Math.round((LONG_EDGE[res] * 9) / 16);
   return Math.round((px * fps * 0.1) / 1_000_000);
 }

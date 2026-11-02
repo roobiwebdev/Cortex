@@ -13,9 +13,6 @@ import type { ChipState } from "./onboarding/permission-chip";
 import { OnboardingStage } from "./onboarding/stage";
 import { PERMISSION_STEPS, STEPS, type StepId } from "./onboarding/steps";
 
-// Simulated time the user spends answering the macOS prompt / System Settings.
-const SYSTEM_PROMPT_MS = 1500;
-
 /**
  * SOURCE OF TRUTH KEYWORDS: OnboardingWindow, onboarding, permissions flow, first run, TCC, welcome, setup
  * WHAT:  The first-run window: welcome, then Screen Recording (required), Microphone
@@ -32,8 +29,14 @@ export function OnboardingWindow({ cameraStream, navigate }: SurfaceProps) {
   const [waiting, setWaiting] = React.useState<Permission | null>(null);
   // prototype-local: make the next request come back denied, to review that state.
   const [denyNext, setDenyNext] = React.useState(false);
-  const timer = React.useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
-  React.useEffect(() => () => clearTimeout(timer.current), []);
+  // Ignore answers that arrive after a reset or after the window closed.
+  const generation = React.useRef(0);
+  React.useEffect(
+    () => () => {
+      generation.current += 1;
+    },
+    [],
+  );
 
   const step: StepId = STEPS[index] ?? "welcome";
   const last = STEPS.length - 1;
@@ -46,20 +49,22 @@ export function OnboardingWindow({ cameraStream, navigate }: SurfaceProps) {
     camera: waiting === "camera" ? "waiting" : e.permissions.camera,
   };
 
-  // Simulates the macOS prompt: waiting → granted (or denied when the reviewer asked for it).
+  // Shows the macOS prompt (or System Settings) and waits for the answer. In the browser
+  // harness the mock answers after a moment, denied when the reviewer asked for it.
   function request(p: Permission, viaSettings: boolean) {
-    clearTimeout(timer.current);
+    const gen = ++generation.current;
     setWaiting(p);
+    if (viaSettings) engine.openSystemSettings(p);
     const outcome = denyNext && !viaSettings ? "denied" : "granted";
-    timer.current = setTimeout(() => {
-      engine.setPermission(p, outcome);
+    void engine.requestPermission(p, outcome).then(() => {
+      if (gen !== generation.current) return;
       setWaiting(null);
       setDenyNext(false);
-    }, SYSTEM_PROMPT_MS);
+    });
   }
 
   function resetPrototype() {
-    clearTimeout(timer.current);
+    generation.current += 1;
     setWaiting(null);
     setDenyNext(false);
     for (const p of ["screen", "microphone", "camera"] as const) engine.setPermission(p, "not-determined");
