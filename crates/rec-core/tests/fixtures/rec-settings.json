@@ -1,0 +1,60 @@
+{
+  "output_dir": "/Users/roobi/Movies",
+  "container": "mov",
+  "codec": null,
+  "resolution": "1080p",
+  "fps": 60,
+  "bitrate_mbps": null,
+  "display": 1,
+  "scene": "screen-cam",
+  "camera": null,
+  "mic_enabled": true,
+  "mic": null,
+  "mic_name": null,
+  "system_audio": true,
+  "audio_tracks": "both",
+  "system_gain_db": -0.5,
+  "mic_gain_db": 0.0,
+  "system_muted": false,
+  "mic_muted": false,
+  "pip_size": 0.22,
+  "pip_place": {
+    "corner": "top-right"
+  },
+  "pip_shape": "squircle",
+  "pip_roundness": 0.2,
+  "pip_border": 0.0,
+  "pip_border_color": [
+    255,
+    255,
+    255
+  ],
+  "pip_shadow": true,
+  "mirror": true,
+  "cursor": true,
+  "clicks": false,
+  "preview_low_power": false,
+  "replay_enabled": false,
+  "replay_secs": 60,
+  "stream_dests": [
+    {
+      "dest": "youtube",
+      "enabled": true
+    },
+    {
+      "dest": "twitch",
+      "enabled": false
+    },
+    {
+      "dest": "kick",
+      "enabled": false
+    }
+  ],
+  "live_resolution": "1080p",
+  "stream_bitrate_kbps": 6000,
+  "stream_bitrate_auto": true,
+  "stream_codec": "auto",
+  "keyframe_secs": 2.0,
+  "stream_cbr": true,
+  "stream_audio_kbps": 192
+}
