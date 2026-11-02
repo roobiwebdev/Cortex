@@ -8,14 +8,17 @@
 //!        (see `build.rs` and `capabilities/default.json`). Stream keys go in, never out.
 //! WHERE: `lib.rs` registers `builder()`; `Shell` emits through `emitter()`.
 
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
+use std::time::{Duration, Instant};
 
 use rec_core::api::EngineError;
 use rec_core::settings::{RecorderSettings, StreamDest};
-use rec_core::state::{Devices, EngineState, Levels, Permission, PermissionState, Recording};
+use rec_core::state::{
+    Devices, EngineState, EngineStatus, Levels, Permission, PermissionState, Recording,
+};
 use serde::{Deserialize, Serialize};
 use specta::Type;
-use tauri::{AppHandle, Runtime, State};
+use tauri::{AppHandle, EventTarget, Manager, Runtime, State};
 use tauri_specta::{Event, collect_commands, collect_events};
 
 use crate::preview::LivePreview;
@@ -69,12 +72,72 @@ impl Event for SettingsChangedEvent {
     const NAME: &'static str = "settings://changed";
 }
 
-/// Sends the shell's events to every webview as their typed Tauri events.
+/// How long the list of visible windows is reused for level events.
+const VISIBLE_REFRESH: Duration = Duration::from_millis(250);
+
+/// Labels of the windows on screen, refreshed at most every `VISIBLE_REFRESH`.
+fn visible_labels<R: Runtime>(
+    app: &AppHandle<R>,
+    cache: &Mutex<(Option<Instant>, Vec<String>)>,
+) -> Vec<String> {
+    let Ok(mut c) = cache.lock() else {
+        return vec![];
+    };
+    if c.0.is_none_or(|t| t.elapsed() >= VISIBLE_REFRESH) {
+        c.1 = app
+            .webview_windows()
+            .into_iter()
+            .filter(|(_, w)| w.is_visible().unwrap_or(true))
+            .map(|(label, _)| label)
+            .collect();
+        c.0 = Some(Instant::now());
+    }
+    c.1.clone()
+}
+
+/// Hidden windows still get the engine state this often, so they are current when shown.
+const HIDDEN_STATE_EVERY: Duration = Duration::from_secs(1);
+
+fn label_in(t: &EventTarget, labels: &[String]) -> bool {
+    match t {
+        EventTarget::WebviewWindow { label }
+        | EventTarget::Webview { label }
+        | EventTarget::Window { label }
+        | EventTarget::AnyLabel { label } => labels.contains(label),
+        _ => false,
+    }
+}
+
+/// Sends the shell's events to the webviews as their typed Tauri events. Every window
+/// is its own WebKit process, and re-rendering hidden ones at the meter rate cost more
+/// CPU than the recording, so (with `lib/engine.ts` listening per window) levels go only
+/// to visible windows, and progress-only state updates reach hidden windows once a second.
+/// Status changes always go to every window.
 pub fn emitter<R: Runtime>(app: AppHandle<R>) -> Emit {
+    let visible = Mutex::new((None, vec![]));
+    let last_all = Mutex::new((None::<Instant>, None::<EngineStatus>));
     Arc::new(move |o: Outbound| {
         let r = match o {
-            Outbound::State(s) => EngineStateEvent(s).emit(&app),
-            Outbound::Levels(l) => LevelsEvent(l).emit(&app),
+            Outbound::State(s) => {
+                let all = last_all.lock().map_or(true, |mut l| {
+                    let all = l.1 != Some(s.status)
+                        || l.0.is_none_or(|t| t.elapsed() >= HIDDEN_STATE_EVERY);
+                    if all {
+                        *l = (Some(Instant::now()), Some(s.status));
+                    }
+                    all
+                });
+                if all {
+                    EngineStateEvent(s).emit(&app)
+                } else {
+                    let labels = visible_labels(&app, &visible);
+                    EngineStateEvent(s).emit_filter(&app, |t| label_in(t, &labels))
+                }
+            }
+            Outbound::Levels(l) => {
+                let labels = visible_labels(&app, &visible);
+                LevelsEvent(l).emit_filter(&app, |t| label_in(t, &labels))
+            }
             Outbound::RecordingFinished(r) => RecordingFinishedEvent(r).emit(&app),
             Outbound::ReplaySaved(path) => ReplaySavedEvent { path }.emit(&app),
             Outbound::Error {

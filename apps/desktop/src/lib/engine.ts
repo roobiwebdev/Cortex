@@ -1,5 +1,6 @@
 import { useSyncExternalStore } from "react";
 import { isTauri } from "@tauri-apps/api/core";
+import { getCurrentWindow } from "@tauri-apps/api/window";
 
 import { commands, events, type EngineError } from "../ipc/bindings";
 import * as mock from "./mock-engine";
@@ -149,12 +150,15 @@ const tauriEngine: typeof mock.engine = {
  */
 export async function connectEngine(): Promise<void> {
   if (!inTauri) return;
+  // State and levels are scoped to this window, so the shell can skip hidden windows
+  // (each window is its own WebKit process; see `emitter` in src-tauri/src/ipc.rs).
+  const self = getCurrentWindow();
   await Promise.all([
-    events.engineState.listen((e) => {
+    events.engineState(self).listen((e) => {
       snapshot = e.payload;
       changed();
     }),
-    events.engineLevels.listen((e) => {
+    events.engineLevels(self).listen((e) => {
       if (!snapshot) return;
       snapshot = { ...snapshot, levels: e.payload };
       changed();
