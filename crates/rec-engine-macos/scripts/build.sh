@@ -11,7 +11,7 @@ cd "$(dirname "$0")/.."
 PROFILE="${PROFILE:-release}"
 # The repo is synced between machines (Mutagen): keep build output outside it.
 export CARGO_TARGET_DIR="${CARGO_TARGET_DIR:-$HOME/.cache/rec-rs-target}"
-if [ "$PROFILE" = release ]; then cargo build --release; else cargo build; fi
+if [ "$PROFILE" = release ]; then cargo build --release -p rec-cli; else cargo build -p rec-cli; fi
 APP=dist/Rec.app
 STAGE=dist/.Rec.app.new
 BUNDLE_ID=com.heyfabrika.rec.dev

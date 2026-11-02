@@ -1,266 +1,179 @@
-mod app;
-mod camera;
-mod compose;
-mod hotkey;
-mod live;
-mod mixer;
-mod outlatency;
-mod play;
-mod probe;
-mod record;
-mod scale;
-mod screen;
-mod settings;
-mod synth;
-mod tcc;
-mod util;
-mod writer;
+//! Record command arguments and their translation into session options
+//! (shared by the CLI and the GUI).
 
 use std::path::PathBuf;
 
 use anyhow::{Result, bail};
-use clap::{Args, Parser, Subcommand};
+use clap::{Args, Parser};
 
-use compose::{Corner, PipSpec, Shape};
-use writer::Codec;
-
-#[derive(Parser)]
-#[command(name = "rec-rs", version, about = "Native macOS screen recorder (ScreenCaptureKit + VideoToolbox + AVAssetWriter)")]
-struct Cli {
-    /// Without a subcommand, rec starts the menu bar app.
-    #[command(subcommand)]
-    cmd: Option<Cmd>,
-}
-
-// RecordArgs is large but parsed once; boxing it buys nothing.
-#[allow(clippy::large_enum_variant)]
-#[derive(Subcommand)]
-enum Cmd {
-    /// Record the screen (plus system audio, mic, and optional webcam overlay).
-    Record(RecordArgs),
-    /// The app: window with live preview and sources, settings, menu bar
-    /// item and a global Cmd+Shift+R hotkey (what `open dist/Rec.app` starts).
-    Gui {
-        /// Start recording immediately (e.g. from a Login Item or script).
-        #[arg(long)]
-        start_recording: bool,
-        /// Open the settings window at launch.
-        #[arg(long)]
-        settings: bool,
-        /// Capture this window (ID from `rec-rs devices`) instead of the display.
-        #[arg(long, value_name = "ID")]
-        window: Option<u32>,
-    },
-    /// List displays, windows, cameras and microphones.
-    Devices,
-    /// Stop a running recording (CLI or app) and print its file.
-    Stop,
-    /// Save the replay buffer of the running recorder (CLI or app) to MP4.
-    SaveReplay,
-    /// Store a stream key in the macOS Keychain for a destination (reads the
-    /// key from stdin; never echoed or logged).
-    StreamKey {
-        /// Stream URL (rtmp://, rtmps://, https://.../whip) or a service:
-        /// youtube, twitch, kick.
-        dest: String,
-        /// Remove the stored key instead.
-        #[arg(long)]
-        delete: bool,
-    },
-    /// Pause the running recording (resume with `rec-rs resume`).
-    Pause,
-    /// Resume a paused recording.
-    Resume,
-    /// Show (and optionally request) screen, microphone and camera permissions.
-    Permissions {
-        /// Trigger the system permission prompts for anything not yet granted.
-        #[arg(long)]
-        request: bool,
-        /// Seconds to wait for prompt answers when requesting.
-        #[arg(long, default_value_t = 60)]
-        wait: u64,
-    },
-    /// Request Screen & System Audio Recording (run by `permissions --request`).
-    #[command(hide = true)]
-    RequestScreen,
-    /// Check a recording with AVFoundation (the engine QuickTime uses).
-    Probe { file: PathBuf },
-    /// Play a file in an AVPlayer window (reference player for sync tests).
-    #[command(hide = true)]
-    Play {
-        file: PathBuf,
-        #[arg(long, default_value_t = 15.0)]
-        secs: f64,
-        /// Window content size in points, WIDTHxHEIGHT.
-        #[arg(long, default_value = "640x360")]
-        size: String,
-    },
-}
+use crate::compose::{self, Corner, PipSpec, Shape};
+use crate::writer::{self, Codec};
+use crate::{camera, live, mixer, record, screen};
 
 #[derive(Args)]
 pub struct RecordArgs {
     /// Output file (.mov or .mp4). Default: ~/Movies/rec-<timestamp>.mov
     #[arg(short, long, visible_alias = "out")]
-    output: Option<PathBuf>,
+    pub(crate) output: Option<PathBuf>,
     /// Display number from `rec-rs devices` (1 = main display).
     #[arg(short, long, default_value_t = 1)]
-    display: usize,
+    pub(crate) display: usize,
     /// Record only this region of the display: X,Y,WIDTH,HEIGHT in points
     /// from the display's top-left corner.
     #[arg(long, value_name = "X,Y,W,H", conflicts_with = "window")]
-    region: Option<String>,
+    pub(crate) region: Option<String>,
     /// Record a single window: window ID or app/title substring (`rec devices`).
     #[arg(long, value_name = "WINDOW")]
-    window: Option<String>,
+    pub(crate) window: Option<String>,
     /// Output size: 720p, 1080p, 1440p, 4k, native, or WIDTHxHEIGHT. The
     /// frame keeps the display's (or window's) aspect ratio and fits inside
     /// this size (1080p of a 16:10 display is 1728x1080), so there are never
     /// black bars; it is never larger than the source.
     #[arg(short, long, default_value = "1080p")]
-    resolution: String,
+    pub(crate) resolution: String,
     /// Accepted for compatibility: the frame always keeps the source's
     /// aspect ratio now.
     #[arg(long, hide = true)]
-    keep_aspect: bool,
+    pub(crate) keep_aspect: bool,
     /// Frames per second.
     #[arg(short, long, default_value_t = 60)]
-    fps: u32,
+    pub(crate) fps: u32,
     /// Video codec. Default: h264 up to 1080p, hevc above.
     #[arg(long, value_enum)]
-    codec: Option<Codec>,
+    pub(crate) codec: Option<Codec>,
     /// Video bitrate in Mb/s. Default scales with resolution and fps.
     #[arg(long)]
-    bitrate: Option<f64>,
+    pub(crate) bitrate: Option<f64>,
     /// Record system audio (the default; see --no-system-audio).
     #[arg(long, overrides_with = "no_system_audio")]
-    system_audio: bool,
+    pub(crate) system_audio: bool,
     /// Do not record system audio.
     #[arg(long)]
-    no_system_audio: bool,
+    pub(crate) no_system_audio: bool,
     /// Microphone: `default`, a unique ID or a name substring
     /// (default: the system default mic).
     #[arg(long, value_name = "DEVICE")]
-    mic: Option<String>,
+    pub(crate) mic: Option<String>,
     /// Display name of the --mic device, used to find it again when its
     /// unique ID changed.
     #[arg(long, hide = true, value_name = "NAME")]
-    mic_name: Option<String>,
+    pub(crate) mic_name: Option<String>,
     /// Do not record the microphone.
     #[arg(long, conflicts_with = "mic")]
-    no_mic: bool,
+    pub(crate) no_mic: bool,
     /// Overlay a webcam (optionally: unique ID or name substring).
     #[arg(short, long, visible_alias = "cam", value_name = "DEVICE", num_args = 0..=1, default_missing_value = "")]
-    webcam: Option<String>,
+    pub(crate) webcam: Option<String>,
     /// Scene: screen, screen-cam (picture-in-picture) or cam (webcam full
     /// frame). Default: screen-cam with a webcam, else screen. A camera
     /// scene turns the webcam on.
     #[arg(long, value_enum)]
-    scene: Option<compose::Scene>,
+    pub(crate) scene: Option<compose::Scene>,
     /// Webcam overlay width as a fraction of the frame width.
     #[arg(long, default_value_t = 0.22)]
-    pip_size: f64,
+    pub(crate) pip_size: f64,
     /// Snap the webcam overlay to a corner.
     #[arg(long, value_enum, default_value_t = Corner::BottomRight)]
-    pip_corner: Corner,
+    pub(crate) pip_corner: Corner,
     /// Place the overlay's center anywhere: X,Y as fractions of the frame
     /// from the top-left (e.g. 0.5,0.5). Overrides --pip-corner.
     #[arg(long, value_name = "X,Y")]
-    pip_pos: Option<String>,
+    pub(crate) pip_pos: Option<String>,
     #[arg(long, value_enum, default_value_t = Shape::Rounded)]
-    pip_shape: Shape,
+    pub(crate) pip_shape: Shape,
     /// Corner roundness 0..1 (rounded, square and squircle shapes).
     #[arg(long, default_value_t = 0.2)]
-    pip_roundness: f64,
+    pub(crate) pip_roundness: f64,
     /// Overlay border width in pixels at 1080p (0 = none).
     #[arg(long, default_value_t = 0.0)]
-    pip_border: f64,
+    pub(crate) pip_border: f64,
     /// Border color as hex RGB.
     #[arg(long, default_value = "ffffff", value_name = "RRGGBB")]
-    pip_border_color: String,
+    pub(crate) pip_border_color: String,
     /// Soft drop shadow under the overlay.
     #[arg(long)]
-    pip_shadow: bool,
+    pub(crate) pip_shadow: bool,
     /// Do not mirror the webcam.
     #[arg(long)]
-    no_mirror: bool,
+    pub(crate) no_mirror: bool,
     /// Hide the mouse cursor.
     #[arg(long)]
-    no_cursor: bool,
+    pub(crate) no_cursor: bool,
     /// Highlight mouse clicks.
     #[arg(long)]
-    clicks: bool,
+    pub(crate) clicks: bool,
     /// Stop automatically after this many seconds.
     #[arg(short = 't', long)]
-    duration: Option<f64>,
+    pub(crate) duration: Option<f64>,
     /// Do not print live status.
     #[arg(short, long)]
-    quiet: bool,
+    pub(crate) quiet: bool,
     /// Audio tracks when recording both system audio and mic.
     #[arg(long, value_enum, default_value_t = writer::AudioLayout::Both)]
-    audio_tracks: writer::AudioLayout,
+    pub(crate) audio_tracks: writer::AudioLayout,
     /// Shift system audio later by this many ms. Default: the output
     /// device's latency (system audio is captured before it is heard).
     #[arg(long, value_name = "MS", allow_hyphen_values = true)]
-    system_audio_offset_ms: Option<f64>,
+    pub(crate) system_audio_offset_ms: Option<f64>,
     /// Shift the microphone later by this many ms (e.g. a Bluetooth mic).
     #[arg(long, value_name = "MS", default_value_t = 0.0, allow_hyphen_values = true)]
-    mic_offset_ms: f64,
+    pub(crate) mic_offset_ms: f64,
     /// Keep the last SECS seconds (15-300) of encoded video and audio in
     /// memory; `rec-rs save-replay` writes them to an MP4.
     #[arg(long, value_name = "SECS")]
-    replay: Option<f64>,
+    pub(crate) replay: Option<f64>,
     /// Stream to an RTMP(S) URL or a WHIP endpoint (http(s)://.../whip).
     /// youtube, twitch and kick are shortcuts. Repeat it to stream to
     /// several at once. The key comes from $REC_STREAM_KEY or the Keychain
     /// (`rec-rs stream-key URL`).
     #[arg(long, value_name = "URL")]
-    stream: Vec<String>,
+    pub(crate) stream: Vec<String>,
     /// Do not write a recording file (replay buffer / streaming only).
     #[arg(long)]
-    no_record: bool,
+    pub(crate) no_record: bool,
     /// Live encode (replay and streams) size.
     #[arg(long, default_value = "1080p")]
-    live_resolution: String,
+    pub(crate) live_resolution: String,
     /// Live video bitrate in kb/s. Default: the platform's recommendation
     /// for the size and frame rate (YouTube 4K60 45 Mb/s H.264 or 35 HEVC,
     /// Twitch at most 6 Mb/s, Kick at most 8), else YouTube's. With several
     /// destinations, the lowest of them.
     #[arg(long)]
-    stream_bitrate: Option<u32>,
+    pub(crate) stream_bitrate: Option<u32>,
     /// Live video codec: auto (HEVC when every destination is YouTube),
     /// h264 or hevc (enhanced RTMP / WHIP H.265; falls back to H.264 for
     /// servers that refuse it).
     #[arg(long, default_value = "auto", value_parser = ["auto", "h264", "hevc"])]
-    stream_codec: String,
+    pub(crate) stream_codec: String,
     /// Live keyframe interval in seconds.
     #[arg(long, default_value_t = 2.0)]
-    keyframe: f64,
+    pub(crate) keyframe: f64,
     /// Variable bitrate for the live encode (default: constant).
     #[arg(long)]
-    vbr: bool,
+    pub(crate) vbr: bool,
     /// Live audio bitrate in kb/s (AAC; Opus for WHIP).
     #[arg(long, default_value_t = 192)]
-    audio_bitrate: u32,
+    pub(crate) audio_bitrate: u32,
     /// System audio level in dB, in every track and the stream (-60 or
     /// lower is silence, at most +24).
     #[arg(long, default_value_t = 0.0, allow_hyphen_values = true)]
-    system_gain: f32,
+    pub(crate) system_gain: f32,
     /// Microphone level in dB, in every track and the stream (-60 or lower
     /// is silence, at most +24).
     #[arg(long, default_value_t = 0.0, allow_hyphen_values = true)]
-    mic_gain: f32,
+    pub(crate) mic_gain: f32,
     /// Microphone capture backend.
     #[arg(long, value_enum, default_value_t = record::MicBackend::Sck)]
-    mic_backend: record::MicBackend,
+    pub(crate) mic_backend: record::MicBackend,
     /// Record a generated test pattern instead of the screen (self-test;
     /// needs no Screen Recording permission). The frame flashes white once a
     /// second and the "system audio" beeps at the same instant, for sync
     /// checks. Implies --mic-backend avcapture.
     #[arg(long)]
-    test_pattern: bool,
+    pub(crate) test_pattern: bool,
     /// With --test-pattern: add random noise blocks to stress the encoder.
     #[arg(long, requires = "test_pattern")]
-    noise: bool,
+    pub(crate) noise: bool,
 }
 
 fn even(x: f64) -> usize {
@@ -310,41 +223,6 @@ fn live_box(s: &str) -> Result<(usize, usize)> {
             (even(w.trim().parse::<f64>()?), even(h.trim().parse::<f64>()?))
         }
     })
-}
-
-/// `rec-rs stream-key DEST`: store (or delete) a stream key in the Keychain.
-fn stream_key(dest: &str, delete: bool) -> Result<()> {
-    let url = live::destination_url(dest);
-    if delete {
-        live::keychain::delete(&url)?;
-        println!("removed the stream key for {url}");
-        return Ok(());
-    }
-    let tty = unsafe { libc::isatty(0) } == 1;
-    let mut old: libc::termios = unsafe { std::mem::zeroed() };
-    if tty {
-        eprint!("stream key for {url}: ");
-        unsafe {
-            libc::tcgetattr(0, &mut old);
-            let mut t = old;
-            t.c_lflag &= !libc::ECHO;
-            libc::tcsetattr(0, libc::TCSANOW, &t);
-        }
-    }
-    let mut key = String::new();
-    let r = std::io::stdin().read_line(&mut key);
-    if tty {
-        unsafe { libc::tcsetattr(0, libc::TCSANOW, &old) };
-        eprintln!();
-    }
-    r?;
-    let key = key.trim();
-    if key.is_empty() {
-        bail!("no key given");
-    }
-    live::keychain::set(&url, key)?;
-    println!("saved the stream key for {url} in the Keychain");
-    Ok(())
 }
 
 fn parse_pos(s: &str) -> Result<[f64; 2]> {
@@ -540,135 +418,23 @@ pub fn prepare(a: RecordArgs) -> Result<(record::Options, Option<screen::Target>
 pub fn parse_record_args(args: &[&str]) -> Result<RecordArgs> {
     let mut v = vec!["rec-rs", "record"];
     v.extend_from_slice(args);
-    match Cli::try_parse_from(v)?.cmd {
-        Some(Cmd::Record(a)) => Ok(a),
-        _ => bail!("internal: not a record command"),
-    }
+    let RecordCli { cmd: RecordCmd::Record(a) } = RecordCli::try_parse_from(v)?;
+    Ok(a)
 }
 
-fn record(a: RecordArgs) -> Result<()> {
-    let (opts, target) = prepare(a)?;
-    let out = opts.output.clone();
-    let quiet = opts.quiet;
-    let wrote = opts.write;
-    let stats = record::run(opts, target)?;
-    if !wrote {
-        if !quiet {
-            eprintln!("rec: stopped ({} video frames, {} dropped)", stats.video_frames_out, stats.video_drops);
-        }
-        return Ok(());
-    }
-    if !quiet {
-        eprintln!(
-            "rec: saved {} ({} video frames, {} duplicated, {} dropped; audio buffers sys {} mic {} mix {}, {} dropped, {} clipped samples)",
-            out.display(),
-            stats.video_frames_out,
-            stats.video_dups,
-            stats.video_drops,
-            stats.audio_sys_buffers,
-            stats.audio_mic_buffers,
-            stats.audio_mix_buffers,
-            stats.audio_drops,
-            stats.audio_clipped_samples
-        );
-    }
-    if std::env::var_os("REC_DEBUG").is_some() {
-        let avg = |sum: f64, n: u64| if n == 0 { 0.0 } else { sum / n as f64 * 1000.0 };
-        eprintln!(
-            "rec: debug: encoder busy retries {}, audio gaps filled {}",
-            stats.video_retries,
-            stats.audio_gaps_filled
-        );
-        eprintln!(
-            "rec: debug: frame arrival latency  screen avg {:.1} ms max {:.1} ms ({} frames)  camera avg {:.1} ms max {:.1} ms ({} frames)",
-            avg(stats.screen_latency_sum, stats.screen_frames_in),
-            stats.screen_latency_max * 1000.0,
-            stats.screen_frames_in,
-            avg(stats.cam_latency_sum, stats.cam_frames_in),
-            stats.cam_latency_max * 1000.0,
-            stats.cam_frames_in
-        );
-    }
-    println!("{}", out.display());
-    Ok(())
+/// Mirrors how the CLI parses `rec-rs record ...`, so the GUI sees the same
+/// errors and usage text.
+#[derive(Parser)]
+#[command(name = "rec-rs")]
+struct RecordCli {
+    #[command(subcommand)]
+    cmd: RecordCmd,
 }
 
-fn devices() -> Result<()> {
-    println!("Displays:");
-    match screen::displays() {
-        Ok(ds) => {
-            for (i, d) in ds.iter().enumerate() {
-                println!(
-                    "  [{}] id {}  {}x{} pixels ({}x{} points)",
-                    i + 1,
-                    d.id,
-                    d.pixels.0, d.pixels.1, d.points.0, d.points.1
-                );
-            }
-        }
-        Err(e) => println!("  unavailable: {e}"),
-    }
-    println!("Windows (for --window):");
-    match screen::windows() {
-        Ok(ws) => {
-            for w in ws {
-                println!("  {:>6}  {} — {}  ({}x{} pt)", w.id, w.app, w.title, w.size.0, w.size.1);
-            }
-        }
-        Err(e) => println!("  unavailable: {e}"),
-    }
-    println!("Cameras:");
-    for c in camera::cameras() {
-        println!("  {}  [{}]", c.name, c.id);
-    }
-    println!("Microphones:");
-    for m in camera::microphones() {
-        println!("  {}  [{}]", m.name, m.id);
-    }
-    Ok(())
-}
-
-fn main() {
-    // Behave like a normal CLI when piped into `head` etc.
-    unsafe { libc::signal(libc::SIGPIPE, libc::SIG_DFL) };
-    tcc::disclaim_and_reexec();
-    let cli = Cli::parse();
-    let r = match cli.cmd.unwrap_or(Cmd::Gui { start_recording: false, settings: false, window: None }) {
-        Cmd::Gui { start_recording, settings, window } => app::run(start_recording, settings, window),
-        Cmd::Record(a) => record(a),
-        Cmd::Devices => {
-            let r = devices();
-            if let Some(l) = outlatency::output_latency() {
-                println!("Output latency (system audio is shifted by this): {:.1} ms", l * 1000.0);
-            }
-            r
-        }
-        Cmd::Stop => record::stop_running(),
-        Cmd::Pause => record::signal_running(libc::SIGUSR1),
-        Cmd::Resume => record::signal_running(libc::SIGUSR2),
-        Cmd::SaveReplay => record::signal_running(libc::SIGINFO),
-        Cmd::StreamKey { dest, delete } => stream_key(&dest, delete),
-        Cmd::Permissions { request, wait } => {
-            if request {
-                tcc::request_all(true, true, true, std::time::Duration::from_secs(wait));
-            }
-            let (s, m, c) = tcc::report();
-            println!("screen recording : {s}");
-            println!("microphone       : {m}");
-            println!("camera           : {c}");
-            Ok(())
-        }
-        Cmd::RequestScreen => {
-            tcc::request_screen_here();
-            Ok(())
-        }
-        Cmd::Probe { file } => probe::probe(&file),
-        Cmd::Play { file, secs, size } => play::play(&file, secs, &size),
-    };
-    if let Err(e) = r {
-        eprintln!("rec: error: {e:#}");
-        std::process::exit(1);
-    }
+#[derive(clap::Subcommand)]
+enum RecordCmd {
+    /// Record the screen (plus system audio, mic, and optional webcam overlay).
+    Record(RecordArgs),
 }
 
 #[cfg(test)]

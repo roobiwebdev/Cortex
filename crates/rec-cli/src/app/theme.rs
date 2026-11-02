@@ -8,9 +8,9 @@ use egui::{
 use std::sync::Arc;
 use std::sync::atomic::{AtomicU32, Ordering};
 
-pub static INTER_REGULAR: &[u8] = include_bytes!("../../assets/fonts/Inter-Regular.ttf");
-pub static INTER_MEDIUM: &[u8] = include_bytes!("../../assets/fonts/Inter-Medium.ttf");
-pub static INTER_SEMIBOLD: &[u8] = include_bytes!("../../assets/fonts/Inter-SemiBold.ttf");
+pub static INTER_REGULAR: &[u8] = include_bytes!("../../../rec-engine-macos/assets/fonts/Inter-Regular.ttf");
+pub static INTER_MEDIUM: &[u8] = include_bytes!("../../../rec-engine-macos/assets/fonts/Inter-Medium.ttf");
+pub static INTER_SEMIBOLD: &[u8] = include_bytes!("../../../rec-engine-macos/assets/fonts/Inter-SemiBold.ttf");
 
 /// macOS system blue, used when the system accent can't be read.
 pub const MAC_BLUE: Color32 = Color32::from_rgb(0x00, 0x7a, 0xff);

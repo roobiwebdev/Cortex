@@ -1,0 +1,35 @@
+[package]
+name = "rec-cli"
+version = "0.1.2"
+edition = "2024"
+license = "MIT OR Apache-2.0"
+description = "Command line and reference GUI for the rec-engine-macos recorder"
+
+[[bin]]
+name = "rec-rs"
+path = "src/main.rs"
+
+[dependencies]
+rec-engine-macos = { path = "../rec-engine-macos" }
+anyhow = "1.0.104"
+clap = { version = "4.6.7", features = ["derive"] }
+libc = "0.2.190"
+objc2 = { version = "0.6", features = ["exception"] }
+objc2-app-kit = { version = "0.3", features = ["objc2-quartz-core", "objc2-core-foundation"] }
+objc2-core-foundation = "0.3"
+objc2-core-graphics = "0.3"
+objc2-core-image = { version = "0.3", features = ["objc2-core-video", "objc2-core-graphics", "objc2-core-foundation", "objc2-metal"] }
+objc2-core-video = { version = "0.3", features = ["objc2-core-graphics", "objc2-io-surface", "objc2-metal"] }
+objc2-foundation = "0.3"
+objc2-quartz-core = "0.3"
+objc2-video-toolbox = { version = "0.3", features = ["objc2-core-media", "objc2-core-video"] }
+objc2-metal = { version = "0.3", features = ["objc2-io-surface"] }
+
+# Reference GUI (src/app) only.
+egui = "0.36"
+egui-wgpu = "0.36"
+egui-winit = "0.36"
+wgpu = "30"
+winit = "0.30"
+pollster = "0.4"
+rfd = "0.17"

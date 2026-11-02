@@ -1,6 +1,6 @@
 //! App settings, persisted as JSON in ~/Library/Application Support/rec-rs.
 //! The app turns them into the same `record` arguments the CLI takes, so
-//! both share one code path (`crate::prepare`).
+//! both share one code path (`crate::args::prepare`).
 
 use std::path::PathBuf;
 
@@ -415,7 +415,7 @@ mod tests {
         };
         let args = s.record_args(Some(std::path::Path::new("/tmp/x.mov")));
         let refs: Vec<&str> = args.iter().map(String::as_str).collect();
-        crate::parse_record_args(&refs).expect("settings produce valid CLI arguments");
+        crate::args::parse_record_args(&refs).expect("settings produce valid CLI arguments");
         assert!(args.windows(2).any(|w| w == ["--webcam", "default"]));
         assert!(args.windows(2).any(|w| w == ["--codec", "prores"]));
         assert!(args.windows(2).any(|w| w == ["--window", "42"]));
@@ -436,7 +436,7 @@ mod tests {
         };
         let args = s.record_args(None);
         let refs: Vec<&str> = args.iter().map(String::as_str).collect();
-        let opts = crate::parse_record_args(&refs).unwrap();
+        let opts = crate::args::parse_record_args(&refs).unwrap();
         assert_eq!(opts.pip_pos.as_deref(), Some("0.3,0.6"));
         assert_eq!(opts.pip_border_color, "0ac81e");
         assert!(opts.pip_shadow && opts.no_mirror);

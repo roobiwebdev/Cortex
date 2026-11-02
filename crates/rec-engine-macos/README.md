@@ -425,8 +425,9 @@ rec-rs record --no-record --stream rtmp://localhost/live --stream http://localho
 
 | Path | Contents |
 |---|---|
-| `src/main.rs` | CLI |
-| `src/app/` | App: windows and UI (`ui.rs`), menu bar item and app menu, Dock quit/reopen hooks, preview scaler, theme, macOS chrome, Sparkle updates and moving into Applications (`install.rs`) |
+| `src/lib.rs`, `src/args.rs` | Library root; `record` arguments and `prepare` (shared by the CLI and the app) |
+| `../rec-cli/src/main.rs` | CLI |
+| `../rec-cli/src/app/` | App: windows and UI (`ui.rs`), menu bar item and app menu, Dock quit/reopen hooks, preview scaler, theme, macOS chrome, Sparkle updates and moving into Applications (`install.rs`) |
 | `src/settings.rs` | Persisted settings → record arguments |
 | `src/hotkey.rs` | Global hotkey (Carbon `RegisterEventHotKey`; needs no Accessibility permission) |
 | `src/record.rs` | Sessions, pacing thread, signals, `stop`/`pause`/`resume` |

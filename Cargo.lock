@@ -2682,16 +2682,40 @@ dependencies = [
 ]
 
 [[package]]
-name = "rec-rs"
+name = "rec-cli"
+version = "0.1.2"
+dependencies = [
+ "anyhow",
+ "clap",
+ "egui",
+ "egui-wgpu",
+ "egui-winit",
+ "libc",
+ "objc2 0.6.5",
+ "objc2-app-kit 0.3.2",
+ "objc2-core-foundation",
+ "objc2-core-graphics",
+ "objc2-core-image 0.3.2",
+ "objc2-core-video",
+ "objc2-foundation 0.3.2",
+ "objc2-metal 0.3.2",
+ "objc2-quartz-core 0.3.2",
+ "objc2-video-toolbox",
+ "pollster",
+ "rec-engine-macos",
+ "rfd",
+ "wgpu",
+ "winit",
+]
+
+[[package]]
+name = "rec-engine-macos"
 version = "0.1.2"
 dependencies = [
  "anyhow",
  "block2 0.6.2",
  "clap",
  "dispatch2",
- "egui",
- "egui-wgpu",
- "egui-winit",
  "getrandom 0.3.4",
  "libc",
  "native-tls",
@@ -2712,15 +2736,11 @@ dependencies = [
  "objc2-quartz-core 0.3.2",
  "objc2-screen-capture-kit",
  "objc2-video-toolbox",
- "pollster",
- "rfd",
  "security-framework",
  "serde",
  "serde_json",
  "str0m",
  "ureq",
- "wgpu",
- "winit",
 ]
 
 [[package]]

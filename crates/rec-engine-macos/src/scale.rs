@@ -45,8 +45,8 @@ pub struct FrameScaler {
 // lock.
 unsafe impl Send for FrameScaler {}
 
-/// Tag a buffer BT.709 (what the encoders declare).
-#[cfg(test)]
+/// Tag a buffer BT.709 (what the encoders declare). Used by tests here and
+/// in rec-cli.
 pub fn tag_bt709(buf: &CVPixelBuffer) {
     unsafe {
         let mode = CVAttachmentMode::ShouldPropagate;
