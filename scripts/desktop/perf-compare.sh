@@ -59,6 +59,8 @@ def read():
             cpu[f[0]] = cpu_secs(f[1]); rss += int(f[2])
     return cpu, rss
 start = time.time(); prev, _ = read(); t_prev = start
+first = next((p.strip() for p in open(pidfile) if p.strip()), None)
+first0 = prev.get(first, 0.0)
 rows, total, peak = [], 0.0, 0
 with open(out, 'w') as fh:
     fh.write('t\tcpu_pct\trss_mb\n')
@@ -79,7 +81,8 @@ wall = len(rows)
 s = sorted(rows)
 p95 = s[min(len(s) - 1, int(0.95 * len(s)))] if s else 0
 avg = 100.0 * total / wall if wall else 0
-print(f'cpu_avg_pct={avg:.1f} cpu_p95_pct={p95:.1f} rss_peak_mb={peak/1024:.0f} samples={wall}')
+main_avg = 100.0 * (prev.get(first, first0) - first0) / wall if wall else 0
+print(f'cpu_avg_pct={avg:.1f} cpu_p95_pct={p95:.1f} main_process_avg_pct={main_avg:.1f} rss_peak_mb={peak/1024:.0f} samples={wall}')
 PY
 }
 
@@ -104,7 +107,8 @@ JSON
     before=$(webkit_pids)
     env_args=(CORTEX_DEBUG_DATA_DIR="$data" CORTEX_DEBUG_TEST_PATTERN=1 CORTEX_DEBUG_PREVIEW_STATS=1)
     [[ $mode == cortex ]] && env_args+=(CORTEX_DEBUG_RECORD_SECS="$secs")
-    [[ $config == preview-off ]] && env_args+=(CORTEX_DEBUG_HIDE_MAIN=1)
+    # The preview only runs while the main window is visible: keep it on top.
+    [[ $config == preview-off ]] && env_args+=(CORTEX_DEBUG_HIDE_MAIN=1) || env_args+=(CORTEX_DEBUG_FRONT=1)
     env "${env_args[@]}" "$app/Contents/MacOS/$bin" >>"$log" 2>&1 &
     pid=$!
     sleep 2
@@ -126,6 +130,8 @@ JSON
     "$rec_bin" record --test-pattern --no-mic -r "$res" -f 60 --codec "$codec" -t "$secs" -o "$file" >>"$log" 2>&1 &
     pid=$!
     echo "$pid" >"$pidfile"
+    # rec-rs re-executes itself as a child that does the work: count it too.
+    ( sleep 1; pgrep -P "$pid" >>"$pidfile" || true ) &
     summary=$(sample "$pidfile" "$pid")
     wait "$pid" || echo "rec-rs exited $?" >>"$log"
     ;;

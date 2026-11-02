@@ -20,6 +20,8 @@ use crate::shell::{Outbound, Shell};
 ///   seconds, print `cortex: recorded <path>` and quit.
 /// - `CORTEX_DEBUG_HIDE_MAIN=1`: hide the main window at launch (preview off).
 /// - `CORTEX_DEBUG_PREVIEW_STATS=1`: print the preview frame rate every 5 s.
+/// - `CORTEX_DEBUG_FRONT=1`: keep the main window above other apps, so the preview
+///   stays visible (and running) while a measurement runs.
 ///
 /// Used by `scripts/desktop/perf-compare.sh`.
 #[derive(Default)]
@@ -29,6 +31,7 @@ struct DebugRun {
     record_secs: Option<f64>,
     hide_main: bool,
     preview_stats: bool,
+    front: bool,
 }
 
 impl DebugRun {
@@ -42,6 +45,7 @@ impl DebugRun {
                 .filter(|v| v.is_finite() && *v > 0.0),
             hide_main: var("CORTEX_DEBUG_HIDE_MAIN").is_some_and(|v| v == "1"),
             preview_stats: var("CORTEX_DEBUG_PREVIEW_STATS").is_some_and(|v| v == "1"),
+            front: var("CORTEX_DEBUG_FRONT").is_some_and(|v| v == "1"),
         }
     }
 }
@@ -101,10 +105,13 @@ pub fn run() {
                 }
             };
             app.manage::<ipc::PreviewSlot>(live);
-            if debug.hide_main
-                && let Some(main) = app.get_webview_window("main")
-            {
-                let _ = main.hide();
+            if let Some(main) = app.get_webview_window("main") {
+                if debug.hide_main {
+                    let _ = main.hide();
+                } else if debug.front {
+                    let _ = main.set_always_on_top(true);
+                    let _ = main.show();
+                }
             }
             if debug.record_secs.is_some() {
                 std::thread::spawn(move || {
