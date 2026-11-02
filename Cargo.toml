@@ -9,3 +9,8 @@ license = "MIT OR Apache-2.0"
 
 [profile.release]
 debug = 1
+
+# Local fix for the Swift 6.4 build layout until upstream releases one.
+# See third_party/README.md.
+[patch.crates-io]
+apple-cryptokit-rs = { path = "third_party/apple-cryptokit-rs" }
