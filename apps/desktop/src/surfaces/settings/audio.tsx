@@ -2,13 +2,13 @@ import * as React from "react";
 import { ChevronRight, Volume2, VolumeX } from "lucide-react";
 
 import { Button } from "@starter/ui/components/button";
-import { LevelMeter } from "@starter/ui/components/level-meter";
+import { LevelMeter, type LevelSource } from "@starter/ui/components/level-meter";
 import { Segmented } from "@starter/ui/components/segmented";
 import { Slider } from "@starter/ui/components/slider";
 import { Switch } from "@starter/ui/components/switch";
 import { cn } from "@starter/ui/lib/utils";
 
-import { engine, useEngine } from "../../lib/engine";
+import { engine, micLevels, systemLevels, useEngine } from "../../lib/engine";
 import type { AudioTracks, InputDevice } from "../../lib/types";
 import { ChoiceSelect, NumberField, Readout, SettingsGroup, SettingsPage, SettingsRow } from "./parts";
 
@@ -149,8 +149,7 @@ export function AudioSection() {
           enabled={s.systemAudio}
           db={s.systemGainDb}
           muted={s.systemMuted}
-          level={e.levels.system}
-          peak={e.levels.systemPeak}
+          levels={systemLevels}
           onDb={(systemGainDb) => engine.update({ systemGainDb })}
           onMute={(systemMuted) => engine.update({ systemMuted })}
         />
@@ -159,8 +158,7 @@ export function AudioSection() {
           enabled={s.micEnabled}
           db={s.micGainDb}
           muted={s.micMuted}
-          level={e.levels.mic}
-          peak={e.levels.micPeak}
+          levels={micLevels}
           onDb={(micGainDb) => engine.update({ micGainDb })}
           onMute={(micMuted) => engine.update({ micMuted })}
         />
@@ -218,8 +216,7 @@ function GainRow({
   enabled,
   db,
   muted,
-  level,
-  peak,
+  levels,
   onDb,
   onMute,
 }: {
@@ -227,8 +224,7 @@ function GainRow({
   enabled: boolean;
   db: number;
   muted: boolean;
-  level: number;
-  peak: number;
+  levels: LevelSource;
   onDb: (db: number) => void;
   onMute: (muted: boolean) => void;
 }) {
@@ -250,7 +246,7 @@ function GainRow({
             if (v !== undefined) onDb(v);
           }}
         />
-        <LevelMeter level={level} peak={peak} muted={muted || !enabled} className="h-1.5" segments={32} />
+        <LevelMeter source={levels} muted={muted || !enabled} className="h-1.5" segments={32} />
       </div>
       <Readout>{formatDb(db)}</Readout>
       <Button

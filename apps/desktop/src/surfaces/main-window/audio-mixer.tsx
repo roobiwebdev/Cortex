@@ -1,12 +1,12 @@
 import type * as React from "react";
 import { Mic, MicOff, Speaker, Volume2, VolumeX } from "lucide-react";
 
-import { LevelMeter } from "@starter/ui/components/level-meter";
+import { LevelMeter, type LevelSource } from "@starter/ui/components/level-meter";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@starter/ui/components/select";
 import { Slider } from "@starter/ui/components/slider";
 import { cn } from "@starter/ui/lib/utils";
 
-import { engine } from "../../lib/engine";
+import { engine, micLevels, systemLevels } from "../../lib/engine";
 import type { EngineState } from "../../lib/types";
 import { Tip } from "./parts";
 
@@ -46,8 +46,7 @@ export function AudioMixer({ e }: { e: EngineState }) {
         name="System audio"
         device={<span className="truncate text-[12px] text-muted-foreground">All sounds from this Mac</span>}
         enabled={s.systemAudio}
-        level={e.levels.system}
-        peak={e.levels.systemPeak}
+        levels={systemLevels}
         gainDb={s.systemGainDb}
         muted={s.systemMuted}
         onGain={(systemGainDb) => engine.update({ systemGainDb })}
@@ -72,8 +71,7 @@ export function AudioMixer({ e }: { e: EngineState }) {
           </Select>
         }
         enabled={s.micEnabled}
-        level={e.levels.mic}
-        peak={e.levels.micPeak}
+        levels={micLevels}
         gainDb={s.micGainDb}
         muted={s.micMuted}
         onGain={(micGainDb) => engine.update({ micGainDb })}
@@ -89,8 +87,7 @@ function MixerStrip({
   name,
   device,
   enabled,
-  level,
-  peak,
+  levels,
   gainDb,
   muted,
   onGain,
@@ -101,8 +98,7 @@ function MixerStrip({
   name: string;
   device: React.ReactNode;
   enabled: boolean;
-  level: number;
-  peak: number;
+  levels: LevelSource;
   gainDb: number;
   muted: boolean;
   onGain: (db: number) => void;
@@ -120,7 +116,7 @@ function MixerStrip({
         <span className="flex min-w-0 flex-1">{device}</span>
       </div>
 
-      <LevelMeter level={level} peak={peak} muted={dim} className="h-1.5 min-w-0 flex-1" aria-label={`${name} level`} />
+      <LevelMeter source={levels} muted={dim} className="h-1.5 min-w-0 flex-1" aria-label={`${name} level`} />
 
       <div className={cn("flex w-[188px] shrink-0 items-center gap-2.5 transition-opacity", dim && "opacity-45")}>
         <Tip label="Drag to set gain. Double-click for 0 dB.">

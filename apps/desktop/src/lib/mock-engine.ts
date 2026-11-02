@@ -1,7 +1,16 @@
 import { useSyncExternalStore } from "react";
 
 import { errorToast, pushToastTo, replayToast, savedToast } from "./toasts";
-import type { EngineState, Permission, PermissionState, RecorderSettings, Recording, Toast, ToastKind } from "./types";
+import type {
+  EngineState,
+  Levels,
+  Permission,
+  PermissionState,
+  RecorderSettings,
+  Recording,
+  Toast,
+  ToastKind,
+} from "./types";
 
 /**
  * SOURCE OF TRUTH KEYWORDS: engine, mockEngine, useEngine, startRecording, stopRecording, updateSettings
@@ -113,7 +122,6 @@ let state: EngineState = {
   live: false,
   streams: [],
   replayBufferedSecs: 0,
-  levels: { system: 0, systemPeak: 0, mic: 0, micPeak: 0 },
   permissions: { screen: "granted", microphone: "granted", camera: "granted" },
   displays: [
     { id: 1, name: "Built-in Retina Display", width: 3456, height: 2234 },
@@ -158,12 +166,29 @@ export function subscribeEngine(l: () => void) {
   startLevels();
   return () => {
     listeners.delete(l);
-    if (listeners.size === 0) stopLevels();
+    if (listeners.size === 0 && levelListeners.size === 0) stopLevels();
   };
 }
 
 export function useEngine(): EngineState {
   return useSyncExternalStore(subscribeEngine, getEngineState);
+}
+
+// Levels are their own store (as in `engine.ts`): a level tick notifies only the meters.
+let levels: Levels = { system: 0, systemPeak: 0, mic: 0, micPeak: 0 };
+const levelListeners = new Set<() => void>();
+/** Level store subscription; keeps the simulated levels running while a meter listens. */
+export function subscribeLevels(l: () => void) {
+  levelListeners.add(l);
+  startLevels();
+  return () => {
+    levelListeners.delete(l);
+    if (listeners.size === 0 && levelListeners.size === 0) stopLevels();
+  };
+}
+/** Current simulated levels. */
+export function getLevels(): Levels {
+  return levels;
 }
 
 /** Current mock snapshot, for callers outside React. */
@@ -208,16 +233,14 @@ function tickLevels() {
   // Replay buffer fills while enabled (one tick ≈ 1/30 s), capped at its length.
   const replayBufferedSecs = s.replayEnabled ? Math.min(s.replaySecs, state.replayBufferedSecs + 1 / 30) : 0;
   const decay = 0.012;
-  const lv = state.levels;
-  set({
-    replayBufferedSecs,
-    levels: {
-      mic,
-      system,
-      micPeak: Math.max(mic, lv.micPeak - decay),
-      systemPeak: Math.max(system, lv.systemPeak - decay),
-    },
-  });
+  levels = {
+    mic,
+    system,
+    micPeak: Math.max(mic, levels.micPeak - decay),
+    systemPeak: Math.max(system, levels.systemPeak - decay),
+  };
+  for (const l of levelListeners) l();
+  if (replayBufferedSecs !== state.replayBufferedSecs) set({ replayBufferedSecs });
 }
 
 function dbToGain(db: number) {

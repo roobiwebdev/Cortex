@@ -14,8 +14,8 @@ import { LevelMeter } from "@starter/ui/components/level-meter";
 import { cn } from "@starter/ui/lib/utils";
 
 import { CameraBubble } from "../components/camera-bubble";
-import { formatClock } from "../lib/format";
-import { engine, useEngine } from "../lib/engine";
+import { ElapsedClock } from "../components/progress-text";
+import { engine, micLevels, useEngineCalm } from "../lib/engine";
 import { floatingWindow, useWindowed } from "../lib/floating";
 import type { SurfaceProps } from "../prototype/surfaces";
 import { CaptureExcludedHint, FloatingCard, MENU_CONTENT, MENU_ITEM } from "./floating/floating-card";
@@ -39,7 +39,7 @@ const MENU_RESERVE = 200;
  *        shown by the shell while recording.
  */
 export function HudSurface({ cameraStream, navigate }: SurfaceProps) {
-  const e = useEngine();
+  const e = useEngineCalm();
   const s = e.settings;
   const capturing = isCapturing(e.status);
   const paused = e.status === "paused";
@@ -143,7 +143,7 @@ export function HudSurface({ cameraStream, navigate }: SurfaceProps) {
                 <div className="min-w-0 flex-1">
                   <div className="text-[13px] font-semibold">Discard this recording?</div>
                   <div className="text-xs text-muted-foreground">
-                    {formatClock(e.elapsedSecs)} of video will be deleted. This cannot be undone.
+                    <ElapsedClock /> of video will be deleted. This cannot be undone.
                   </div>
                 </div>
                 <Button
@@ -253,7 +253,7 @@ export function HudSurface({ cameraStream, navigate }: SurfaceProps) {
                     : "text-foreground",
                 )}
               >
-                {e.status === "countdown" ? `Starts in ${e.countdownLeft}` : formatClock(e.elapsedSecs)}
+                {e.status === "countdown" ? `Starts in ${e.countdownLeft}` : <ElapsedClock />}
               </div>
             </div>
 
@@ -266,8 +266,7 @@ export function HudSurface({ cameraStream, navigate }: SurfaceProps) {
                 aria-label="Microphone level"
                 className="h-1.5 flex-1 gap-px"
                 segments={8}
-                level={e.levels.mic}
-                peak={e.levels.micPeak}
+                source={micLevels}
                 muted={!s.micEnabled || s.micMuted}
               />
             </div>

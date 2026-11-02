@@ -5,7 +5,8 @@ import { Button } from "@starter/ui/components/button";
 import { Kbd } from "@starter/ui/components/kbd";
 import { cn } from "@starter/ui/lib/utils";
 
-import { formatBytes, formatClock } from "../../lib/format";
+import { BytesWritten, ElapsedClock } from "../../components/progress-text";
+import { formatClock } from "../../lib/format";
 import { engine } from "../../lib/engine";
 import type { EngineState } from "../../lib/types";
 import type { SurfaceId } from "../../prototype/surfaces";
@@ -40,11 +41,19 @@ export function RecordBar({ e, navigate }: { e: EngineState; navigate: (id: Surf
             st === "recording" ? "text-rec" : active ? "text-foreground" : "text-muted-foreground/70",
           )}
         >
-          {formatClock(active || st === "finalizing" ? e.elapsedSecs : 0)}
+          {active || st === "finalizing" ? <ElapsedClock /> : formatClock(0)}
         </div>
         <div className="tabular mt-1.5 truncate text-[11.5px] text-muted-foreground">
-          {st === "recording" && `${formatBytes(e.bytesWritten)} written`}
-          {st === "paused" && <span className="text-warn">Paused · {formatBytes(e.bytesWritten)} written</span>}
+          {st === "recording" && (
+            <>
+              <BytesWritten /> written
+            </>
+          )}
+          {st === "paused" && (
+            <span className="text-warn">
+              Paused · <BytesWritten /> written
+            </span>
+          )}
           {st === "finalizing" && "Saving to " + s.outputDir}
           {st === "countdown" && `Starting in ${e.countdownLeft} s`}
           {st === "idle" && `Saves to ${s.outputDir}`}

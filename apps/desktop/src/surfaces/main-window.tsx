@@ -2,7 +2,7 @@ import * as React from "react";
 
 import { TooltipProvider } from "@starter/ui/components/tooltip";
 
-import { useEngine } from "../lib/engine";
+import { useEngineCalm } from "../lib/engine";
 import type { SurfaceProps } from "../prototype/surfaces";
 import { AudioMixer } from "./main-window/audio-mixer";
 import { RecordBar } from "./main-window/record-bar";
@@ -19,7 +19,8 @@ import { MainTitleBar } from "./main-window/title-bar";
  * WHERE: prototype shell surface "main"; later the Tauri main window.
  */
 export function MainWindow({ cameraStream, navigate }: SurfaceProps) {
-  const e = useEngine();
+  // Clock, bytes and levels update their own leaves; the window re-renders on real changes only.
+  const e = useEngineCalm();
 
   // ⌘, opens Settings while the main window is focused (KEY-04).
   React.useEffect(() => {
