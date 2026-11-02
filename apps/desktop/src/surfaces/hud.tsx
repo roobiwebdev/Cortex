@@ -16,6 +16,7 @@ import { cn } from "@starter/ui/lib/utils";
 import { CameraBubble } from "../components/camera-bubble";
 import { formatClock } from "../lib/format";
 import { engine, useEngine } from "../lib/engine";
+import { floatingWindow, useWindowed } from "../lib/floating";
 import type { SurfaceProps } from "../prototype/surfaces";
 import { CaptureExcludedHint, FloatingCard, MENU_CONTENT, MENU_ITEM } from "./floating/floating-card";
 import { HoldToConfirm } from "./floating/hold-to-confirm";
@@ -25,6 +26,8 @@ const HUD_W = 300;
 const HUD_H = 56;
 const EDGE = 16;
 const CAM_W = 128;
+/** Room the ⋯ menu needs above the capsule; the HUD window grows by this while it is open. */
+const MENU_RESERVE = 200;
 
 /**
  * SOURCE OF TRUTH KEYWORDS: HudSurface, recording HUD, mini controller, floating capsule, stop pause, REC-05
@@ -32,20 +35,29 @@ const CAM_W = 128;
  *        and a menu (save replay, hide, hold-to-discard), with an optional docked camera tile.
  * WHY:   The main window is usually hidden while recording; the HUD gives one-click control
  *        from any Space. It is excluded from capture so it never appears in the video.
- * WHERE: Prototype surface "hud"; later a non-activating floating NSPanel (sharingType none).
+ * WHERE: Prototype surface "hud"; the app's "hud" window (non-activating, sharingType none),
+ *        shown by the shell while recording.
  */
 export function HudSurface({ cameraStream, navigate }: SurfaceProps) {
   const e = useEngine();
   const s = e.settings;
   const capturing = isCapturing(e.status);
   const paused = e.status === "paused";
+  // In its own window the shell places and shows the HUD; it draws only its own stack.
+  const windowed = useWindowed();
+  const [menuOpen, setMenuOpen] = React.useState(false);
 
   // Prototype-local: position, visibility and the discard confirm. The app keeps position per display.
   const area = React.useRef<HTMLDivElement>(null);
   const [offset, setOffset] = React.useState({ x: 0, y: 0 });
   const [hidden, setHidden] = React.useState(false);
   const [discardOpen, setConfirmDiscard] = React.useState(false);
-  const drag = React.useRef<{ px: number; py: number; ox: number; oy: number } | null>(null);
+  const drag = React.useRef<{
+    px: number;
+    py: number;
+    ox: number;
+    oy: number;
+  } | null>(null);
 
   // The confirm only makes sense while a file is being written.
   const confirmDiscard = discardOpen && capturing;
@@ -58,12 +70,21 @@ export function HudSurface({ cameraStream, navigate }: SurfaceProps) {
     const maxX = el.clientWidth / 2 - HUD_W / 2 - EDGE;
     const minY = -(el.clientHeight - 48 - HUD_H - CAM_W - 40 - EDGE);
     const maxY = 48 - 36 - EDGE;
-    return { x: Math.max(-maxX, Math.min(maxX, x)), y: Math.max(minY, Math.min(maxY, y)) };
+    return {
+      x: Math.max(-maxX, Math.min(maxX, x)),
+      y: Math.max(minY, Math.min(maxY, y)),
+    };
   }, []);
 
   function onGripDown(ev: React.PointerEvent<HTMLButtonElement>) {
+    if (windowed) return floatingWindow.startDragging();
     ev.currentTarget.setPointerCapture(ev.pointerId);
-    drag.current = { px: ev.clientX, py: ev.clientY, ox: offset.x, oy: offset.y };
+    drag.current = {
+      px: ev.clientX,
+      py: ev.clientY,
+      ox: offset.x,
+      oy: offset.y,
+    };
   }
   function onGripMove(ev: React.PointerEvent<HTMLButtonElement>) {
     const d = drag.current;
@@ -84,10 +105,13 @@ export function HudSurface({ cameraStream, navigate }: SurfaceProps) {
     setOffset((o) => clamp(o.x + m[0], o.y + m[1]));
   }
 
-  const showCamera = s.scene !== "screen" && !confirmDiscard;
+  // The app composites the real camera into the recording; the tile is a harness preview.
+  const showCamera = s.scene !== "screen" && !confirmDiscard && !windowed;
+  const hide = () => (windowed ? floatingWindow.hide() : setHidden(true));
 
   return (
-    <div ref={area} className="absolute inset-0 top-7">
+    <div ref={area} className={windowed ? "flex flex-col items-center" : "absolute inset-0 top-7"}>
+      {windowed && menuOpen && <div aria-hidden style={{ height: MENU_RESERVE }} />}
       {hidden ? (
         <div className="absolute bottom-12 left-1/2 -translate-x-1/2">
           <CaptureExcludedHint>
@@ -100,8 +124,18 @@ export function HudSurface({ cameraStream, navigate }: SurfaceProps) {
         </div>
       ) : (
         <div
-          className="absolute bottom-12 left-1/2 flex flex-col items-center gap-2.5"
-          style={{ transform: `translate(calc(-50% + ${offset.x}px), ${offset.y}px)` }}
+          className={cn(
+            "flex flex-col items-center gap-2.5",
+            // A little room so the capsule's edge is not cut by the window.
+            windowed ? "p-1" : "absolute bottom-12 left-1/2",
+          )}
+          style={
+            windowed
+              ? undefined
+              : {
+                  transform: `translate(calc(-50% + ${offset.x}px), ${offset.y}px)`,
+                }
+          }
         >
           {confirmDiscard && (
             <FloatingCard className="w-[300px] p-3 duration-150 ease-out-quick animate-in fade-in slide-in-from-bottom-1">
@@ -238,7 +272,7 @@ export function HudSurface({ cameraStream, navigate }: SurfaceProps) {
               />
             </div>
 
-            <DropdownMenu>
+            <DropdownMenu open={menuOpen} onOpenChange={setMenuOpen}>
               <DropdownMenuTrigger
                 aria-label="More recording actions"
                 className={cn(
@@ -254,7 +288,7 @@ export function HudSurface({ cameraStream, navigate }: SurfaceProps) {
                   Save replay
                   <DropdownMenuShortcut>⇧⌘S</DropdownMenuShortcut>
                 </DropdownMenuItem>
-                <DropdownMenuItem className={MENU_ITEM} onClick={() => setHidden(true)}>
+                <DropdownMenuItem className={MENU_ITEM} onClick={hide}>
                   <Eye />
                   Hide HUD
                 </DropdownMenuItem>
@@ -275,11 +309,13 @@ export function HudSurface({ cameraStream, navigate }: SurfaceProps) {
             </DropdownMenu>
           </FloatingCard>
 
-          <CaptureExcludedHint>
-            {e.status === "idle"
-              ? "Ready. In the app this bar floats over every Space and is left out of the recording."
-              : "Left out of the recording. Drag the grip to move it."}
-          </CaptureExcludedHint>
+          {!windowed && (
+            <CaptureExcludedHint>
+              {e.status === "idle"
+                ? "Ready. In the app this bar floats over every Space and is left out of the recording."
+                : "Left out of the recording. Drag the grip to move it."}
+            </CaptureExcludedHint>
+          )}
         </div>
       )}
     </div>

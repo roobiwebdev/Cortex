@@ -28,3 +28,9 @@ html[data-preview-hole],
 html[data-preview-hole] body {
   background: transparent;
 }
+
+/* Floating windows get a native shadow (rec-macos-ui); a painted one would be cut off by
+   the window edge. The full-screen region picker has no native shadow, so it keeps its own. */
+html[data-floating]:not([data-floating="region"]) .shadow-float {
+  box-shadow: none;
+}

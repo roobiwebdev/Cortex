@@ -6,13 +6,17 @@ import { Segmented } from "@starter/ui/components/segmented";
 
 import { formatClock } from "../lib/format";
 import { engine, useEngine } from "../lib/engine";
+import { useWindowed } from "../lib/floating";
 import type { RecorderSettings } from "../lib/types";
 import type { SurfaceProps } from "../prototype/surfaces";
 import { CaptureExcludedHint, PrototypeNote } from "./floating/floating-card";
 import { isCapturing, RecStatus } from "./floating/status";
 
 type CountdownSecs = RecorderSettings["countdown"];
-const COUNTDOWN_OPTIONS: ReadonlyArray<{ value: CountdownSecs; label: string }> = [
+const COUNTDOWN_OPTIONS: ReadonlyArray<{
+  value: CountdownSecs;
+  label: string;
+}> = [
   { value: 0, label: "Off" },
   { value: 3, label: "3 s" },
   { value: 5, label: "5 s" },
@@ -23,15 +27,18 @@ const COUNTDOWN_OPTIONS: ReadonlyArray<{ value: CountdownSecs; label: string }> 
  * WHAT:  The centred 3-2-1 square shown between pressing Record and the first captured frame.
  * WHY:   Gives the user a beat to switch windows or start talking. It is left out of capture
  *        and removed before the first frame, and Esc cancels without creating a file.
- * WHERE: Prototype surface "countdown"; later an above-floating, click-through panel.
+ * WHERE: Prototype surface "countdown"; the app's click-through "countdown" window (Esc is a global hotkey there).
  */
 export function CountdownSurface({ navigate }: SurfaceProps) {
   const e = useEngine();
   const n = e.settings.countdown;
+  const windowed = useWindowed();
 
-  if (e.status === "countdown") {
+  // In its own window (shown by the shell only during the countdown): just the square and hint.
+  if (windowed || e.status === "countdown") {
+    if (e.status !== "countdown") return null;
     return (
-      <div className="absolute inset-0 top-7 grid place-items-center">
+      <div className={windowed ? "p-1" : "absolute inset-0 top-7 grid place-items-center"}>
         <div className="flex flex-col items-center gap-4">
           <div
             role="timer"
@@ -85,7 +92,10 @@ export function CountdownSurface({ navigate }: SurfaceProps) {
                   const pick = COUNTDOWN_OPTIONS.find((o) => String(o.value) === v);
                   if (pick) engine.update({ countdown: pick.value });
                 }}
-                options={COUNTDOWN_OPTIONS.map((o) => ({ value: String(o.value), label: o.label }))}
+                options={COUNTDOWN_OPTIONS.map((o) => ({
+                  value: String(o.value),
+                  label: o.label,
+                }))}
               />
             </div>
           </PrototypeNote>
