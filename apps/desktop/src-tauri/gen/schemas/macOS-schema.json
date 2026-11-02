@@ -201,6 +201,12 @@
           "markdownDescription": "Enables the engine_state command without any pre-configured scope."
         },
         {
+          "description": "Enables the fit_floating command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-fit-floating",
+          "markdownDescription": "Enables the fit_floating command without any pre-configured scope."
+        },
+        {
           "description": "Enables the get_settings command without any pre-configured scope.",
           "type": "string",
           "const": "allow-get-settings",
@@ -213,10 +219,22 @@
           "markdownDescription": "Enables the go_live command without any pre-configured scope."
         },
         {
+          "description": "Enables the hide_floating command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-hide-floating",
+          "markdownDescription": "Enables the hide_floating command without any pre-configured scope."
+        },
+        {
           "description": "Enables the import_rec_settings command without any pre-configured scope.",
           "type": "string",
           "const": "allow-import-rec-settings",
           "markdownDescription": "Enables the import_rec_settings command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the open_floating command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-open-floating",
+          "markdownDescription": "Enables the open_floating command without any pre-configured scope."
         },
         {
           "description": "Enables the open_recordings_folder command without any pre-configured scope.",
@@ -333,6 +351,12 @@
           "markdownDescription": "Denies the engine_state command without any pre-configured scope."
         },
         {
+          "description": "Denies the fit_floating command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-fit-floating",
+          "markdownDescription": "Denies the fit_floating command without any pre-configured scope."
+        },
+        {
           "description": "Denies the get_settings command without any pre-configured scope.",
           "type": "string",
           "const": "deny-get-settings",
@@ -345,10 +369,22 @@
           "markdownDescription": "Denies the go_live command without any pre-configured scope."
         },
         {
+          "description": "Denies the hide_floating command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-hide-floating",
+          "markdownDescription": "Denies the hide_floating command without any pre-configured scope."
+        },
+        {
           "description": "Denies the import_rec_settings command without any pre-configured scope.",
           "type": "string",
           "const": "deny-import-rec-settings",
           "markdownDescription": "Denies the import_rec_settings command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the open_floating command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-open-floating",
+          "markdownDescription": "Denies the open_floating command without any pre-configured scope."
         },
         {
           "description": "Denies the open_recordings_folder command without any pre-configured scope.",

@@ -1,6 +1,7 @@
 //! Cortex desktop shell: windows, menu bar icon, and the typed IPC layer over
 //! the macOS recorder engine (`rec-engine-macos`, driven through `shell::Shell`).
 
+mod floating;
 mod ipc;
 mod preview;
 pub mod shell;
@@ -71,7 +72,14 @@ pub fn run() {
             };
             // Our windows must never show up in a screen recording: fail instead.
             rec_engine::screen::require_self_exclusion(true);
-            let emit = ipc::emitter(app.handle().clone());
+            // Every outbound event also drives the floating windows (countdown, HUD).
+            let floating = floating::Floating::new();
+            let to_webviews = ipc::emitter(app.handle().clone());
+            let to_windows = floating::observer(app.handle().clone(), floating.clone());
+            let fan_out = move |o: Outbound| {
+                to_windows(&o);
+                to_webviews(o);
+            };
             let emit: shell::Emit = if debug.record_secs.is_some() {
                 let handle = app.handle().clone();
                 Arc::new(move |o: Outbound| {
@@ -79,10 +87,10 @@ pub fn run() {
                         println!("cortex: recorded {}", r.path);
                         handle.exit(0);
                     }
-                    emit(o)
+                    fan_out(o)
                 })
             } else {
-                emit
+                Arc::new(fan_out)
             };
             let shell = Shell::open(opts, settings_path, emit.clone());
             if let Some(message) = &shell.load_error {
@@ -94,6 +102,7 @@ pub fn run() {
             }
             // On the main thread, as the device notifications require.
             shell.engine().watch_devices();
+            let settings = shell.settings();
             let shell = Arc::new(shell);
             app.manage(shell.clone());
             windows::setup(app)?;
@@ -122,6 +131,7 @@ pub fn run() {
                     }
                 });
             }
+            floating::init(app, floating, &settings);
             Ok(())
         })
         .build(tauri::generate_context!())
@@ -133,6 +143,7 @@ pub fn run() {
             if let Some(shell) = app.try_state::<Arc<Shell>>() {
                 shell.shutdown();
             }
+            floating::shutdown(app);
         }
         // Clicking the Dock icon brings the main window back after it was closed.
         #[cfg(target_os = "macos")]

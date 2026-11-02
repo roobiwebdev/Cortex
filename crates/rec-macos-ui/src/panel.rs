@@ -23,9 +23,8 @@ use std::ffi::c_void;
 use objc2::runtime::{AnyObject, Bool};
 use objc2::{ClassType, msg_send, sel};
 use objc2_app_kit::{
-    NSFloatingWindowLevel, NSPanel, NSPopUpMenuWindowLevel, NSStatusWindowLevel, NSWindow,
-    NSView, NSWindowCollectionBehavior, NSWindowLevel,
-    NSWindowSharingType, NSWindowStyleMask,
+    NSFloatingWindowLevel, NSPanel, NSPopUpMenuWindowLevel, NSStatusWindowLevel, NSView, NSWindow,
+    NSWindowCollectionBehavior, NSWindowLevel, NSWindowSharingType, NSWindowStyleMask,
 };
 use objc2_foundation::NSObjectProtocol;
 use raw_window_handle::{HasWindowHandle, RawWindowHandle};
@@ -197,7 +196,8 @@ fn ns_window_of(handle: &impl HasWindowHandle) -> Option<*mut c_void> {
         // SAFETY: the handle borrow (held by the caller for this call) keeps the
         // view alive; `window` is a plain getter and we are on the main thread.
         let view: &NSView = unsafe { &*(view as *const NSView) };
-        view.window().map(|w| objc2::rc::Retained::as_ptr(&w) as usize)
+        view.window()
+            .map(|w| objc2::rc::Retained::as_ptr(&w) as usize)
     })?;
     Some(window as *mut c_void)
 }
