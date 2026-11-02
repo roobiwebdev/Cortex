@@ -1,0 +1,163 @@
+/*
+   SOURCE OF TRUTH KEYWORDS: studio theme, desktop tokens, stage, ledge, rec, meter, accent hue, --accent-h
+   WHAT:  Design tokens for the Cortex desktop recorder ("studio" look). Maps the
+          shared shadcn tokens onto the studio palette and adds recorder-only
+          tokens (stage, ledge, rec, warn, ok, meter colours, display font, easings).
+   WHY:   The recorder needs a calm, precise tool look with tactile primary
+          actions and a record red that is never user-themed. Scoping everything
+          under `.studio` keeps the web app's themes untouched.
+   WHERE: Imported after globals.css by apps/desktop/src/styles.css. The desktop
+          root element carries `class="studio"` (+ `dark`) and `--accent-h`.
+*/
+
+.studio {
+  /* User-selectable accent hue. Default "Lagoon". Red hues are not offered. */
+  --accent-h: 188;
+
+  --page: #f6f6f3;
+  --surface: #ffffff;
+  --sunken: #ecede8;
+  --stage: #121316;
+  --line: #e2e3dd;
+  --ledge: #dadbd4;
+  --text: #18191b;
+  --text-muted: #62645f;
+
+  --accent-solid: hsl(var(--accent-h) 62% 33%);
+  --accent-solid-fg: #ffffff;
+  --accent-ledge: hsl(var(--accent-h) 62% 25%);
+  --accent-tint: hsl(var(--accent-h) 40% 93%);
+  --accent-text: hsl(var(--accent-h) 62% 28%);
+
+  --rec: #d93a3f;
+  --rec-ledge: #a8262b;
+  --rec-fg: #ffffff;
+  --rec-tint: #fbe4e4;
+  --warn: #c9780e;
+  --warn-tint: #fbefd9;
+  --ok: #2e8a57;
+  --ok-tint: #dff1e6;
+  --meter-low: #35b26b;
+  --meter-mid: #e8b53a;
+  --meter-high: #e5484d;
+
+  --elev-float: 0 14px 36px -12px rgb(0 0 0 / 0.28), 0 0 0 1px var(--line);
+
+  /* shadcn tokens, so every @starter/ui primitive picks up the studio look */
+  --background: var(--page);
+  --foreground: var(--text);
+  --card: var(--surface);
+  --card-foreground: var(--text);
+  --popover: var(--surface);
+  --popover-foreground: var(--text);
+  --primary: var(--accent-solid);
+  --primary-foreground: var(--accent-solid-fg);
+  --secondary: var(--sunken);
+  --secondary-foreground: var(--text);
+  --muted: var(--sunken);
+  --muted-foreground: var(--text-muted);
+  --accent: var(--accent-tint);
+  --accent-foreground: var(--accent-text);
+  --destructive: var(--rec);
+  --border: var(--line);
+  --input: var(--line);
+  --ring: var(--accent-solid);
+  --sidebar: var(--sunken);
+  --sidebar-foreground: var(--text);
+  --sidebar-primary: var(--accent-solid);
+  --sidebar-primary-foreground: var(--accent-solid-fg);
+  --sidebar-accent: var(--surface);
+  --sidebar-accent-foreground: var(--text);
+  --sidebar-border: var(--line);
+  --sidebar-ring: var(--accent-solid);
+  --radius: 14px;
+}
+
+.studio.dark {
+  --page: #0e0f11;
+  --surface: #16181b;
+  --sunken: #1d2024;
+  --stage: #08090a;
+  --line: #2a2d32;
+  --ledge: #0a0b0d;
+  --text: #ecedee;
+  --text-muted: #9a9da3;
+
+  --accent-solid: hsl(var(--accent-h) 58% 58%);
+  --accent-solid-fg: hsl(var(--accent-h) 60% 7%);
+  --accent-ledge: hsl(var(--accent-h) 50% 38%);
+  --accent-tint: hsl(var(--accent-h) 30% 15%);
+  --accent-text: hsl(var(--accent-h) 58% 66%);
+
+  --rec: #f0565b;
+  --rec-ledge: #b33237;
+  --rec-fg: #ffffff;
+  --rec-tint: #2c1415;
+  --warn: #f2b04a;
+  --warn-tint: #2a2010;
+  --ok: #4cc787;
+  --ok-tint: #12261b;
+
+  --elev-float: 0 14px 36px -12px rgb(0 0 0 / 0.6), 0 0 0 1px var(--line);
+}
+
+@theme inline {
+  --font-sans: "Inter Variable", ui-sans-serif, system-ui, sans-serif;
+  --font-display: "Bricolage Grotesque Variable", "Inter Variable", ui-sans-serif, sans-serif;
+  --font-mono: "JetBrains Mono Variable", ui-monospace, monospace;
+
+  --color-stage: var(--stage);
+  --color-ledge: var(--ledge);
+  --color-accent-solid: var(--accent-solid);
+  --color-accent-ledge: var(--accent-ledge);
+  --color-accent-tint: var(--accent-tint);
+  --color-accent-text: var(--accent-text);
+  --color-rec: var(--rec);
+  --color-rec-ledge: var(--rec-ledge);
+  --color-rec-fg: var(--rec-fg);
+  --color-rec-tint: var(--rec-tint);
+  --color-warn: var(--warn);
+  --color-warn-tint: var(--warn-tint);
+  --color-ok: var(--ok);
+  --color-ok-tint: var(--ok-tint);
+  --color-meter-low: var(--meter-low);
+  --color-meter-mid: var(--meter-mid);
+  --color-meter-high: var(--meter-high);
+
+  --shadow-ledge: 0 2px 0 var(--ledge);
+  --shadow-ledge-accent: 0 2px 0 var(--accent-ledge);
+  --shadow-ledge-rec: 0 2px 0 var(--rec-ledge);
+  --shadow-float: var(--elev-float);
+
+  --ease-out-quick: cubic-bezier(0.2, 0.9, 0.3, 1);
+  --ease-in-quick: cubic-bezier(0.5, 0, 0.9, 0.4);
+  --ease-spring: cubic-bezier(0.3, 1.25, 0.5, 1);
+
+  --animate-rec-pulse: rec-pulse 1.2s ease-in-out infinite;
+}
+
+@keyframes rec-pulse {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.4;
+  }
+}
+
+.studio .tabular {
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: "tnum", "ss01";
+}
+
+/* Reduce Motion: springs and pulses become static. */
+@media (prefers-reduced-motion: reduce) {
+  .studio *,
+  .studio *::before,
+  .studio *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}

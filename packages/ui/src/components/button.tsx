@@ -19,6 +19,12 @@ const buttonVariants = cva(
         destructive:
           "bg-destructive/10 text-destructive hover:bg-destructive/20 focus-visible:border-destructive/40 focus-visible:ring-destructive/20 dark:bg-destructive/20 dark:hover:bg-destructive/30 dark:focus-visible:ring-destructive/40",
         link: "text-primary underline-offset-4 hover:underline",
+        // Tactile actions (desktop studio look): a solid ledge underneath that collapses on press.
+        tactile:
+          "bg-primary font-semibold text-primary-foreground shadow-ledge-accent hover:brightness-105 active:translate-y-0.5 active:shadow-none",
+        record:
+          "bg-rec font-semibold text-rec-fg shadow-ledge-rec hover:brightness-105 active:translate-y-0.5 active:shadow-none",
+        soft: "bg-secondary text-secondary-foreground shadow-ledge hover:bg-secondary/80 active:translate-y-0.5 active:shadow-none",
       },
       size: {
         default: "h-8 gap-1.5 px-2.5 has-data-[icon=inline-end]:pr-2 has-data-[icon=inline-start]:pl-2",
@@ -30,6 +36,7 @@ const buttonVariants = cva(
           "size-6 rounded-[min(var(--radius-md),10px)] in-data-[slot=button-group]:rounded-lg [&_svg:not([class*='size-'])]:size-3",
         "icon-sm": "size-7 rounded-[min(var(--radius-md),12px)] in-data-[slot=button-group]:rounded-lg",
         "icon-lg": "size-9",
+        xl: "h-11 gap-2 rounded-[var(--radius)] px-5 text-[15px]",
       },
     },
     defaultVariants: {
