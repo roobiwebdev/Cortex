@@ -65,3 +65,6 @@ blob-report
 # Agent workflow (new-feature worktrees, evidence-driven-testing output)
 .worktrees/
 .artifacts/
+
+# Rust build output
+/target/
