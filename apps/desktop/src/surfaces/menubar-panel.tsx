@@ -451,6 +451,9 @@ function PanelMenu({ e, navigate }: { e: EngineState; navigate: SurfaceProps["na
         <DropdownMenuItem className={MENU_ITEM} disabled={!capturing} onClick={() => engine.togglePause()}>
           {e.status === "paused" ? "Resume" : "Pause"}
         </DropdownMenuItem>
+        <DropdownMenuItem className={MENU_ITEM} disabled={!capturing} onClick={() => navigate("hud")}>
+          Show recording HUD
+        </DropdownMenuItem>
         <DropdownMenuItem
           className={MENU_ITEM}
           disabled={!e.settings.replayEnabled}

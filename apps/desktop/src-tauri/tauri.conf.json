@@ -85,6 +85,7 @@
       },
       {
         "label": "menubar",
+        "acceptFirstMouse": true,
         "title": "Cortex",
         "url": "index.html",
         "width": 340,
@@ -100,6 +101,7 @@
       },
       {
         "label": "hud",
+        "acceptFirstMouse": true,
         "title": "Cortex HUD",
         "url": "index.html",
         "width": 560,
@@ -117,6 +119,7 @@
       },
       {
         "label": "toasts",
+        "acceptFirstMouse": true,
         "title": "Cortex notifications",
         "url": "index.html",
         "width": 380,
