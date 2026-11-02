@@ -434,7 +434,8 @@ pub fn make_window_webviews_transparent(window: &impl HasWindowHandle) -> usize 
         let mut stack = vec![root];
         while let Some(v) = stack.pop() {
             // wry's WryWebView subclasses WKWebView.
-            let is_webview = wk.is_some_and(|c| objc2_foundation::NSObjectProtocol::isKindOfClass(&*v, c));
+            let is_webview =
+                wk.is_some_and(|c| objc2_foundation::NSObjectProtocol::isKindOfClass(&*v, c));
             if is_webview {
                 let ptr = Retained::as_ptr(&v) as *mut c_void;
                 // SAFETY: `v` is a live WKWebView (retained in this scope).
