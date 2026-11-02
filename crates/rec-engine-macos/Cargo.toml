@@ -9,6 +9,7 @@ description = "Screen and camera capture, encode and streaming engine for macOS"
 name = "rec_engine"
 
 [dependencies]
+rec-core = { path = "../rec-core" }
 anyhow = "1.0.104"
 block2 = "0.6"
 clap = { version = "4.6.7", features = ["derive"] }

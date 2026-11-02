@@ -2751,6 +2751,7 @@ dependencies = [
  "objc2-quartz-core 0.3.2",
  "objc2-screen-capture-kit",
  "objc2-video-toolbox",
+ "rec-core",
  "security-framework",
  "serde",
  "serde_json",

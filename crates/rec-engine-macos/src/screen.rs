@@ -67,6 +67,8 @@ pub fn displays() -> Result<Vec<DisplayInfo>> {
 pub struct WindowInfo {
     pub id: u32,
     pub app: String,
+    /// The owning app's bundle identifier ("" if unknown).
+    pub bundle_id: String,
     pub title: String,
     /// Size in points.
     pub size: (f64, f64),
@@ -82,13 +84,15 @@ pub fn windows() -> Result<Vec<WindowInfo>> {
             if !w.isOnScreen() || w.windowLayer() != 0 {
                 continue;
             }
-            let app = w.owningApplication().map(|a| a.applicationName().to_string()).unwrap_or_default();
+            let owner = w.owningApplication();
+            let app = owner.as_ref().map(|a| a.applicationName().to_string()).unwrap_or_default();
+            let bundle_id = owner.as_ref().map(|a| a.bundleIdentifier().to_string()).unwrap_or_default();
             let title = w.title().map(|t| t.to_string()).unwrap_or_default();
             let f = w.frame();
             if (app.is_empty() && title.is_empty()) || f.size.width < 40.0 || f.size.height < 40.0 {
                 continue;
             }
-            out.push(WindowInfo { id: w.windowID(), app, title, size: (f.size.width, f.size.height), window: w });
+            out.push(WindowInfo { id: w.windowID(), app, bundle_id, title, size: (f.size.width, f.size.height), window: w });
         }
     }
     Ok(out)
