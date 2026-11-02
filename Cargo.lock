@@ -804,6 +804,8 @@ dependencies = [
 name = "cortex-desktop"
 version = "0.1.0"
 dependencies = [
+ "rec-core",
+ "rec-engine-macos",
  "serde",
  "serde_json",
  "specta",

@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-import-rec-settings"
+description = "Enables the import_rec_settings command without any pre-configured scope."
+commands.allow = ["import_rec_settings"]
+
+[[permission]]
+identifier = "deny-import-rec-settings"
+description = "Denies the import_rec_settings command without any pre-configured scope."
+commands.deny = ["import_rec_settings"]

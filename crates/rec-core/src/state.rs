@@ -187,6 +187,8 @@ pub struct Recording {
     pub name: String,
     pub path: String,
     pub duration_secs: f64,
+    // JS numbers are exact to 2^53 (9 PB, 9e15 frames): safe as `number`.
+    #[cfg_attr(feature = "specta", specta(type = f64))]
     pub bytes: u64,
     /// Unix time in milliseconds.
     pub created_at: f64,
@@ -209,6 +211,8 @@ pub struct StreamStatus {
     /// Human-readable connection state.
     pub state: String,
     pub bitrate_kbps: u32,
+    // JS numbers are exact to 2^53 (9 PB, 9e15 frames): safe as `number`.
+    #[cfg_attr(feature = "specta", specta(type = f64))]
     pub dropped_frames: u64,
 }
 
@@ -220,7 +224,11 @@ pub struct Progress {
     pub countdown_left: u32,
     /// Recorded seconds, excluding pauses.
     pub elapsed_secs: f64,
+    // JS numbers are exact to 2^53 (9 PB, 9e15 frames): safe as `number`.
+    #[cfg_attr(feature = "specta", specta(type = f64))]
     pub bytes_written: u64,
+    // JS numbers are exact to 2^53 (9 PB, 9e15 frames): safe as `number`.
+    #[cfg_attr(feature = "specta", specta(type = f64))]
     pub dropped_frames: u64,
     pub replay_buffered_secs: f64,
 }
@@ -232,7 +240,11 @@ pub struct EngineState {
     pub status: EngineStatus,
     pub countdown_left: u32,
     pub elapsed_secs: f64,
+    // JS numbers are exact to 2^53 (9 PB, 9e15 frames): safe as `number`.
+    #[cfg_attr(feature = "specta", specta(type = f64))]
     pub bytes_written: u64,
+    // JS numbers are exact to 2^53 (9 PB, 9e15 frames): safe as `number`.
+    #[cfg_attr(feature = "specta", specta(type = f64))]
     pub dropped_frames: u64,
     /// Streaming to at least one destination.
     pub live: bool,
@@ -247,6 +259,8 @@ pub struct EngineState {
     pub mics: Vec<InputDevice>,
     /// Recordings made in this run, newest first.
     pub recordings: Vec<Recording>,
+    // JS numbers are exact to 2^53 (9 PB, 9e15 frames): safe as `number`.
+    #[cfg_attr(feature = "specta", specta(type = f64))]
     pub free_disk_bytes: u64,
     /// The output device's latency (the default system-audio offset).
     pub output_latency_ms: Option<f64>,
