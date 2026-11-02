@@ -136,8 +136,9 @@ pub fn run() {
                 });
             }
             floating::init(app, floating, &settings);
-            #[cfg(debug_assertions)]
+            // Debug builds only: release builds keep every floating window out of captures.
             if debug.capturable {
+                #[cfg(debug_assertions)]
                 floating::make_capturable(app.handle());
             }
             Ok(())

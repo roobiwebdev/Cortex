@@ -69,7 +69,7 @@ jobs:
         run: cargo fmt --check -p rec-core -p cortex-desktop
 
       - name: cargo clippy (crates we own)
-        run: cargo clippy --locked -p rec-core -p cortex-desktop --all-targets -- -D warnings
+        run: cargo clippy --locked -p rec-core -p cortex-desktop -p rec-macos-ui --no-deps --all-targets -- -D warnings
 
       - name: cargo test
         # Release mode: four tests of the legacy egui app (crates/rec-cli/src/app) trip a
