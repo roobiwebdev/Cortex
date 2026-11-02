@@ -66,6 +66,15 @@ export const commands = {
 	openFloating: (surface: FloatingSurface) => typedError<null, EngineError>(__TAURI_INVOKE("open_floating", { surface })),
 	/**  Hide the calling floating window. A hidden HUD stays hidden until the next recording. */
 	hideFloating: () => typedError<null, EngineError>(__TAURI_INVOKE("hide_floating")),
+	/**
+	 *  The calling window has rendered and listens for events. The toasts window then gets
+	 *  the toasts held for it.
+	 */
+	windowReady: () => __TAURI_INVOKE<void>("window_ready"),
+	/**  Show a toast in the toasts window (from any window; failed commands use it). */
+	pushToast: (toast: UiToast_Deserialize) => typedError<null, EngineError>(__TAURI_INVOKE("push_toast", { toast })),
+	/**  Show (creating it if needed) and focus one of the app's normal windows. */
+	openWindow: (window: AppWindow) => typedError<null, EngineError>(__TAURI_INVOKE("open_window", { window })),
 };
 
 /** Events */
@@ -93,6 +102,9 @@ export type Action =
 "fail" | 
 /**  The file is written (or deleted after a discard). */
 "finalized";
+
+/**  A window `open_window` may show. The floating ones open through `open_floating`. */
+export type AppWindow = "main" | "settings" | "onboarding" | "trim";
 
 /**  Tracks when both system audio and mic are recorded: mix + stems, mix only, stems only. */
 export type AudioTracks = "both" | "mix" | "stems";
@@ -491,6 +503,30 @@ export type StreamStatus = {
 };
 
 export type ThemePref = "system" | "light" | "dark";
+
+/**  A toast another window asks the toasts window to show (`Toast` in `lib/types.ts`). */
+export type UiToast = UiToast_Serialize | UiToast_Deserialize;
+
+/**  The kind of a toast sent from a window (matches `ToastKind` in `lib/types.ts`). */
+export type UiToastKind = "saved" | "replay" | "warning";
+
+/**  A toast another window asks the toasts window to show (`Toast` in `lib/types.ts`). */
+export type UiToast_Deserialize = {
+	id: string,
+	kind: UiToastKind,
+	title: string,
+	detail: string,
+	recordingId?: string | null,
+};
+
+/**  A toast another window asks the toasts window to show (`Toast` in `lib/types.ts`). */
+export type UiToast_Serialize = {
+	id: string,
+	kind: UiToastKind,
+	title: string,
+	detail: string,
+	recordingId?: string,
+};
 
 /* Tauri Specta runtime */
 async function typedError<T, E>(result: Promise<T>): Promise<{ status: "ok"; data: T } | { status: "error"; error: E }> {

@@ -249,10 +249,22 @@
           "markdownDescription": "Enables the open_system_settings command without any pre-configured scope."
         },
         {
+          "description": "Enables the open_window command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-open-window",
+          "markdownDescription": "Enables the open_window command without any pre-configured scope."
+        },
+        {
           "description": "Enables the pause command without any pre-configured scope.",
           "type": "string",
           "const": "allow-pause",
           "markdownDescription": "Enables the pause command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the push_toast command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-push-toast",
+          "markdownDescription": "Enables the push_toast command without any pre-configured scope."
         },
         {
           "description": "Enables the remove_stream_key command without any pre-configured scope.",
@@ -327,6 +339,12 @@
           "markdownDescription": "Enables the update_settings command without any pre-configured scope."
         },
         {
+          "description": "Enables the window_ready command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-window-ready",
+          "markdownDescription": "Enables the window_ready command without any pre-configured scope."
+        },
+        {
           "description": "Denies the cancel_countdown command without any pre-configured scope.",
           "type": "string",
           "const": "deny-cancel-countdown",
@@ -399,10 +417,22 @@
           "markdownDescription": "Denies the open_system_settings command without any pre-configured scope."
         },
         {
+          "description": "Denies the open_window command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-open-window",
+          "markdownDescription": "Denies the open_window command without any pre-configured scope."
+        },
+        {
           "description": "Denies the pause command without any pre-configured scope.",
           "type": "string",
           "const": "deny-pause",
           "markdownDescription": "Denies the pause command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the push_toast command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-push-toast",
+          "markdownDescription": "Denies the push_toast command without any pre-configured scope."
         },
         {
           "description": "Denies the remove_stream_key command without any pre-configured scope.",
@@ -475,6 +505,12 @@
           "type": "string",
           "const": "deny-update-settings",
           "markdownDescription": "Denies the update_settings command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the window_ready command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-window-ready",
+          "markdownDescription": "Denies the window_ready command without any pre-configured scope."
         },
         {
           "description": "Default core plugins set.\n#### This default permission set includes:\n\n- `core:path:default`\n- `core:event:default`\n- `core:window:default`\n- `core:webview:default`\n- `core:app:default`\n- `core:image:default`\n- `core:resources:default`\n- `core:menu:default`\n- `core:tray:default`",

@@ -34,3 +34,11 @@ html[data-preview-hole] body {
 html[data-floating]:not([data-floating="region"]) .shadow-float {
   box-shadow: none;
 }
+
+/* A hidden window (ordered out, minimised, covered or on another Space) pauses every CSS
+   animation, so it costs no CPU until it is shown again. `lib/visibility.ts` sets the flag. */
+html[data-hidden] *,
+html[data-hidden] *::before,
+html[data-hidden] *::after {
+  animation-play-state: paused !important;
+}

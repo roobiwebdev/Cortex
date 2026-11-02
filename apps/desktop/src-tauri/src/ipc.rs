@@ -108,6 +108,10 @@ fn label_in(t: &EventTarget, labels: &[String]) -> bool {
     }
 }
 
+fn not_toasts(t: &EventTarget) -> bool {
+    !label_in(t, &[crate::floating::TOASTS.to_string()])
+}
+
 /// Sends the shell's events to the webviews as their typed Tauri events. Every window
 /// is its own WebKit process, and re-rendering hidden ones at the meter rate cost more
 /// CPU than the recording, so (with `lib/engine.ts` listening per window) levels go only
@@ -138,8 +142,12 @@ pub fn emitter<R: Runtime>(app: AppHandle<R>) -> Emit {
                 let labels = visible_labels(&app, &visible);
                 LevelsEvent(l).emit_filter(&app, |t| label_in(t, &labels))
             }
-            Outbound::RecordingFinished(r) => RecordingFinishedEvent(r).emit(&app),
-            Outbound::ReplaySaved(path) => ReplaySavedEvent { path }.emit(&app),
+            // The toasts window gets these through `floating::observer`, which builds it on
+            // demand and holds them until it listens.
+            Outbound::RecordingFinished(r) => {
+                RecordingFinishedEvent(r).emit_filter(&app, not_toasts)
+            }
+            Outbound::ReplaySaved(path) => ReplaySavedEvent { path }.emit_filter(&app, not_toasts),
             Outbound::Error {
                 message,
                 recoverable,
@@ -147,7 +155,7 @@ pub fn emitter<R: Runtime>(app: AppHandle<R>) -> Emit {
                 message,
                 recoverable,
             }
-            .emit(&app),
+            .emit_filter(&app, not_toasts),
             Outbound::Settings(s) => SettingsChangedEvent(s).emit(&app),
         };
         if let Err(err) = r {
@@ -367,6 +375,9 @@ pub fn builder() -> tauri_specta::Builder<tauri::Wry> {
             crate::floating::fit_floating,
             crate::floating::open_floating,
             crate::floating::hide_floating,
+            crate::floating::window_ready,
+            crate::floating::push_toast,
+            crate::windows::open_window,
         ])
         .events(collect_events![
             EngineStateEvent,

@@ -37,16 +37,17 @@
     "allow-fit-floating",
     "allow-open-floating",
     "allow-hide-floating",
+    "allow-window-ready",
+    "allow-push-toast",
+    "allow-open-window",
     "core:event:allow-listen",
     "core:event:allow-unlisten",
-    "core:event:allow-emit-to",
     "core:window:allow-show",
     "core:window:allow-hide",
     "core:window:allow-set-focus",
     "core:window:allow-set-position",
     "core:window:allow-set-size",
     "core:window:allow-center",
-    "core:window:allow-get-all-windows",
     "core:window:allow-start-dragging"
   ]
 }

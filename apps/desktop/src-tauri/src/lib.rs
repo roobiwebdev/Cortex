@@ -135,12 +135,9 @@ pub fn run() {
                     }
                 });
             }
-            floating::init(app, floating, &settings);
             // Debug builds only: release builds keep every floating window out of captures.
-            if debug.capturable {
-                #[cfg(debug_assertions)]
-                floating::make_capturable(app.handle());
-            }
+            let capturable = debug.capturable && cfg!(debug_assertions);
+            floating::init(app, floating, &settings, capturable);
             Ok(())
         })
         .build(tauri::generate_context!())
