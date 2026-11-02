@@ -1,5 +1,6 @@
 //! ScreenCaptureKit: display video, system audio, and microphone.
 
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, mpsc};
 use std::time::Duration;
 
@@ -223,6 +224,88 @@ pub struct ScreenCapture {
     _queues: Vec<dispatch2::DispatchRetained<DispatchQueue>>,
 }
 
+/// Set by GUI hosts (the Cortex app): their windows must never be recorded,
+/// so a capture that can't exclude them fails instead of starting.
+static REQUIRE_SELF_EXCLUSION: AtomicBool = AtomicBool::new(false);
+
+/// Call once from an app that shows windows on screen. The CLI has none to
+/// hide, so it leaves this off and records even when ScreenCaptureKit
+/// doesn't list the process.
+pub fn require_self_exclusion(on: bool) {
+    REQUIRE_SELF_EXCLUSION.store(on, Ordering::SeqCst);
+}
+
+/// What to do about our own windows, given whether ScreenCaptureKit listed
+/// this process on the first look and (if it was needed) after a refresh.
+#[derive(Debug, PartialEq, Eq)]
+enum SelfExclusion {
+    /// Found: exclude it.
+    Exclude,
+    /// Not listed, but there is nothing that must be hidden (CLI).
+    NotNeeded,
+    /// Not listed after a refresh, and our windows must stay out.
+    Fail,
+    /// Not listed on the first look: refresh the content and look again.
+    Retry,
+}
+
+fn self_exclusion(first: bool, after_refresh: Option<bool>, required: bool) -> SelfExclusion {
+    match (first, after_refresh) {
+        (true, _) | (false, Some(true)) => SelfExclusion::Exclude,
+        (false, None) => SelfExclusion::Retry,
+        (false, Some(false)) if required => SelfExclusion::Fail,
+        (false, Some(false)) => SelfExclusion::NotNeeded,
+    }
+}
+
+/// This process's entry in ScreenCaptureKit's application list, looked up
+/// twice (a just-opened window can be missing from the first snapshot).
+/// Errors when a GUI host's windows can't be excluded.
+fn own_application() -> Result<Option<Retained<SCRunningApplication>>> {
+    let me = std::process::id() as i32;
+    let required = REQUIRE_SELF_EXCLUSION.load(Ordering::SeqCst);
+    let find = || -> Result<Option<Retained<SCRunningApplication>>> {
+        let c = shareable_content();
+        if required {
+            Ok(unsafe { c?.applications() }.iter().find(|a| unsafe { a.processID() } == me))
+        } else {
+            Ok(c.ok().and_then(|c| unsafe { c.applications() }.iter().find(|a| unsafe { a.processID() } == me)))
+        }
+    };
+    let first = find()?;
+    let mut after = None;
+    loop {
+        match self_exclusion(first.is_some(), after.as_ref().map(Option::is_some), required) {
+            SelfExclusion::Exclude => return Ok(first.or_else(|| after.flatten())),
+            SelfExclusion::NotNeeded => return Ok(None),
+            SelfExclusion::Fail => bail!(
+                "could not hide this app's own windows from the recording (ScreenCaptureKit did not list the app), so recording did not start; try again"
+            ),
+            SelfExclusion::Retry => {
+                std::thread::sleep(Duration::from_millis(100));
+                after = Some(find()?);
+            }
+        }
+    }
+}
+
+#[cfg(test)]
+mod self_exclusion_tests {
+    use super::{SelfExclusion::*, self_exclusion};
+
+    #[test]
+    fn own_windows_are_excluded_or_the_capture_fails() {
+        assert_eq!(self_exclusion(true, None, true), Exclude);
+        assert_eq!(self_exclusion(false, None, true), Retry);
+        assert_eq!(self_exclusion(false, Some(true), true), Exclude);
+        // A GUI host never silently records its own windows.
+        assert_eq!(self_exclusion(false, Some(false), true), Fail);
+        // The CLI has no windows: record without the exclusion.
+        assert_eq!(self_exclusion(false, None, false), Retry);
+        assert_eq!(self_exclusion(false, Some(false), false), NotNeeded);
+    }
+}
+
 unsafe impl Send for ScreenCapture {}
 
 impl ScreenCapture {
@@ -234,12 +317,9 @@ impl ScreenCapture {
                     if let Some(r) = region {
                         conf.setSourceRect(*r);
                     }
-                    // Exclude rec's own windows (the GUI preview), which
-                    // would otherwise be recorded as a hall of mirrors.
-                    let me = std::process::id() as i32;
-                    let own = shareable_content()
-                        .ok()
-                        .and_then(|c| c.applications().iter().find(|a| a.processID() == me));
+                    // Exclude our own windows (the preview, HUD, toasts),
+                    // which would otherwise be recorded as a hall of mirrors.
+                    let own = own_application()?;
                     if std::env::var_os("REC_DEBUG").is_some() {
                         eprintln!("rec: debug: excluding own app from capture: {}", own.is_some());
                     }
