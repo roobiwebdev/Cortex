@@ -1,11 +1,12 @@
 import { useSyncExternalStore } from "react";
 import { isTauri } from "@tauri-apps/api/core";
-import { emitTo, listen } from "@tauri-apps/api/event";
+import { listen } from "@tauri-apps/api/event";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 
 import { commands, events, type EngineError } from "../ipc/bindings";
 import * as mock from "./mock-engine";
 import { errorMessage, errorToast, isToast, newToastId, pushToastTo, replayToast, savedToast } from "./toasts";
+import { onPageShown, pageHidden } from "./visibility";
 import type { EngineSnapshot, EngineState, Permission, PermissionState, RecorderSettings, Toast } from "./types";
 
 /**
@@ -28,6 +29,8 @@ let snapshot: EngineSnapshot | undefined;
 let settings: RecorderSettings | undefined;
 let toasts: Toast[] = [];
 let composed: EngineState | undefined;
+/** A state event arrived while the page was hidden and has not been rendered yet. */
+let stateBehind = false;
 const listeners = new Set<() => void>();
 
 function changed() {
@@ -49,7 +52,10 @@ function current(): EngineState {
 
 function toast(t: Toast) {
   if (!ownsToasts) {
-    emitTo(TOASTS_WINDOW, TOAST_EVENT, t).catch((err: unknown) => console.error("cortex: toast not sent", err));
+    // Through the shell: it creates the toasts window if needed and holds the toast until it is ready.
+    commands
+      .pushToast({ ...t, recordingId: t.recordingId ?? null })
+      .catch((err: unknown) => console.error("cortex: toast not sent", err));
     return;
   }
   toasts = pushToastTo(toasts, t);
@@ -169,7 +175,9 @@ export async function connectEngine(): Promise<void> {
   await Promise.all([
     events.engineState(self).listen((e) => {
       snapshot = e.payload;
-      changed();
+      // A hidden window renders the latest state when it is shown, not on every update.
+      if (pageHidden()) stateBehind = true;
+      else changed();
     }),
     events.engineLevels(self).listen((e) => {
       if (!snapshot) return;
@@ -179,6 +187,11 @@ export async function connectEngine(): Promise<void> {
     events.settingsChanged.listen((e) => setSettings(e.payload)),
     ...(ownsToasts ? listenForToasts() : []),
   ]);
+  onPageShown(() => {
+    if (!stateBehind) return;
+    stateBehind = false;
+    changed();
+  });
   const [s, st] = await Promise.all([commands.getSettings(), commands.engineState()]);
   settings = s;
   snapshot = st;

@@ -27,6 +27,9 @@ const COMMANDS: &[&str] = &[
     "fit_floating",
     "open_floating",
     "hide_floating",
+    "window_ready",
+    "push_toast",
+    "open_window",
 ];
 
 fn main() {

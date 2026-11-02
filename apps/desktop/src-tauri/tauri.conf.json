@@ -45,6 +45,7 @@
       },
       {
         "label": "settings",
+        "create": false,
         "title": "Settings",
         "url": "index.html",
         "width": 860,
@@ -58,6 +59,7 @@
       },
       {
         "label": "onboarding",
+        "create": false,
         "title": "Welcome to Cortex",
         "url": "index.html",
         "width": 880,
@@ -71,6 +73,7 @@
       },
       {
         "label": "trim",
+        "create": false,
         "title": "Quick trim",
         "url": "index.html",
         "width": 1000,
@@ -85,6 +88,7 @@
       },
       {
         "label": "menubar",
+        "create": false,
         "acceptFirstMouse": true,
         "title": "Cortex",
         "url": "index.html",
@@ -101,6 +105,7 @@
       },
       {
         "label": "hud",
+        "create": false,
         "acceptFirstMouse": true,
         "title": "Cortex HUD",
         "url": "index.html",
@@ -119,6 +124,7 @@
       },
       {
         "label": "toasts",
+        "create": false,
         "acceptFirstMouse": true,
         "title": "Cortex notifications",
         "url": "index.html",
@@ -137,6 +143,7 @@
       },
       {
         "label": "countdown",
+        "create": false,
         "title": "Cortex countdown",
         "url": "index.html",
         "width": 320,
@@ -155,6 +162,7 @@
       },
       {
         "label": "region",
+        "create": false,
         "title": "Cortex region picker",
         "url": "index.html",
         "width": 1440,

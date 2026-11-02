@@ -1,7 +1,10 @@
 //! Window and menu bar behaviour.
 //!
-//! All windows are declared in `tauri.conf.json`; this module wires the menu bar
-//! (tray) icon to the "menubar" panel and keeps the main window alive on close.
+//! Only the main window exists at launch. Every other window in `tauri.conf.json` is
+//! marked `"create": false` and built on first use by [`ensure`], from that same config.
+//! A hidden one is destroyed after [`IDLE_CLOSE`] (see [`reap`]), so it has no WebKit
+//! process while nobody needs it. This module also wires the menu bar (tray) icon to the
+//! "menubar" panel and keeps the main window alive on close.
 //!
 //! The floating windows' native behaviour (levels, non-activation, capture
 //! exclusion), placement and engine-driven visibility live in `floating.rs`.
@@ -9,18 +12,37 @@
 //! (recording clock, drag target) replacing the tray icon.
 
 use std::{
+    collections::HashMap,
     sync::Mutex,
     time::{Duration, Instant},
 };
 
+use rec_core::api::EngineError;
+use serde::{Deserialize, Serialize};
+use specta::Type;
 use tauri::{
-    App, AppHandle, Manager, PhysicalPosition, Rect, WebviewWindow, WindowEvent,
+    App, AppHandle, Manager, PhysicalPosition, Rect, WebviewWindow, WebviewWindowBuilder,
+    WindowEvent,
     menu::{Menu, MenuItem},
     tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent},
 };
 
+use crate::floating::{self, COUNTDOWN, HUD, REGION, TOASTS};
+
 pub(crate) const MENUBAR: &str = "menubar";
 pub(crate) const MAIN: &str = "main";
+pub(crate) const SETTINGS: &str = "settings";
+pub(crate) const ONBOARDING: &str = "onboarding";
+pub(crate) const TRIM: &str = "trim";
+
+/// Windows built on first use and destroyed once hidden for [`IDLE_CLOSE`].
+pub(crate) const LAZY: [&str; 8] = [
+    SETTINGS, ONBOARDING, TRIM, MENUBAR, HUD, TOASTS, COUNTDOWN, REGION,
+];
+/// A lazy window hidden this long is destroyed, so its WebKit process exits.
+const IDLE_CLOSE: Duration = Duration::from_secs(30);
+/// How often hidden windows are checked.
+const REAP_EVERY: Duration = Duration::from_secs(5);
 /// Logical width of the menu bar panel; its height follows the content (set from the webview).
 const MENUBAR_WIDTH: f64 = 340.0;
 /// Gap between the menu bar and the panel, in logical points.
@@ -30,8 +52,180 @@ const MENUBAR_GAP: f64 = 6.0;
 #[derive(Default)]
 struct PanelHiddenAt(Mutex<Option<Instant>>);
 
+/// When each lazy window was built, and since when it has been hidden.
+#[derive(Default)]
+struct Lifecycle(Mutex<HashMap<&'static str, Life>>);
+
+struct Life {
+    created: Instant,
+    hidden_since: Option<Instant>,
+}
+
+impl Lifecycle {
+    fn lock(&self) -> std::sync::MutexGuard<'_, HashMap<&'static str, Life>> {
+        self.0.lock().unwrap_or_else(|p| p.into_inner())
+    }
+}
+
+fn lazy_label(label: &str) -> Option<&'static str> {
+    LAZY.into_iter().find(|l| *l == label)
+}
+
+/**
+ * SOURCE OF TRUTH KEYWORDS: ensure window, lazy window, create on demand, from_config, WebviewWindowBuilder
+ * WHAT:  Returns the window with this label, building it from its `tauri.conf.json` entry
+ *        (marked `"create": false`) if it does not exist yet, and marks it as in use.
+ * WHY:   Each window is its own WebKit process (40 to 200 MB, and CPU while it animates).
+ *        Building on demand keeps launch to the main window only.
+ * WHERE: every place that shows a window: floating.rs (countdown, HUD, toasts, region),
+ *        the menu bar panel below, and `open_window`. Call on the main thread.
+ */
+pub(crate) fn ensure(app: &AppHandle, label: &str) -> Option<WebviewWindow> {
+    let lazy = lazy_label(label);
+    if let Some(win) = app.get_webview_window(label) {
+        if let (Some(l), Some(life)) = (lazy, app.try_state::<Lifecycle>())
+            && let Some(entry) = life.lock().get_mut(l)
+        {
+            entry.hidden_since = None;
+        }
+        return Some(win);
+    }
+    let lazy = lazy?;
+    let config = app
+        .config()
+        .app
+        .windows
+        .iter()
+        .find(|c| c.label == label)?
+        .clone();
+    let started = Instant::now();
+    let win = match WebviewWindowBuilder::from_config(app, &config).and_then(|b| b.build()) {
+        Ok(w) => w,
+        Err(e) => {
+            eprintln!("cortex: could not create the {label} window: {e}");
+            return None;
+        }
+    };
+    if let Some(life) = app.try_state::<Lifecycle>() {
+        life.lock().insert(
+            lazy,
+            Life {
+                created: started,
+                hidden_since: None,
+            },
+        );
+    }
+    if label == MENUBAR {
+        let handle = app.clone();
+        win.on_window_event(move |event| {
+            if let WindowEvent::Focused(false) = event {
+                hide_menubar(&handle);
+            }
+        });
+    }
+    floating::on_created(app, &win);
+    eprintln!(
+        "cortex: created the {label} window in {} ms",
+        started.elapsed().as_millis()
+    );
+    Some(win)
+}
+
+/// Logs how long a lazy window took from creation to its first render (`window_ready`).
+pub(crate) fn log_ready(app: &AppHandle, label: &str) {
+    let Some(life) = app.try_state::<Lifecycle>() else {
+        return;
+    };
+    if let Some(entry) = lazy_label(label).and_then(|l| life.lock().get(l).map(|e| e.created)) {
+        eprintln!(
+            "cortex: {label} window ready {} ms after creation",
+            entry.elapsed().as_millis()
+        );
+    }
+}
+
+/// Destroys lazy windows that have been hidden for [`IDLE_CLOSE`], unless floating.rs
+/// still needs them (HUD and menu bar panel while recording, the countdown while warm).
+fn reap(app: &AppHandle) {
+    let Some(life) = app.try_state::<Lifecycle>() else {
+        return;
+    };
+    let now = Instant::now();
+    for label in LAZY {
+        let Some(win) = app.get_webview_window(label) else {
+            life.lock().remove(label);
+            continue;
+        };
+        let shown = win.is_visible().unwrap_or(true) || win.is_minimized().unwrap_or(false);
+        let expired = {
+            let mut map = life.lock();
+            let entry = map.entry(label).or_insert(Life {
+                created: now,
+                hidden_since: None,
+            });
+            if shown {
+                entry.hidden_since = None;
+                false
+            } else {
+                now.duration_since(*entry.hidden_since.get_or_insert(now)) >= IDLE_CLOSE
+            }
+        };
+        if !expired || floating::keep_warm(app, label) {
+            continue;
+        }
+        life.lock().remove(label);
+        floating::before_destroy(app, label);
+        match win.destroy() {
+            Ok(()) => eprintln!("cortex: closed the hidden {label} window"),
+            Err(e) => eprintln!("cortex: could not close the {label} window: {e}"),
+        }
+    }
+}
+
+/// A window `open_window` may show. The floating ones open through `open_floating`.
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, Type)]
+#[serde(rename_all = "kebab-case")]
+pub enum AppWindow {
+    Main,
+    Settings,
+    Onboarding,
+    Trim,
+}
+
+/// Show (creating it if needed) and focus one of the app's normal windows.
+#[tauri::command]
+#[specta::specta]
+pub fn open_window(app: AppHandle, window: AppWindow) -> Result<(), EngineError> {
+    let label = match window {
+        AppWindow::Main => {
+            show_main(&app);
+            return Ok(());
+        }
+        AppWindow::Settings => SETTINGS,
+        AppWindow::Onboarding => ONBOARDING,
+        AppWindow::Trim => TRIM,
+    };
+    let win = ensure(&app, label)
+        .ok_or_else(|| EngineError::failed(format!("Could not open the {label} window")))?;
+    let fail = |e: tauri::Error| EngineError::failed(format!("Could not show the window: {e}"));
+    win.unminimize().map_err(fail)?;
+    win.show().map_err(fail)?;
+    win.set_focus().map_err(fail)
+}
+
 pub fn setup(app: &mut App) -> tauri::Result<()> {
     app.manage(PanelHiddenAt::default());
+    app.manage(Lifecycle::default());
+    let handle = app.handle().clone();
+    std::thread::spawn(move || {
+        loop {
+            std::thread::sleep(REAP_EVERY);
+            let h = handle.clone();
+            if handle.run_on_main_thread(move || reap(&h)).is_err() {
+                break;
+            }
+        }
+    });
 
     let open = MenuItem::with_id(app, "open", "Open Cortex", true, None::<&str>)?;
     let quit = MenuItem::with_id(app, "quit", "Quit Cortex", true, Some("CmdOrCtrl+Q"))?;
@@ -61,15 +255,6 @@ pub fn setup(app: &mut App) -> tauri::Result<()> {
             }
         })
         .build(app)?;
-
-    if let Some(panel) = app.get_webview_window(MENUBAR) {
-        let handle = app.handle().clone();
-        panel.on_window_event(move |event| {
-            if let WindowEvent::Focused(false) = event {
-                hide_menubar(&handle);
-            }
-        });
-    }
 
     // Closing the main window hides it; the app keeps running in the menu bar.
     if let Some(main) = app.get_webview_window(MAIN) {
@@ -104,10 +289,10 @@ pub(crate) fn hide_menubar(app: &AppHandle) {
 }
 
 fn toggle_menubar(app: &AppHandle, tray_rect: Rect) {
-    let Some(panel) = app.get_webview_window(MENUBAR) else {
-        return;
-    };
-    if panel.is_visible().unwrap_or(false) {
+    if app
+        .get_webview_window(MENUBAR)
+        .is_some_and(|p| p.is_visible().unwrap_or(false))
+    {
         hide_menubar(app);
         return;
     }
@@ -122,6 +307,9 @@ fn toggle_menubar(app: &AppHandle, tray_rect: Rect) {
     if just_hidden {
         return;
     }
+    let Some(panel) = ensure(app, MENUBAR) else {
+        return;
+    };
     if let Err(err) = place_under(&panel, tray_rect) {
         eprintln!("cortex: could not position the menu bar panel: {err}");
     }
@@ -131,8 +319,7 @@ fn toggle_menubar(app: &AppHandle, tray_rect: Rect) {
 
 /// Opens the menu bar panel under the status item (from the HUD or a hotkey, not a click).
 pub(crate) fn open_menubar(app: &AppHandle) {
-    let (Some(panel), Some(tray)) = (app.get_webview_window(MENUBAR), app.tray_by_id("status"))
-    else {
+    let (Some(panel), Some(tray)) = (ensure(app, MENUBAR), app.tray_by_id("status")) else {
         return;
     };
     if let Ok(Some(rect)) = tray.rect()

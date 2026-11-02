@@ -1,6 +1,6 @@
 import * as React from "react";
-import { Window } from "@tauri-apps/api/window";
 
+import { commands, type AppWindow } from "../ipc/bindings";
 import { useEngine } from "../lib/engine";
 import { WindowedContext, floatingWindow } from "../lib/floating";
 import { useStudioTheme } from "../lib/use-studio-theme";
@@ -34,12 +34,17 @@ export function TauriWindow({ label }: { label: string }) {
   const navigate = React.useCallback(
     (id: SurfaceId) => {
       if (id === "menubar" || id === "region" || id === "hud") floatingWindow.open(id);
-      else void showWindow(id);
+      else if (id === "main" || id === "settings" || id === "onboarding" || id === "trim") openWindow(id);
       // A transient panel gets out of the way once it has opened something else.
       if (TRANSIENT.has(label)) floatingWindow.hide();
     },
     [label],
   );
+
+  // Tell the shell this window is listening (it holds toasts back until then).
+  React.useEffect(() => {
+    commands.windowReady().catch(report("window_ready"));
+  }, []);
 
   // Esc closes the menu bar panel (the region picker handles its own Esc).
   React.useEffect(() => {
@@ -119,9 +124,11 @@ function FittedHost({ label, children }: { label: string; children: React.ReactN
   );
 }
 
-async function showWindow(label: SurfaceId) {
-  const win = await Window.getByLabel(label);
-  if (!win) return;
-  await win.show();
-  await win.setFocus();
+/** Windows are created on first use, so Rust opens them (`open_window`), not `Window.getByLabel`. */
+function openWindow(window: AppWindow) {
+  commands.openWindow(window).catch(report("open_window"));
+}
+
+function report(what: string) {
+  return (err: unknown) => console.error(`cortex: ${what} failed`, err);
 }

@@ -15,7 +15,7 @@ use std::sync::{Arc, Mutex, MutexGuard};
 
 use rec_core::api::EngineError;
 use rec_core::settings::RecorderSettings;
-use rec_core::state::EngineStatus;
+use rec_core::state::{EngineStatus, Recording};
 use rec_engine::hotkey;
 use rec_macos_ui::{
     FloatingKind, configure_floating_window, invalidate_window_shadow,
@@ -24,9 +24,12 @@ use rec_macos_ui::{
 use serde::{Deserialize, Serialize};
 use specta::Type;
 use tauri::{
-    App, AppHandle, LogicalSize, Manager, Monitor, PhysicalPosition, WebviewWindow, WindowEvent,
+    App, AppHandle, Emitter, LogicalSize, Manager, Monitor, PhysicalPosition, WebviewWindow,
+    WindowEvent,
 };
+use tauri_specta::Event;
 
+use crate::ipc::{EngineErrorEvent, RecordingFinishedEvent, ReplaySavedEvent};
 use crate::shell::{Outbound, Shell};
 use crate::windows::{self, MAIN, MENUBAR};
 
@@ -59,6 +62,13 @@ const HOTKEY_ESCAPE: u32 = 3;
 /// kVK_Escape.
 const KEY_ESCAPE: u32 = 53;
 
+/// Toasts other windows send to the toasts window (`lib/engine.ts` listens for it).
+const TOAST_EVENT: &str = "ui://toast";
+/// Toasts held while the toasts window loads; older ones are dropped beyond this.
+const MAX_PENDING_TOASTS: usize = 8;
+/// Longest toast title or detail accepted from a webview, in characters.
+const MAX_TOAST_TEXT: usize = 500;
+
 /// What the orchestrator remembers between events. Only touched briefly; window work
 /// runs on the main thread.
 #[derive(Default)]
@@ -72,6 +82,43 @@ struct Inner {
     /// The HUD's bottom-centre per display, in logical points from the display's top-left.
     hud_spots: HashMap<String, (f64, f64)>,
     hud_spots_path: Option<PathBuf>,
+    /// Seconds of countdown before a recording (settings); above 0 keeps the countdown warm.
+    countdown_secs: u32,
+    /// The toasts window has rendered and listens; until then toasts wait in `pending_toasts`.
+    toasts_ready: bool,
+    pending_toasts: Vec<ToastEvent>,
+    /// Debug runs: new floating windows are made visible to screenshots.
+    capturable: bool,
+}
+
+/// Something the toasts window turns into a toast.
+#[derive(Debug, Clone)]
+enum ToastEvent {
+    Finished(Recording),
+    ReplaySaved(String),
+    Error { message: String, recoverable: bool },
+    Ui(UiToast),
+}
+
+/// The kind of a toast sent from a window (matches `ToastKind` in `lib/types.ts`).
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, Type)]
+#[serde(rename_all = "kebab-case")]
+pub enum UiToastKind {
+    Saved,
+    Replay,
+    Warning,
+}
+
+/// A toast another window asks the toasts window to show (`Toast` in `lib/types.ts`).
+#[derive(Debug, Clone, Serialize, Deserialize, Type)]
+#[serde(rename_all = "camelCase")]
+pub struct UiToast {
+    pub id: String,
+    pub kind: UiToastKind,
+    pub title: String,
+    pub detail: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub recording_id: Option<String>,
 }
 
 /// Shared orchestrator state (managed by Tauri, also held by the event observer).
@@ -101,12 +148,12 @@ pub enum FloatingSurface {
 
 /**
  * SOURCE OF TRUTH KEYWORDS: floating::init, configure floating windows, hotkey registration, HUD positions
- * WHAT:  Configures every floating window (level, all Spaces, non-activating, excluded from
- *        sharing), wires the HUD/main window events and registers the global hotkeys.
- * WHY:   Native behaviour must be in place before any of these windows is first shown.
+ * WHAT:  Sets up the floating-window state, wires the main window's focus events and
+ *        registers the global hotkeys. The windows themselves are built on demand.
+ * WHY:   Hotkeys and the HUD rules must work before any floating window exists.
  * WHERE: `lib.rs` setup, after the shell is managed. Runs on the main thread.
  */
-pub fn init(app: &mut App, floating: Arc<Floating>, settings: &RecorderSettings) {
+pub fn init(app: &mut App, floating: Arc<Floating>, settings: &RecorderSettings, capturable: bool) {
     let spots_path = app
         .path()
         .app_data_dir()
@@ -127,46 +174,122 @@ pub fn init(app: &mut App, floating: Arc<Floating>, settings: &RecorderSettings)
         g.main_focused = main_focused;
         g.hud_spots = hud_spots;
         g.hud_spots_path = spots_path;
+        g.capturable = capturable;
     }
     app.manage(floating);
 
-    for (label, kind) in KINDS {
-        let Some(win) = app.get_webview_window(label) else {
-            continue;
-        };
-        match configure_floating_window(&win, kind) {
-            Some(how) => eprintln!("cortex: {label} window floats ({how:?})"),
-            None => eprintln!("cortex: could not configure the {label} window"),
-        }
-    }
-    // The countdown never takes clicks meant for the app being recorded.
-    if let Some(win) = app.get_webview_window(COUNTDOWN) {
-        set_window_ignores_mouse_events(&win, true);
-    }
-
     let handle = app.handle().clone();
-    if let Some(hud) = app.get_webview_window(HUD) {
-        let (h, win) = (handle.clone(), hud.clone());
-        hud.on_window_event(move |e| {
-            if let WindowEvent::Moved(_) = e {
-                remember_hud_spot(&h, &win);
-            }
-        });
-    }
     // The HUD steps aside while the main window is frontmost (it has the same controls).
+    // That is also when a recording is likely to start, so the countdown is built then.
     if let Some(main) = app.get_webview_window(MAIN) {
         let h = handle.clone();
         main.on_window_event(move |e| {
             if let WindowEvent::Focused(focused) = e {
                 state(&h).lock().main_focused = *focused;
                 refresh_hud(&h);
+                if *focused {
+                    warm_countdown(&h);
+                }
             }
         });
     }
 
     let h = handle.clone();
     register_hotkey(HOTKEY_RECORD, hotkey::KEY_R, move || toggle_record(&h));
-    apply_settings(&handle, settings.show_hud, settings.replay_enabled);
+    apply_settings(
+        &handle,
+        settings.show_hud,
+        settings.replay_enabled,
+        settings.countdown,
+    );
+}
+
+/**
+ * SOURCE OF TRUTH KEYWORDS: floating::on_created, configure floating window, lazy floating window, panel level
+ * WHAT:  Gives a newly built floating window its native panel behaviour (level, all Spaces,
+ *        non-activating, excluded from sharing) and its event handlers.
+ * WHY:   Floating windows are built on demand (`windows::ensure`); the behaviour must be in
+ *        place before the window is first shown.
+ * WHERE: `windows::ensure`, right after the window is built. Runs on the main thread.
+ */
+pub(crate) fn on_created(app: &AppHandle, win: &WebviewWindow) {
+    let label = win.label();
+    let Some(kind) = KINDS.iter().find(|(l, _)| *l == label).map(|(_, k)| *k) else {
+        return;
+    };
+    if configure_floating_window(win, kind).is_none() {
+        eprintln!("cortex: could not configure the {label} window");
+    }
+    match label {
+        // The countdown never takes clicks meant for the app being recorded.
+        COUNTDOWN => set_window_ignores_mouse_events(win, true),
+        HUD => {
+            let (h, w) = (app.clone(), win.clone());
+            win.on_window_event(move |e| {
+                if let WindowEvent::Moved(_) = e {
+                    remember_hud_spot(&h, &w);
+                }
+            });
+        }
+        TOASTS => {
+            let h = app.clone();
+            win.on_window_event(move |e| {
+                if let WindowEvent::Destroyed = e {
+                    state(&h).lock().toasts_ready = false;
+                }
+            });
+        }
+        _ => {}
+    }
+    #[cfg(debug_assertions)]
+    if state(app).lock().capturable {
+        rec_macos_ui::panel::set_window_capturable(win);
+    }
+}
+
+/// Whether a hidden floating window must survive the idle reaper: the HUD and the menu
+/// bar panel while recording, the countdown while it runs or is warm, and the toasts
+/// window until it has delivered what it holds.
+pub(crate) fn keep_warm(app: &AppHandle, label: &str) -> bool {
+    let Some(s) = app.try_state::<Arc<Floating>>() else {
+        return false;
+    };
+    let g = s.lock();
+    match label {
+        HUD | MENUBAR => g.status.is_capturing(),
+        COUNTDOWN => {
+            g.status == EngineStatus::Countdown || (g.countdown_secs > 0 && main_shown(app))
+        }
+        TOASTS => !g.toasts_ready || !g.pending_toasts.is_empty(),
+        _ => false,
+    }
+}
+
+/// Called just before the reaper destroys a window.
+pub(crate) fn before_destroy(app: &AppHandle, label: &str) {
+    if label == TOASTS
+        && let Some(s) = app.try_state::<Arc<Floating>>()
+    {
+        s.lock().toasts_ready = false;
+    }
+}
+
+fn main_shown(app: &AppHandle) -> bool {
+    app.get_webview_window(MAIN)
+        .is_some_and(|w| w.is_visible().unwrap_or(false) && !w.is_minimized().unwrap_or(false))
+}
+
+/// Builds the countdown window ahead of time when a countdown is configured and the main
+/// window is in use, so the first number shows without waiting for a WebKit process.
+fn warm_countdown(app: &AppHandle) {
+    if state(app).lock().countdown_secs == 0 || !main_shown(app) {
+        return;
+    }
+    let a = app.clone();
+    // Not from inside a window event handler: queue it on the main thread.
+    let _ = app.run_on_main_thread(move || {
+        windows::ensure(&a, COUNTDOWN);
+    });
 }
 
 fn state(app: &AppHandle) -> Arc<Floating> {
@@ -194,11 +317,67 @@ pub fn observer(app: AppHandle, floating: Arc<Floating>) -> impl Fn(&Outbound) +
             }
         }
         Outbound::Settings(s) => {
-            let (a, hud, replay) = (app.clone(), s.show_hud, s.replay_enabled);
-            let _ = app.run_on_main_thread(move || apply_settings(&a, hud, replay));
+            let (a, hud, replay, cd) = (app.clone(), s.show_hud, s.replay_enabled, s.countdown);
+            let _ = app.run_on_main_thread(move || apply_settings(&a, hud, replay, cd));
         }
-        _ => {}
+        Outbound::RecordingFinished(r) => {
+            deliver_toast(&app, &floating, ToastEvent::Finished(r.clone()))
+        }
+        Outbound::ReplaySaved(p) => {
+            deliver_toast(&app, &floating, ToastEvent::ReplaySaved(p.clone()))
+        }
+        Outbound::Error {
+            message,
+            recoverable,
+        } => deliver_toast(
+            &app,
+            &floating,
+            ToastEvent::Error {
+                message: message.clone(),
+                recoverable: *recoverable,
+            },
+        ),
+        Outbound::Levels(_) => {}
     }
+}
+
+fn emit_toast(app: &AppHandle, t: ToastEvent) -> tauri::Result<()> {
+    match t {
+        ToastEvent::Finished(r) => RecordingFinishedEvent(r).emit_to(app, TOASTS),
+        ToastEvent::ReplaySaved(path) => ReplaySavedEvent { path }.emit_to(app, TOASTS),
+        ToastEvent::Error {
+            message,
+            recoverable,
+        } => EngineErrorEvent {
+            message,
+            recoverable,
+        }
+        .emit_to(app, TOASTS),
+        ToastEvent::Ui(t) => app.emit_to(TOASTS, TOAST_EVENT, t),
+    }
+}
+
+/// Sends a toast to the toasts window, or holds it and builds the window when the window
+/// does not exist or has not rendered yet (`window_ready` then delivers it).
+fn deliver_toast(app: &AppHandle, floating: &Floating, t: ToastEvent) {
+    {
+        let mut g = floating.lock();
+        if g.toasts_ready && app.get_webview_window(TOASTS).is_some() {
+            if let Err(e) = emit_toast(app, t) {
+                eprintln!("cortex: could not send a toast: {e}");
+            }
+            return;
+        }
+        g.toasts_ready = false;
+        if g.pending_toasts.len() >= MAX_PENDING_TOASTS {
+            g.pending_toasts.remove(0);
+        }
+        g.pending_toasts.push(t);
+    }
+    let a = app.clone();
+    let _ = app.run_on_main_thread(move || {
+        windows::ensure(&a, TOASTS);
+    });
 }
 
 fn on_status(app: &AppHandle, from: EngineStatus, to: EngineStatus) {
@@ -217,11 +396,12 @@ fn on_status(app: &AppHandle, from: EngineStatus, to: EngineStatus) {
 }
 
 /// HUD on/off setting and the replay hotkey (only while the replay buffer is enabled).
-fn apply_settings(app: &AppHandle, show_hud: bool, replay_enabled: bool) {
+fn apply_settings(app: &AppHandle, show_hud: bool, replay_enabled: bool, countdown: u32) {
     let replay_changed = {
         let s = state(app);
         let mut g = s.lock();
         g.show_hud = show_hud;
+        g.countdown_secs = countdown;
         std::mem::replace(&mut g.replay_enabled, replay_enabled) != replay_enabled
     };
     if replay_changed {
@@ -233,6 +413,9 @@ fn apply_settings(app: &AppHandle, show_hud: bool, replay_enabled: bool) {
         }
     }
     refresh_hud(app);
+    if state(app).lock().main_focused {
+        warm_countdown(app);
+    }
 }
 
 fn register_hotkey(id: u32, key: u32, f: impl Fn() + 'static) {
@@ -254,13 +437,14 @@ fn engine_call(
     let Some(shell) = app.try_state::<Arc<Shell>>().map(|s| s.inner().clone()) else {
         return;
     };
-    let emit = crate::ipc::emitter(app.clone());
+    let app = app.clone();
     std::thread::spawn(move || {
         if let Err(e) = f(&shell) {
-            emit(Outbound::Error {
+            let t = ToastEvent::Error {
                 message: e.to_string(),
                 recoverable: true,
-            });
+            };
+            deliver_toast(&app, &state(&app), t);
         }
     });
 }
@@ -315,7 +499,7 @@ fn monitor_key(m: &Monitor) -> String {
 
 /// The countdown, centred on the main display (the one with the menu bar).
 fn show_countdown(app: &AppHandle) {
-    let Some(win) = app.get_webview_window(COUNTDOWN) else {
+    let Some(win) = windows::ensure(app, COUNTDOWN) else {
         return;
     };
     let monitor = app.primary_monitor().ok().flatten();
@@ -332,13 +516,19 @@ fn show_countdown(app: &AppHandle) {
 /// Shows or hides the HUD: visible while a file is being written, the setting is on, the
 /// user did not hide it, and the main window is not frontmost.
 fn refresh_hud(app: &AppHandle) {
-    let Some(win) = app.get_webview_window(HUD) else {
-        return;
-    };
     let wanted = {
         let s = state(app);
         let g = s.lock();
         g.status.is_capturing() && g.show_hud && !g.hud_dismissed && !g.main_focused
+    };
+    // Built only when it is about to show.
+    let win = if wanted {
+        windows::ensure(app, HUD)
+    } else {
+        app.get_webview_window(HUD)
+    };
+    let Some(win) = win else {
+        return;
     };
     let shown = visible(&win);
     if wanted && !shown {
@@ -502,9 +692,8 @@ pub fn open_floating(app: AppHandle, surface: FloatingSurface) -> Result<(), Eng
             refresh_hud(&app);
         }
         FloatingSurface::Region => {
-            let win = app
-                .get_webview_window(REGION)
-                .ok_or_else(|| EngineError::failed("The region picker is missing"))?;
+            let win = windows::ensure(&app, REGION)
+                .ok_or_else(|| EngineError::failed("Could not open the region picker"))?;
             // One overlay per display is the goal; for now the display where the pick starts.
             if let Some(m) = active_monitor(&app) {
                 win.set_position(*m.position()).map_err(failed)?;
@@ -533,14 +722,40 @@ pub fn hide_floating(window: WebviewWindow) -> Result<(), EngineError> {
     Ok(())
 }
 
-/// Debug runs only (`CORTEX_DEBUG_CAPTURABLE=1`): let screenshots see the floating windows.
-#[cfg(debug_assertions)]
-pub fn make_capturable(app: &AppHandle) {
-    for (label, _) in KINDS {
-        if let Some(w) = app.get_webview_window(label) {
-            rec_macos_ui::panel::set_window_capturable(&w);
+/// The calling window has rendered and listens for events. The toasts window then gets
+/// the toasts held for it.
+#[tauri::command]
+#[specta::specta]
+pub fn window_ready(window: WebviewWindow) {
+    let app = window.app_handle();
+    windows::log_ready(app, window.label());
+    if window.label() != TOASTS {
+        return;
+    }
+    let s = state(app);
+    let mut g = s.lock();
+    g.toasts_ready = true;
+    for t in std::mem::take(&mut g.pending_toasts) {
+        if let Err(e) = emit_toast(app, t) {
+            eprintln!("cortex: could not send a toast: {e}");
         }
     }
+}
+
+/// Show a toast in the toasts window (from any window; failed commands use it).
+#[tauri::command]
+#[specta::specta]
+pub fn push_toast(app: AppHandle, toast: UiToast) -> Result<(), EngineError> {
+    let short = |s: &str| s.chars().take(MAX_TOAST_TEXT).collect::<String>();
+    let toast = UiToast {
+        id: short(&toast.id),
+        title: short(&toast.title),
+        detail: short(&toast.detail),
+        recording_id: toast.recording_id.as_deref().map(short),
+        kind: toast.kind,
+    };
+    deliver_toast(&app, &state(&app), ToastEvent::Ui(toast));
+    Ok(())
 }
 
 /// Saves the HUD spots on quit.
