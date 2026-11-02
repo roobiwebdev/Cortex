@@ -95,7 +95,7 @@ notarize() {
 }
 
 for target in aarch64-apple-darwin x86_64-apple-darwin; do
-  cargo build --release --locked --target "$target"
+  cargo build --release --locked -p rec-cli --target "$target"
 done
 out=$CARGO_TARGET_DIR/universal-apple-darwin/release
 # Everything is built in $work, beside $out on the same volume, and replaces $out by renaming once
