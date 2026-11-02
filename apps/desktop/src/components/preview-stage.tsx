@@ -113,14 +113,14 @@ export function PreviewStage({
               <div
                 role="slider"
                 aria-label="Camera overlay position. Drag to move; release near a corner to snap."
-                aria-valuetext={"corner" in settings.pipPlace ? settings.pipPlace.corner : "custom position"}
+                aria-valuetext={settings.pipPlace.corner !== undefined ? settings.pipPlace.corner : "custom position"}
                 tabIndex={0}
                 onPointerDown={onPointerDown}
                 onPointerMove={(e) => drag && move(e)}
                 onPointerUp={onPointerUp}
                 onKeyDown={(e) => {
                   const order: PipCorner[] = ["top-left", "top-right", "bottom-right", "bottom-left"];
-                  const cur = "corner" in settings.pipPlace ? order.indexOf(settings.pipPlace.corner) : 0;
+                  const cur = settings.pipPlace.corner !== undefined ? order.indexOf(settings.pipPlace.corner) : 0;
                   if (e.key === "ArrowRight") onPipPlace({ corner: order[(cur + 1) % 4] ?? "bottom-right" });
                   if (e.key === "ArrowLeft") onPipPlace({ corner: order[(cur + 3) % 4] ?? "bottom-right" });
                 }}
@@ -188,7 +188,7 @@ function SnapGuides({
 }
 
 function centerOf(place: PipPlace, bw: number, bh: number, box: { w: number; h: number }) {
-  if (!("corner" in place)) return { x: place.x, y: place.y };
+  if (place.corner === undefined) return { x: place.x, y: place.y };
   if (box.w === 0) return { x: 0.8, y: 0.8 };
   const m = MARGIN * box.w;
   const left = place.corner.endsWith("left");

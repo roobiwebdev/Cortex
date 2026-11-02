@@ -216,7 +216,7 @@ function SliderRow({
 function OverlayPreview({ s, stream }: { s: RecorderSettings; stream: MediaStream | null }) {
   const scale = FRAME_W / 1920;
   const width = Math.round(s.pipSize * FRAME_W);
-  const corner = "corner" in s.pipPlace ? s.pipPlace.corner : "bottom-right";
+  const corner = s.pipPlace.corner ?? "bottom-right";
   const inset = Math.round(FRAME_W * 0.03);
   return (
     <div className="grid place-items-center bg-stage py-5">

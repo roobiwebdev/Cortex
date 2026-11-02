@@ -1,16 +1,19 @@
 import { useSyncExternalStore } from "react";
 
-import type { EngineState, Permission, RecorderSettings, Recording, Toast, ToastKind } from "./types";
+import { errorToast, pushToastTo, replayToast, savedToast } from "./toasts";
+import type { EngineState, Permission, PermissionState, RecorderSettings, Recording, Toast, ToastKind } from "./types";
 
 /**
  * SOURCE OF TRUTH KEYWORDS: engine, mockEngine, useEngine, startRecording, stopRecording, updateSettings
  * WHAT:  A fake recorder engine that behaves like the real one: countdown, recording clock,
  *        pause, finalize, audio levels, toasts, permissions and settings.
- * WHY:   Lets the whole UI be designed and reviewed before the Rust backend is wired.
- *        The action names match the planned Tauri commands so swapping it is mechanical.
+ * WHY:   Keeps the design-review harness running in a plain browser. It produces the same
+ *        generated types as the Tauri engine (`ipc/bindings.ts`), and `engine.ts` implements
+ *        the same action object over IPC.
  * WHERE: every desktop surface via `useEngine()` and the `engine` action object.
  */
 
+/** Mirrors rec-core's `RecorderSettings::default()` (devices: system default), plus demo key status. */
 const DEFAULT_SETTINGS: RecorderSettings = {
   outputDir: "~/Movies/Cortex",
   container: "mov",
@@ -20,11 +23,11 @@ const DEFAULT_SETTINGS: RecorderSettings = {
   bitrateMbps: null,
   target: { kind: "display", displayId: 1 },
   scene: "screen-cam",
-  cameraId: "facetime",
+  cameraId: null,
   cameraTrack: true,
   cameraResolution: "1080p",
   micEnabled: true,
-  micId: "builtin-mic",
+  micId: null,
   systemAudio: true,
   audioTracks: "both",
   systemGainDb: 0,
@@ -69,6 +72,8 @@ const DEFAULT_SETTINGS: RecorderSettings = {
 };
 
 const HOUR = 3600;
+/** How long the simulated permission prompt takes to answer. */
+const PROMPT_MS = 1500;
 const now = Date.now();
 const SAMPLE_RECORDINGS: Recording[] = [
   rec("r3", "Product walkthrough", 412, 186_000_000, now - 2 * HOUR * 1000, true),
@@ -94,6 +99,8 @@ function rec(
     width: 1920,
     height: 1080,
     hasCameraTrack: cam,
+    fps: 60,
+    audioTracks: 3,
   };
 }
 
@@ -104,6 +111,7 @@ let state: EngineState = {
   bytesWritten: 0,
   droppedFrames: 0,
   live: false,
+  streams: [],
   replayBufferedSecs: 0,
   levels: { system: 0, systemPeak: 0, mic: 0, micPeak: 0 },
   permissions: { screen: "granted", microphone: "granted", camera: "granted" },
@@ -135,6 +143,8 @@ let state: EngineState = {
   toasts: [],
   settings: DEFAULT_SETTINGS,
   freeDiskBytes: 182_000_000_000,
+  outputLatencyMs: 12,
+  previewing: true,
 };
 
 const listeners = new Set<() => void>();
@@ -163,7 +173,6 @@ export function getEngineState(): EngineState {
 
 let clock: ReturnType<typeof setInterval> | undefined;
 let countdownTimer: ReturnType<typeof setInterval> | undefined;
-let toastSeq = 0;
 
 function startClock() {
   stopClock();
@@ -215,11 +224,8 @@ function dbToGain(db: number) {
   return Math.pow(10, db / 20);
 }
 
-function pushToast(kind: ToastKind, title: string, detail: string, recordingId?: string) {
-  toastSeq += 1;
-  const toast: Toast = { id: `t${toastSeq}`, kind, title, detail, recordingId };
-  // At most three queued, newest last.
-  set({ toasts: [...state.toasts, toast].slice(-3) });
+function pushToast(toast: Toast) {
+  set({ toasts: pushToastTo(state.toasts, toast) });
 }
 
 function beginRecording() {
@@ -272,8 +278,9 @@ export const engine = {
         Date.now(),
         state.settings.cameraTrack,
       );
+      r.path = `~/Movies/Cortex/${name}.${state.settings.container}`;
       set({ status: "idle", recordings: [r, ...state.recordings] });
-      pushToast("saved", name, `${formatShort(r.durationSecs)} · ${state.settings.container.toUpperCase()}`, id);
+      pushToast(savedToast(r));
     }, 700);
   },
   toggleRecord() {
@@ -283,7 +290,7 @@ export const engine = {
   },
   saveReplay() {
     if (!state.settings.replayEnabled) return;
-    pushToast("replay", "Replay saved", `Last ${state.settings.replaySecs}s · MP4`);
+    pushToast(replayToast("~/Movies/Cortex/replay.mp4", state.settings.replaySecs));
   },
   /** Stop without saving (HUD "Discard recording"). */
   discard() {
@@ -302,23 +309,26 @@ export const engine = {
     set({ toasts: state.toasts.filter((x) => x.id !== id) });
   },
   demoToast(kind: ToastKind) {
-    if (kind === "warning") pushToast("warning", "Disk space is low", "Less than 5 GB left on Macintosh HD");
-    else if (kind === "replay") pushToast("replay", "Replay saved", "Last 60s · MP4");
-    else pushToast("saved", "Product walkthrough", "6:52 · MOV", "r3");
+    if (kind === "warning") pushToast(errorToast("Less than 5 GB left on Macintosh HD", true));
+    else if (kind === "replay") pushToast(replayToast("~/Movies/Cortex/replay.mp4", 60));
+    else if (SAMPLE_RECORDINGS[0]) pushToast(savedToast(SAMPLE_RECORDINGS[0]));
   },
   update(patch: Partial<RecorderSettings>) {
     set({ settings: { ...state.settings, ...patch } });
   },
-  setPermission(p: Permission, value: EngineState["permissions"][Permission]) {
+  setPermission(p: Permission, value: PermissionState) {
     set({ permissions: { ...state.permissions, [p]: value } });
+  },
+  /** Simulates the macOS prompt: answers `outcome` after a short wait. */
+  requestPermission(p: Permission, outcome: PermissionState = "granted"): Promise<PermissionState> {
+    return new Promise((resolve) => {
+      setTimeout(() => {
+        engine.setPermission(p, outcome);
+        resolve(outcome);
+      }, PROMPT_MS);
+    });
   },
   renameRecording(id: string, name: string) {
     set({ recordings: state.recordings.map((r) => (r.id === id ? { ...r, name } : r)) });
   },
 };
-
-function formatShort(secs: number) {
-  const m = Math.floor(secs / 60);
-  const s = secs % 60;
-  return `${m}:${String(s).padStart(2, "0")}`;
-}
