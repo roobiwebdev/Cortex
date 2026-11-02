@@ -24,6 +24,8 @@ use crate::shell::{Outbound, Shell};
 /// - `CORTEX_DEBUG_FRONT=1`: keep the main window above other apps, so the preview
 ///   stays visible (and running) while a measurement runs.
 ///
+/// - `CORTEX_DEBUG_CAPTURABLE=1`: let screenshots see the floating windows (debug builds).
+///
 /// Used by `scripts/desktop/perf-compare.sh`.
 #[derive(Default)]
 struct DebugRun {
@@ -33,6 +35,7 @@ struct DebugRun {
     hide_main: bool,
     preview_stats: bool,
     front: bool,
+    capturable: bool,
 }
 
 impl DebugRun {
@@ -47,6 +50,7 @@ impl DebugRun {
             hide_main: var("CORTEX_DEBUG_HIDE_MAIN").is_some_and(|v| v == "1"),
             preview_stats: var("CORTEX_DEBUG_PREVIEW_STATS").is_some_and(|v| v == "1"),
             front: var("CORTEX_DEBUG_FRONT").is_some_and(|v| v == "1"),
+            capturable: var("CORTEX_DEBUG_CAPTURABLE").is_some_and(|v| v == "1"),
         }
     }
 }
@@ -132,6 +136,10 @@ pub fn run() {
                 });
             }
             floating::init(app, floating, &settings);
+            #[cfg(debug_assertions)]
+            if debug.capturable {
+                floating::make_capturable(app.handle());
+            }
             Ok(())
         })
         .build(tauri::generate_context!())
