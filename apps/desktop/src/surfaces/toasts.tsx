@@ -5,6 +5,7 @@ import { Button } from "@starter/ui/components/button";
 import { cn } from "@starter/ui/lib/utils";
 
 import { engine, useEngine } from "../lib/engine";
+import { useWindowed } from "../lib/floating";
 import type { Toast, ToastKind } from "../lib/types";
 import { MENUBAR_H } from "../prototype/desktop-backdrop";
 import type { SurfaceProps } from "../prototype/surfaces";
@@ -17,8 +18,16 @@ const EXIT_MS = 150;
 
 const KIND: Record<ToastKind, { tag: string; tagClass: string; barClass: string }> = {
   saved: { tag: "Saved", tagClass: "bg-ok-tint text-ok", barClass: "bg-ok" },
-  replay: { tag: "Replay saved", tagClass: "bg-accent-tint text-accent-text", barClass: "bg-accent-solid" },
-  warning: { tag: "Warning", tagClass: "bg-warn-tint text-warn", barClass: "bg-warn" },
+  replay: {
+    tag: "Replay saved",
+    tagClass: "bg-accent-tint text-accent-text",
+    barClass: "bg-accent-solid",
+  },
+  warning: {
+    tag: "Warning",
+    tagClass: "bg-warn-tint text-warn",
+    barClass: "bg-warn",
+  },
 };
 
 /**
@@ -27,11 +36,22 @@ const KIND: Record<ToastKind, { tag: string; tagClass: string; barClass: string 
  *        and warnings, each with quick actions and an 8 s drain bar that pauses on hover.
  * WHY:   Rec only flashed a 4 s toolbar notice in the main window, which is usually hidden
  *        while recording. A capture-excluded card says what happened and offers the next step.
- * WHERE: Prototype surface "toasts"; later a non-activating panel above full-screen apps.
+ * WHERE: Prototype surface "toasts"; the app's "toasts" window (non-activating, above full-screen apps).
  */
 export function ToastStack({ navigate }: SurfaceProps) {
   const e = useEngine();
   const newestFirst = e.toasts.toReversed();
+  const windowed = useWindowed();
+
+  // In its own window: only the cards (the window sits under the menu bar and hides when empty).
+  if (windowed)
+    return newestFirst.length === 0 ? null : (
+      <div className="flex w-[360px] flex-col gap-2" role="region" aria-label="Notifications" aria-live="polite">
+        {newestFirst.map((t) => (
+          <ToastCard key={t.id} toast={t} navigate={navigate} />
+        ))}
+      </div>
+    );
 
   return (
     <div className="absolute inset-0">

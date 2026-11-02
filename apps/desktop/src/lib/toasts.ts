@@ -1,4 +1,4 @@
-import type { EngineError, Recording, Toast } from "./types";
+import type { EngineError, Recording, Toast, ToastKind } from "./types";
 
 /**
  * SOURCE OF TRUTH KEYWORDS: toasts, savedToast, replayToast, errorToast, pushToastTo, engine events, UI-06
@@ -6,6 +6,7 @@ import type { EngineError, Recording, Toast } from "./types";
  *        and keeps the queue short.
  * WHY:   Toasts are UI-owned: the engine only reports what happened. The Tauri adapter and
  *        the browser mock both use these, so the same event reads the same everywhere.
+ *        In the app the toasts window owns the queue (see `engine.ts`).
  * WHERE: `engine.ts` (Tauri events, failed commands), `mock-engine.ts`.
  */
 
@@ -16,6 +17,26 @@ let seq = 0;
 function nextId() {
   seq += 1;
   return `t${seq}`;
+}
+
+/** A fresh toast id for this window's queue (toasts sent from other windows get one). */
+export const newToastId = nextId;
+
+const KINDS: ReadonlyArray<ToastKind> = ["saved", "replay", "warning"];
+
+/** Narrows a toast received from another window (`ui://toast`). */
+export function isToast(v: unknown): v is Toast {
+  if (typeof v !== "object" || v === null) return false;
+  const kind = "kind" in v ? v.kind : undefined;
+  const ok = (k: string) => k in v && typeof Reflect.get(v, k) === "string";
+  const rid = "recordingId" in v ? v.recordingId : undefined;
+  return (
+    ok("id") &&
+    ok("title") &&
+    ok("detail") &&
+    KINDS.some((k) => k === kind) &&
+    (rid === undefined || typeof rid === "string")
+  );
 }
 
 /** `m:ss` for a duration in seconds. */
@@ -43,7 +64,12 @@ export function savedToast(r: Recording): Toast {
 }
 
 export function replayToast(path: string, replaySecs: number): Toast {
-  return { id: nextId(), kind: "replay", title: "Replay saved", detail: `Last ${replaySecs}s · ${extension(path) || "MP4"}` };
+  return {
+    id: nextId(),
+    kind: "replay",
+    title: "Replay saved",
+    detail: `Last ${replaySecs}s · ${extension(path) || "MP4"}`,
+  };
 }
 
 export function warningToast(title: string, detail: string): Toast {

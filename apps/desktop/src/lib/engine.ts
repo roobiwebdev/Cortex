@@ -1,10 +1,11 @@
 import { useSyncExternalStore } from "react";
 import { isTauri } from "@tauri-apps/api/core";
+import { emitTo, listen } from "@tauri-apps/api/event";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 
 import { commands, events, type EngineError } from "../ipc/bindings";
 import * as mock from "./mock-engine";
-import { errorMessage, errorToast, pushToastTo, replayToast, savedToast } from "./toasts";
+import { errorMessage, errorToast, isToast, newToastId, pushToastTo, replayToast, savedToast } from "./toasts";
 import type { EngineSnapshot, EngineState, Permission, PermissionState, RecorderSettings, Toast } from "./types";
 
 /**
@@ -18,6 +19,10 @@ import type { EngineSnapshot, EngineState, Permission, PermissionState, Recorder
  */
 
 const inTauri = isTauri();
+/** The toasts window owns the toast queue; every other window sends its toasts there. */
+const TOASTS_WINDOW = "toasts";
+const TOAST_EVENT = "ui://toast";
+const ownsToasts = inTauri && getCurrentWindow().label === TOASTS_WINDOW;
 
 let snapshot: EngineSnapshot | undefined;
 let settings: RecorderSettings | undefined;
@@ -43,6 +48,10 @@ function current(): EngineState {
 }
 
 function toast(t: Toast) {
+  if (!ownsToasts) {
+    emitTo(TOASTS_WINDOW, TOAST_EVENT, t).catch((err: unknown) => console.error("cortex: toast not sent", err));
+    return;
+  }
   toasts = pushToastTo(toasts, t);
   changed();
 }
@@ -136,7 +145,10 @@ const tauriEngine: typeof mock.engine = {
   renameRecording(id: string, name: string) {
     // UI-only until the recordings library lands: the file keeps its name.
     if (!snapshot) return;
-    snapshot = { ...snapshot, recordings: snapshot.recordings.map((r) => (r.id === id ? { ...r, name } : r)) };
+    snapshot = {
+      ...snapshot,
+      recordings: snapshot.recordings.map((r) => (r.id === id ? { ...r, name } : r)),
+    };
     changed();
   },
 };
@@ -145,7 +157,8 @@ const tauriEngine: typeof mock.engine = {
  * SOURCE OF TRUTH KEYWORDS: connectEngine, engine bootstrap, engine events, settings events, toasts
  * WHAT:  Subscribes to the engine and settings events, then loads the first snapshot and settings.
  * WHY:   Surfaces read state synchronously, so both must exist before render. Toasts are made
- *        here from recording-finished, replay-saved and error events.
+ *        here from recording-finished, replay-saved and error events, in the toasts window
+ *        only (it owns the queue; other windows send theirs as `ui://toast`).
  * WHERE: main.tsx, before mounting React inside Tauri. No-op in a browser.
  */
 export async function connectEngine(): Promise<void> {
@@ -164,14 +177,25 @@ export async function connectEngine(): Promise<void> {
       changed();
     }),
     events.settingsChanged.listen((e) => setSettings(e.payload)),
-    events.engineRecordingFinished.listen((e) => toast(savedToast(e.payload))),
-    events.engineReplaySaved.listen((e) => toast(replayToast(e.payload.path, current().settings.replaySecs))),
-    events.engineError.listen((e) => toast(errorToast(e.payload.message, e.payload.recoverable))),
+    ...(ownsToasts ? listenForToasts() : []),
   ]);
   const [s, st] = await Promise.all([commands.getSettings(), commands.engineState()]);
   settings = s;
   snapshot = st;
   changed();
+}
+
+/** The toasts window's sources: engine events, and toasts other windows send. */
+function listenForToasts() {
+  return [
+    events.engineRecordingFinished.listen((e) => toast(savedToast(e.payload))),
+    events.engineReplaySaved.listen((e) => toast(replayToast(e.payload.path, current().settings.replaySecs))),
+    events.engineError.listen((e) => toast(errorToast(e.payload.message, e.payload.recoverable))),
+    listen<unknown>(TOAST_EVENT, (e) => {
+      // Ids are per window; give the toast one that is unique in this queue.
+      if (isToast(e.payload)) toast({ ...e.payload, id: newToastId() });
+    }),
+  ];
 }
 
 export const engine: typeof mock.engine = inTauri ? tauriEngine : mock.engine;
