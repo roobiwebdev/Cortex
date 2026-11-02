@@ -7,6 +7,8 @@
     "**/.next/**",
     "apps/docs/.source/**",
     ".reference/**",
+    "apps/desktop/src/ipc/bindings.ts",
+    "apps/desktop/src-tauri/gen/**",
     ".agents/skills/**",
     ".claude/settings.local.json"
   ]

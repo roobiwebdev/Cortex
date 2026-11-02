@@ -24,6 +24,8 @@
     "**/next-env.d.ts",
     "packages/db/migrations/**",
     "apps/docs/.source/**",
-    ".reference/**"
+    ".reference/**",
+    "apps/desktop/src/ipc/bindings.ts",
+    "apps/desktop/src-tauri/gen/**"
   ]
 }

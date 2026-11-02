@@ -15,7 +15,7 @@ import { cn } from "@starter/ui/lib/utils";
 
 import { CameraBubble } from "../components/camera-bubble";
 import { formatClock } from "../lib/format";
-import { engine, useEngine } from "../lib/mock-engine";
+import { engine, useEngine } from "../lib/engine";
 import type { SurfaceProps } from "../prototype/surfaces";
 import { CaptureExcludedHint, FloatingCard, MENU_CONTENT, MENU_ITEM } from "./floating/floating-card";
 import { HoldToConfirm } from "./floating/hold-to-confirm";

@@ -35,7 +35,7 @@ import { Switch } from "@starter/ui/components/switch";
 import { cn } from "@starter/ui/lib/utils";
 
 import { formatAgo, formatBytes, formatClock } from "../lib/format";
-import { engine, useEngine } from "../lib/mock-engine";
+import { engine, useEngine } from "../lib/engine";
 import type { EngineState } from "../lib/types";
 import { MENUBAR_H } from "../prototype/desktop-backdrop";
 import type { SurfaceProps } from "../prototype/surfaces";

@@ -11,3 +11,13 @@ body,
 body {
   overscroll-behavior: none;
 }
+
+/* Floating Tauri windows are transparent; only the surface's own card is painted. */
+html[data-floating],
+html[data-floating] body {
+  background: transparent;
+}
+/* The menu bar card is positioned for the fake desktop; in its own window it sits at 0,0. */
+[data-surface="menubar"] > * {
+  position: static;
+}

@@ -6,7 +6,7 @@ import { Segmented } from "@starter/ui/components/segmented";
 import { Switch } from "@starter/ui/components/switch";
 import { cn } from "@starter/ui/lib/utils";
 
-import { engine, useEngine } from "../../lib/mock-engine";
+import { engine, useEngine } from "../../lib/engine";
 import type { ThemePref } from "../../lib/types";
 import { ACCENT_PRESETS } from "../../lib/use-studio-theme";
 import { SettingsGroup, SettingsPage, SettingsRow } from "./parts";

@@ -1,7 +1,7 @@
 import * as React from "react";
 import { AppWindow } from "lucide-react";
 
-import { engine, useEngine } from "../lib/mock-engine";
+import { engine, useEngine } from "../lib/engine";
 import type { CaptureTarget, Display } from "../lib/types";
 import type { SurfaceProps } from "../prototype/surfaces";
 import {

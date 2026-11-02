@@ -5,7 +5,7 @@ import { Button } from "@starter/ui/components/button";
 import { Segmented } from "@starter/ui/components/segmented";
 import { cn } from "@starter/ui/lib/utils";
 
-import { engine, useEngine } from "../lib/mock-engine";
+import { engine, useEngine } from "../lib/engine";
 import type { ThemePref } from "../lib/types";
 import { ACCENT_PRESETS, useStudioTheme } from "../lib/use-studio-theme";
 import { DesktopBackdrop } from "./desktop-backdrop";

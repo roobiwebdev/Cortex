@@ -6,7 +6,7 @@ import { Switch } from "@starter/ui/components/switch";
 import { cn } from "@starter/ui/lib/utils";
 
 import { CameraBubble } from "../../components/camera-bubble";
-import { engine, useEngine } from "../../lib/mock-engine";
+import { engine, useEngine } from "../../lib/engine";
 import type { PipShape, RecorderSettings } from "../../lib/types";
 import { deviceOptions, fromDeviceValue, toDeviceValue } from "./audio";
 import { ChoiceSelect, Readout, SettingsGroup, SettingsPage, SettingsRow } from "./parts";

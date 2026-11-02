@@ -5,7 +5,7 @@ import { Button } from "@starter/ui/components/button";
 import { Segmented } from "@starter/ui/components/segmented";
 import { cn } from "@starter/ui/lib/utils";
 
-import { engine } from "../../lib/mock-engine";
+import { engine } from "../../lib/engine";
 import type { CaptureTarget, EngineState } from "../../lib/types";
 import { MockScreen } from "../../prototype/mock-screen";
 import type { SurfaceId } from "../../prototype/surfaces";

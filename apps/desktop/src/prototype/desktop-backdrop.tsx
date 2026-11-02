@@ -4,7 +4,7 @@ import { BatteryFull, Circle, Search, Wifi } from "lucide-react";
 import { cn } from "@starter/ui/lib/utils";
 
 import { formatClock } from "../lib/format";
-import { useEngine } from "../lib/mock-engine";
+import { useEngine } from "../lib/engine";
 import { MockScreen } from "./mock-screen";
 
 /** Height of the fake macOS menu bar. Floating surfaces anchor below it. */

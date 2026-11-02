@@ -1,0 +1,25 @@
+[package]
+name = "cortex-desktop"
+version = "0.1.0"
+description = "Cortex desktop recorder (Tauri shell)"
+authors = ["Cortex"]
+license = "MIT OR Apache-2.0"
+edition = "2024"
+publish = false
+
+[lib]
+# The `_lib` suffix avoids a name clash with the bin target (Tauri 2 template).
+name = "cortex_desktop_lib"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+tauri = { version = "2.12", features = ["macos-private-api", "tray-icon"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+# tauri-specta is a release candidate: versions are pinned with `=` as its docs require.
+specta = { version = "=2.0.0-rc.26", features = ["derive"] }
+specta-typescript = "=0.0.13"
+tauri-specta = { version = "=2.0.0-rc.26", features = ["derive", "typescript"] }

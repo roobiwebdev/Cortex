@@ -15,7 +15,7 @@ import {
 import { Button } from "@starter/ui/components/button";
 import { Switch } from "@starter/ui/components/switch";
 
-import { engine, useEngine } from "../../lib/mock-engine";
+import { engine, useEngine } from "../../lib/engine";
 import type { EngineState, RecorderSettings } from "../../lib/types";
 import { SettingsGroup, SettingsPage, SettingsRow } from "./parts";
 import { APP_VERSION } from "./general";

@@ -3,7 +3,7 @@ import { FolderOpen } from "lucide-react";
 
 import { Button } from "@starter/ui/components/button";
 
-import { engine, useEngine } from "../../lib/mock-engine";
+import { engine, useEngine } from "../../lib/engine";
 import { ChoiceSelect, SettingsRow } from "./parts";
 
 /** Folders offered by the popup; "other" stands in for the native folder picker. */

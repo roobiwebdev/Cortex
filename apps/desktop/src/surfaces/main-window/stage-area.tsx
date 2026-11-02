@@ -6,7 +6,7 @@ import { cn } from "@starter/ui/lib/utils";
 
 import { PreviewStage } from "../../components/preview-stage";
 import { formatBytes } from "../../lib/format";
-import { engine } from "../../lib/mock-engine";
+import { engine } from "../../lib/engine";
 import type { Codec, EngineState, Resolution } from "../../lib/types";
 import { MockScreen } from "../../prototype/mock-screen";
 import type { SurfaceId } from "../../prototype/surfaces";
