@@ -19,6 +19,11 @@ Every rule here is mandatory. The "why" behind each rule is in `docs/engineering
 apps/web            Next.js 16 app (pages, layouts, route handlers, server actions)
 apps/native         Expo app (talks to the same tRPC API)
 apps/docs           Fumadocs documentation site
+apps/desktop        Tauri 2 macOS recorder: React surfaces in src/, Rust shell in src-tauri/
+crates/rec-core     Recorder settings schema, engine API and state (platform-neutral, no Apple code)
+crates/rec-engine-macos   Rec's capture/encode engine (ScreenCaptureKit, AVFoundation, VideoToolbox)
+crates/rec-macos-ui Native window behaviour: panels, levels, capture exclusion
+crates/rec-cli      The rec-rs command-line recorder
 packages/db         Drizzle schema, relations, migrations  (database shape only)
 packages/core       Server building blocks: settings, secrets, email, storage, payments, notify, logger
 packages/auth       Better Auth factory + global roles/permissions
@@ -43,6 +48,18 @@ Request flow: **UI → server action or tRPC hook → router (business logic) �
 - **Route handlers** (uploads, webhooks, auth) use `getServices()`. Keep them thin.
 - **Next 16 uses `src/proxy.ts`. Never create `middleware.ts`.**
 
+### Desktop and Rust
+
+Desktop request flow: **React surface → `lib/engine.ts` → generated `ipc/bindings.ts` → Tauri command in `src-tauri/src/ipc.rs` (the single IPC checkpoint) → `rec_core` API → `MacEngine`.** Details are in `docs/engineering/desktop.md`.
+
+- **`rec-core` is the settings SOT.** Change a setting, state field or engine event there, then regenerate the bindings.
+- **IPC types are generated.** Never hand-edit `apps/desktop/src/ipc/bindings.ts`. Run `pnpm --filter desktop ipc:bindings` and commit the result with the Rust change.
+- **Capabilities are an allow-list.** A new command goes in `COMMANDS` (`src-tauri/build.rs`) and gets an `allow-<command>` grant in `src-tauri/capabilities/`. No shell, fs or http plugins for the webview. No remote content.
+- **No secrets over IPC.** Stream keys stay in the Keychain. The webview only sees whether a key is stored.
+- **`unsafe` only in `rec-engine-macos` and `rec-macos-ui`**, each block with a `// SAFETY:` comment.
+- **New crates pass `cargo fmt --check` and `cargo clippy -- -D warnings`.** The imported Rec crates keep upstream style.
+- The TypeScript rules (section 3) and UI rules (section 6) apply to `apps/desktop/src`. Recorder tokens live in `packages/ui/src/styles/studio.css`.
+
 ## 2. Single sources of truth (grep these first)
 
 | Concern                                                         | Lives in                                                                     |
@@ -58,6 +75,11 @@ Request flow: **UI → server action or tRPC hook → router (business logic) �
 | Feedback categories and statuses                                | `packages/config/src/content.ts`                                             |
 | Env variables                                                   | `apps/web/.env.schema` (Varlock). Add new variables here first.              |
 | API input/output types for clients                              | `RouterInputs` / `RouterOutputs` from `@starter/api`                         |
+| Recorder settings schema, engine API and state                  | `crates/rec-core/src/{settings,api,state}.rs`                                |
+| Desktop IPC types (generated, never hand-edit)                  | `apps/desktop/src/ipc/bindings.ts` from `src-tauri/src/ipc.rs`               |
+| Desktop IPC allow-list                                          | `apps/desktop/src-tauri/capabilities/` + `COMMANDS` in `src-tauri/build.rs`  |
+| Recorder design tokens                                          | `packages/ui/src/styles/studio.css`                                          |
+| Recorder window behaviour (panels, levels, capture exclusion)   | `crates/rec-macos-ui`                                                        |
 
 ## 3. TypeScript (production grade)
 
@@ -129,6 +151,12 @@ pnpm auth:check         verify the Drizzle schema has every table/column Better 
 pnpm db:generate | db:migrate | db:seed | db:reset | db:studio
 pnpm build              production build (web + docs)
 pnpm rea <command>      REA reverse-engineering CLI (also the `rea` MCP server in .mcp.json)
+
+pnpm --filter desktop dev                   recorder UI in the browser on http://localhost:3002 (mock engine)
+pnpm --filter desktop tauri build --debug   debug .app (sign with APPLE_SIGNING_IDENTITY="Cortex Dev Signing")
+pnpm --filter desktop ipc:bindings          regenerate apps/desktop/src/ipc/bindings.ts
+cargo test --workspace                      Rust tests (needs rustup on PATH)
+cargo run --release -p rec-engine-macos --example engine_smoke   test-pattern recording + ffprobe check
 ```
 
 To study how a feature works in an existing app or binary before building our own version, use the `reverse-engineer-anything` skill with the `rea` MCP server. Rebuild the behavior in this codebase following the rules above; never copy third-party code.

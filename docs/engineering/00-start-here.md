@@ -21,6 +21,7 @@ Reference pages, read when you need them:
 - [customizing.md](customizing.md): branding, themes, navigation, copy
 - [deployment.md](deployment.md): Vercel, production migrations, webhooks
 - [security.md](security.md): what the starter enforces and which Batman issues were fixed
+- [desktop.md](desktop.md): the macOS recorder, its Rust crates, IPC, signing and CI
 
 Outside this folder:
 
