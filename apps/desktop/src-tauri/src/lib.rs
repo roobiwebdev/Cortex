@@ -24,7 +24,10 @@ use crate::shell::{Outbound, Shell};
 /// - `CORTEX_DEBUG_FRONT=1`: keep the main window above other apps, so the preview
 ///   stays visible (and running) while a measurement runs.
 ///
-/// - `CORTEX_DEBUG_CAPTURABLE=1`: let screenshots see the floating windows (debug builds).
+/// - `CORTEX_DEBUG_CAPTURABLE=1`: let screenshots see the floating windows (debug builds),
+///   and wait 5 s after a debug recording so its toast can be captured.
+/// - `CORTEX_DEBUG_OPEN=menubar|region|settings|onboarding|trim`: open that window 2 s after
+///   launch (debug builds), to check windows that are built on demand.
 ///
 /// Used by `scripts/desktop/perf-compare.sh`.
 #[derive(Default)]
@@ -36,6 +39,8 @@ struct DebugRun {
     preview_stats: bool,
     front: bool,
     capturable: bool,
+    #[cfg_attr(not(debug_assertions), allow(dead_code))]
+    open: Option<String>,
 }
 
 impl DebugRun {
@@ -51,7 +56,26 @@ impl DebugRun {
             preview_stats: var("CORTEX_DEBUG_PREVIEW_STATS").is_some_and(|v| v == "1"),
             front: var("CORTEX_DEBUG_FRONT").is_some_and(|v| v == "1"),
             capturable: var("CORTEX_DEBUG_CAPTURABLE").is_some_and(|v| v == "1"),
+            open: var("CORTEX_DEBUG_OPEN"),
         }
+    }
+}
+
+/// `CORTEX_DEBUG_OPEN`: opens a window the way the UI would.
+#[cfg(debug_assertions)]
+fn debug_open(app: &tauri::AppHandle, what: &str) {
+    use crate::floating::FloatingSurface;
+    use crate::windows::AppWindow;
+    let r = match what {
+        "menubar" => floating::open_floating(app.clone(), FloatingSurface::Menubar),
+        "region" => floating::open_floating(app.clone(), FloatingSurface::Region),
+        "settings" => windows::open_window(app.clone(), AppWindow::Settings),
+        "onboarding" => windows::open_window(app.clone(), AppWindow::Onboarding),
+        "trim" => windows::open_window(app.clone(), AppWindow::Trim),
+        _ => Ok(()),
+    };
+    if let Err(e) = r {
+        eprintln!("cortex: CORTEX_DEBUG_OPEN={what} failed: {e}");
     }
 }
 
@@ -86,12 +110,23 @@ pub fn run() {
             };
             let emit: shell::Emit = if debug.record_secs.is_some() {
                 let handle = app.handle().clone();
+                // Screenshot runs keep the app up a little so the "saved" toast shows.
+                let linger = debug.capturable && cfg!(debug_assertions);
                 Arc::new(move |o: Outbound| {
+                    let finished = matches!(&o, Outbound::RecordingFinished(_));
                     if let Outbound::RecordingFinished(r) = &o {
                         println!("cortex: recorded {}", r.path);
+                    }
+                    fan_out(o);
+                    if finished && linger {
+                        let h = handle.clone();
+                        std::thread::spawn(move || {
+                            std::thread::sleep(std::time::Duration::from_secs(5));
+                            h.exit(0);
+                        });
+                    } else if finished {
                         handle.exit(0);
                     }
-                    fan_out(o)
                 })
             } else {
                 Arc::new(fan_out)
@@ -138,6 +173,15 @@ pub fn run() {
             // Debug builds only: release builds keep every floating window out of captures.
             let capturable = debug.capturable && cfg!(debug_assertions);
             floating::init(app, floating, &settings, capturable);
+            #[cfg(debug_assertions)]
+            if let Some(what) = debug.open.clone() {
+                let handle = app.handle().clone();
+                std::thread::spawn(move || {
+                    std::thread::sleep(std::time::Duration::from_secs(2));
+                    let h = handle.clone();
+                    let _ = handle.run_on_main_thread(move || debug_open(&h, &what));
+                });
+            }
             Ok(())
         })
         .build(tauri::generate_context!())
