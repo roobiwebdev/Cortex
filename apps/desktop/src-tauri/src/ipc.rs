@@ -364,6 +364,9 @@ pub fn builder() -> tauri_specta::Builder<tauri::Wry> {
             import_rec_settings,
             set_preview_rect,
             set_preview_enabled,
+            crate::floating::fit_floating,
+            crate::floating::open_floating,
+            crate::floating::hide_floating,
         ])
         .events(collect_events![
             EngineStateEvent,

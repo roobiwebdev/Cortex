@@ -53,6 +53,19 @@ export const commands = {
 	 *  The engine previews while this is on and the window is visible.
 	 */
 	setPreviewEnabled: (enabled: boolean) => __TAURI_INVOKE<void>("set_preview_enabled", { enabled }),
+	/**
+	 *  Size the calling floating window to its content (logical points). The toasts window
+	 *  also shows itself top-right on the active display and hides at height 0; the HUD keeps
+	 *  its bottom-centre and the countdown its centre.
+	 */
+	fitFloating: (width: number, height: number) => typedError<null, EngineError>(__TAURI_INVOKE("fit_floating", { width, height })),
+	/**
+	 *  Show a floating surface in its place: the menu bar panel under the status item, the
+	 *  region picker over the display under the cursor, or the HUD after the user hid it.
+	 */
+	openFloating: (surface: FloatingSurface) => typedError<null, EngineError>(__TAURI_INVOKE("open_floating", { surface })),
+	/**  Hide the calling floating window. A hidden HUD stays hidden until the next recording. */
+	hideFloating: () => typedError<null, EngineError>(__TAURI_INVOKE("hide_floating")),
 };
 
 /** Events */
@@ -214,6 +227,15 @@ export type EngineState_Serialize = {
 };
 
 export type EngineStatus = "idle" | "countdown" | "recording" | "paused" | "finalizing";
+
+/**  Which floating surface `open_floating` shows. */
+export type FloatingSurface = 
+/**  The menu bar panel, under the status item. */
+"menubar" | 
+/**  The region picker, over the whole display under the cursor. */
+"region" | 
+/**  The recording HUD, after the user hid it. */
+"hud";
 
 export type InputDevice = {
 	id: string,

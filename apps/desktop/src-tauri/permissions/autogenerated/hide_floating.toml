@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-hide-floating"
+description = "Enables the hide_floating command without any pre-configured scope."
+commands.allow = ["hide_floating"]
+
+[[permission]]
+identifier = "deny-hide-floating"
+description = "Denies the hide_floating command without any pre-configured scope."
+commands.deny = ["hide_floating"]

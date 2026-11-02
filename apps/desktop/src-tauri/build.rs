@@ -24,6 +24,9 @@ const COMMANDS: &[&str] = &[
     "import_rec_settings",
     "set_preview_rect",
     "set_preview_enabled",
+    "fit_floating",
+    "open_floating",
+    "hide_floating",
 ];
 
 fn main() {

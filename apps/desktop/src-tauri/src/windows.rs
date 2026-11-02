@@ -3,15 +3,10 @@
 //! All windows are declared in `tauri.conf.json`; this module wires the menu bar
 //! (tray) icon to the "menubar" panel and keeps the main window alive on close.
 //!
-//! Native behaviours that plain Tauri windows cannot express come from the
-//! `rec-macos-ui` crate later (engineering plan §3, §4):
-//! - floating panels (hud, toasts, countdown, region, menubar) become
-//!   non-activating `NSPanel`s, so showing them never steals focus from the app
-//!   being recorded;
-//! - `NSWindow.sharingType = .none` plus exclusion from the `SCContentFilter`, so
-//!   none of our own UI appears in recordings;
-//! - window levels above full-screen apps and one region overlay per display;
-//! - a native `NSStatusItem` (recording state, drag target) replacing the tray icon.
+//! The floating windows' native behaviour (levels, non-activation, capture
+//! exclusion), placement and engine-driven visibility live in `floating.rs`.
+//! Still to come: one region overlay per display and a native `NSStatusItem`
+//! (recording clock, drag target) replacing the tray icon.
 
 use std::{
     sync::Mutex,
@@ -24,8 +19,8 @@ use tauri::{
     tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent},
 };
 
-const MENUBAR: &str = "menubar";
-const MAIN: &str = "main";
+pub(crate) const MENUBAR: &str = "menubar";
+pub(crate) const MAIN: &str = "main";
 /// Logical width of the menu bar panel; its height follows the content (set from the webview).
 const MENUBAR_WIDTH: f64 = 340.0;
 /// Gap between the menu bar and the panel, in logical points.
@@ -97,7 +92,7 @@ pub fn show_main(app: &AppHandle) {
     }
 }
 
-fn hide_menubar(app: &AppHandle) {
+pub(crate) fn hide_menubar(app: &AppHandle) {
     if let Some(panel) = app.get_webview_window(MENUBAR)
         && panel.is_visible().unwrap_or(false)
     {
@@ -128,6 +123,21 @@ fn toggle_menubar(app: &AppHandle, tray_rect: Rect) {
         return;
     }
     if let Err(err) = place_under(&panel, tray_rect) {
+        eprintln!("cortex: could not position the menu bar panel: {err}");
+    }
+    let _ = panel.show();
+    let _ = panel.set_focus();
+}
+
+/// Opens the menu bar panel under the status item (from the HUD or a hotkey, not a click).
+pub(crate) fn open_menubar(app: &AppHandle) {
+    let (Some(panel), Some(tray)) = (app.get_webview_window(MENUBAR), app.tray_by_id("status"))
+    else {
+        return;
+    };
+    if let Ok(Some(rect)) = tray.rect()
+        && let Err(err) = place_under(&panel, rect)
+    {
         eprintln!("cortex: could not position the menu bar panel: {err}");
     }
     let _ = panel.show();
