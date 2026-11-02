@@ -4,6 +4,7 @@
 pub mod args;
 pub mod camera;
 pub mod compose;
+pub mod engine;
 pub mod hotkey;
 pub mod live;
 pub mod mixer;
