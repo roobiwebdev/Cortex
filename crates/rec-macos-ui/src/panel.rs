@@ -24,9 +24,11 @@ use objc2::runtime::{AnyObject, Bool};
 use objc2::{ClassType, msg_send, sel};
 use objc2_app_kit::{
     NSFloatingWindowLevel, NSPanel, NSPopUpMenuWindowLevel, NSStatusWindowLevel, NSWindow,
-    NSWindowCollectionBehavior, NSWindowLevel, NSWindowSharingType, NSWindowStyleMask,
+    NSView, NSWindowCollectionBehavior, NSWindowLevel,
+    NSWindowSharingType, NSWindowStyleMask,
 };
 use objc2_foundation::NSObjectProtocol;
+use raw_window_handle::{HasWindowHandle, RawWindowHandle};
 
 use crate::main_thread::run_on_main;
 
@@ -159,6 +161,78 @@ pub unsafe fn set_ignores_mouse_events(ns_window: *mut c_void, ignore: bool) {
         let window: &NSWindow = unsafe { &*(addr as *const NSWindow) };
         window.setIgnoresMouseEvents(ignore);
     });
+}
+
+/**
+ * SOURCE OF TRUTH KEYWORDS: invalidate_shadow, native shadow, transparent window, content resize
+ * WHAT:  Asks AppKit to recompute the window shadow from the current content.
+ * WHY:   A transparent window's native shadow follows its painted pixels; after
+ *        the web content changes size the old outline would stay.
+ * WHERE: Tauri shell, after resizing a floating window to its content.
+ *
+ * # Safety
+ *
+ * `ns_window` must be null or a valid `NSWindow*` alive for the duration of the call.
+ */
+pub unsafe fn invalidate_shadow(ns_window: *mut c_void) {
+    if ns_window.is_null() {
+        return;
+    }
+    let addr = ns_window as usize;
+    run_on_main(move |_mtm| {
+        // SAFETY: caller guarantees a live NSWindow; we are on the main thread.
+        let window: &NSWindow = unsafe { &*(addr as *const NSWindow) };
+        window.invalidateShadow();
+    });
+}
+
+/// The `NSWindow*` behind a window handle (an AppKit `NSView*`), on the main thread.
+fn ns_window_of(handle: &impl HasWindowHandle) -> Option<*mut c_void> {
+    let raw = handle.window_handle().ok()?.as_raw();
+    let RawWindowHandle::AppKit(h) = raw else {
+        return None;
+    };
+    let view = h.ns_view.as_ptr() as usize;
+    let window = run_on_main(move |_mtm| {
+        // SAFETY: the handle borrow (held by the caller for this call) keeps the
+        // view alive; `window` is a plain getter and we are on the main thread.
+        let view: &NSView = unsafe { &*(view as *const NSView) };
+        view.window().map(|w| objc2::rc::Retained::as_ptr(&w) as usize)
+    })?;
+    Some(window as *mut c_void)
+}
+
+/**
+ * SOURCE OF TRUTH KEYWORDS: configure_floating_window, safe wrapper, HasWindowHandle, Tauri window, floating panel
+ * WHAT:  Safe versions of `configure_floating`, `set_ignores_mouse_events` and
+ *        `invalidate_shadow` for any window that exposes an AppKit window handle.
+ * WHY:   The Tauri shell must not contain `unsafe`; borrowing the window handle
+ *        is what keeps the NSWindow alive for the call.
+ * WHERE: `apps/desktop/src-tauri/src/floating.rs`.
+ */
+pub fn configure_floating_window(
+    window: &impl HasWindowHandle,
+    kind: FloatingKind,
+) -> Option<NonActivation> {
+    let ns = ns_window_of(window)?;
+    // SAFETY: `ns` comes from the live window the caller still borrows.
+    unsafe { configure_floating(ns, kind) }
+}
+
+/// Safe [`set_ignores_mouse_events`] for a window handle.
+pub fn set_window_ignores_mouse_events(window: &impl HasWindowHandle, ignore: bool) {
+    if let Some(ns) = ns_window_of(window) {
+        // SAFETY: `ns` comes from the live window the caller still borrows.
+        unsafe { set_ignores_mouse_events(ns, ignore) }
+    }
+}
+
+/// Safe [`invalidate_shadow`] for a window handle.
+pub fn invalidate_window_shadow(window: &impl HasWindowHandle) {
+    if let Some(ns) = ns_window_of(window) {
+        // SAFETY: `ns` comes from the live window the caller still borrows.
+        unsafe { invalidate_shadow(ns) }
+    }
 }
 
 #[cfg(test)]
