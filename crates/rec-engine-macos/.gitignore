@@ -1,0 +1,14 @@
+# Build output
+target/
+dist/
+
+# Recordings and raw test data
+analysis/raw/
+*.mov
+*.mp4
+
+# Logs
+*.log
+
+# Agent evidence
+.artifacts/
