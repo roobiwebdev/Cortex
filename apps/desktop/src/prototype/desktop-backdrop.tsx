@@ -3,8 +3,8 @@ import { BatteryFull, Circle, Search, Wifi } from "lucide-react";
 
 import { cn } from "@starter/ui/lib/utils";
 
-import { formatClock } from "../lib/format";
-import { useEngine } from "../lib/engine";
+import { ElapsedClock } from "../components/progress-text";
+import { useEngineCalm } from "../lib/engine";
 import { MockScreen } from "./mock-screen";
 
 /** Height of the fake macOS menu bar. Floating surfaces anchor below it. */
@@ -27,7 +27,7 @@ export function DesktopBackdrop({
   onStatusItem: () => void;
   statusItemActive: boolean;
 }) {
-  const e = useEngine();
+  const e = useEngineCalm();
   const recording = e.status === "recording" || e.status === "paused";
   return (
     <div className="relative size-full overflow-hidden">
@@ -53,7 +53,9 @@ export function DesktopBackdrop({
             {recording ? (
               <>
                 <span className={cn("size-2 rounded-full", e.status === "paused" ? "bg-warn" : "bg-rec")} />
-                <span className="tabular text-[12.5px] font-medium">{formatClock(e.elapsedSecs)}</span>
+                <span className="tabular text-[12.5px] font-medium">
+                  <ElapsedClock />
+                </span>
               </>
             ) : (
               <Circle className="size-3.5" strokeWidth={2.6} />

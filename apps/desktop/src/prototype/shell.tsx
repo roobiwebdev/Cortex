@@ -5,7 +5,7 @@ import { Button } from "@starter/ui/components/button";
 import { Segmented } from "@starter/ui/components/segmented";
 import { cn } from "@starter/ui/lib/utils";
 
-import { engine, useEngine } from "../lib/engine";
+import { engine, useEngineCalm } from "../lib/engine";
 import type { ThemePref } from "../lib/types";
 import { ACCENT_PRESETS, useStudioTheme } from "../lib/use-studio-theme";
 import { DesktopBackdrop } from "./desktop-backdrop";
@@ -20,7 +20,7 @@ import { WindowFrame } from "./window-frame";
  * WHERE: apps/desktop dev server (http://localhost:3002). Not shipped in the app.
  */
 export function PrototypeShell() {
-  const e = useEngine();
+  const e = useEngineCalm();
   useStudioTheme(e.settings.theme, e.settings.accentHue);
   const [active, setActive] = React.useState<SurfaceId>(() => readHash());
   const [camera, setCamera] = React.useState<MediaStream | null>(null);
