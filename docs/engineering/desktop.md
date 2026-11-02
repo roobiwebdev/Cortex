@@ -126,7 +126,7 @@ The HUD, toasts, countdown, region picker and menu bar panel are built on demand
 - **Sized to content.** In a window, a floating surface renders only its card (`useWindowed()` from `lib/floating.ts`). `FittedHost` in `app/tauri-window.tsx` measures it and calls `fit_floating`, which keeps the HUD's bottom-centre and the countdown's centre in place. The browser harness keeps the fake desktop layout.
 - **Opening and closing.** `open_floating` places the menu bar panel under the status item and the region picker over the full display under the cursor (one overlay per display is still to do). `hide_floating` closes the calling window; the menu bar panel also closes on blur and Esc, the region picker on confirm or cancel. A hidden HUD comes back from the panel menu ("Show recording HUD") or on the next recording.
 - **Global hotkeys** use Carbon (`rec_engine::hotkey`), which needs no Accessibility permission: ⇧⌘R starts, cancels the countdown, or stops; ⇧⌘S saves the replay and is registered only while the replay buffer is on; Esc is registered only during the countdown and cancels it.
-- **Main window and quit.** Closing the main window hides it; the app stays in the menu bar and a Dock click reopens it. Quit (tray menu, ⌘Q, Dock) reaches `RunEvent::Exit`, which runs `Shell::shutdown` to finalize an active recording and flush settings.
+- **Main window and quit.** Closing the main window hides it; the app stays in the menu bar and a Dock click reopens it. Quit finalizes an active recording and flushes settings before the process ends (`src-tauri/src/quit.rs`). An exit request (tray Quit, `AppHandle::exit`, the debug recording run, SIGTERM or SIGINT) is held back while a `quit` thread runs `Shell::shutdown`, then that thread exits, so the event loop keeps running while the file is written. ⌘Q from the app menu skips `ExitRequested`; `RunEvent::Exit` runs the same shutdown on the main thread. `MacEngine::shutdown` waits at most 500 ms for its ticker thread and then finalizes without it.
 
 Screenshots cannot see these windows, because they are excluded from sharing. To check them, run a debug build with the test pattern:
 
@@ -181,12 +181,14 @@ There is no server in the recorder yet, so the tRPC procedure builder does not a
 
 - No new `unsafe` outside `rec-engine-macos` and `rec-macos-ui`. Every `unsafe` block has a `// SAFETY:` comment that says why the call is sound.
 - New crates must pass `cargo fmt --check` and `cargo clippy -- -D warnings`. CI enforces this for `rec-core` and `cortex-desktop`. The imported Rec crates keep their upstream style for now, so subtree pulls stay clean.
+- **Never block on the main thread from engine or background threads.** Engine events reach `ipc::emitter` and `floating::observer` on the engine's ticker and writer threads, and at quit the main thread waits for those threads. Any `WebviewWindow` getter (`is_visible`, `outer_position`, `scale_factor`, ...) or `run_on_main` from `rec_macos_ui` called off the main thread waits for the main thread: that deadlocked quit. From those threads, read cached state (`ipc::VisibleWindows`) and hand window work to `AppHandle::run_on_main_thread` without waiting for it. The same applies to anything the main thread may join.
 - Errors cross IPC as `rec_core::EngineError`, never as panics. Do not `unwrap()` on input that came from the webview.
 - The TypeScript rules in `CLAUDE.md` still apply to `apps/desktop/src`.
 
 ## Testing
 
 - **Rust unit tests.** `cargo test --workspace`. `rec-core` covers the state machine, settings migration and the store. The imported engine keeps Rec's tests.
+- **Quit regressions.** `ipc::tests` reproduces the quit deadlock in miniature (a wait on the main thread from the ticker while the main thread joins it) and checks the visibility registry gets through. `crates/rec-engine-macos/tests/shutdown_blocked_sink.rs` holds the ticker inside the event sink and requires `shutdown` to return and leave a playable file.
 - **Test-pattern recordings.** Rec's test pattern draws a synthetic picture with a white flash and a beep, so it needs no Screen Recording permission. `engine_smoke` records 3 s at 1080p60 through `MacEngine` and checks the file with ffprobe (H.264, 1920x1080, 60/1, 180 frames) and with an AVFoundation probe. `crates/rec-engine-macos/scripts/selftest.sh` runs Rec's longer checks, including A/V sync.
 - **UI logic.** Vitest for React logic, and Playwright against the browser harness on :3002 with the mock engine.
 - **Real app.** Tauri WebDriver does not support macOS. For changed UI or runtime behaviour in the real app, use the `evidence-driven-testing` skill and keep the recordings in `.artifacts/<task-name>/`.
