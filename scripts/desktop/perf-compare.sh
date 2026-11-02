@@ -37,9 +37,22 @@ webkit_pids() { pgrep -f 'com.apple.WebKit' | sort -n || true; }
 
 # Samples CPU time of the pids listed (one per line) in $1 until $2 exits; prints a summary.
 sample() {
-  python3 - "$1" "$2" "$samples" <<'PY'
+  python3 - "$1" "$2" "$samples" "${3:-}" <<'PY'
 import subprocess, sys, time, os
-pidfile, watch, out = sys.argv[1], int(sys.argv[2]), sys.argv[3]
+pidfile, watch, out, beforefile = sys.argv[1], int(sys.argv[2]), sys.argv[3], sys.argv[4]
+# Cortex creates windows (and so WebKit processes) on demand: pick up WebKit processes
+# that start during the run too, and count all of their CPU time.
+before = set(p.strip() for p in open(beforefile) if p.strip()) if beforefile else None
+late = set()
+def rescan():
+    if before is None: return
+    known = set(p.strip() for p in open(pidfile) if p.strip())
+    r = subprocess.run(['pgrep', '-f', 'com.apple.WebKit'], capture_output=True, text=True)
+    new = [p for p in r.stdout.split() if p not in before and p not in known]
+    if new:
+        with open(pidfile, 'a') as fh:
+            for p in new: fh.write(p + '\n')
+        late.update(new)
 def cpu_secs(t):
     # [[dd-]hh:]mm:ss.ss
     d = 0
@@ -49,6 +62,7 @@ def cpu_secs(t):
     for p in parts: s = s * 60 + p
     return d + s
 def read():
+    rescan()
     pids = [p.strip() for p in open(pidfile) if p.strip()]
     if not pids: return {}, 0
     r = subprocess.run(['ps', '-o', 'pid=,time=,rss=', '-p', ','.join(pids)], capture_output=True, text=True)
@@ -61,14 +75,15 @@ def read():
 start = time.time(); prev, _ = read(); t_prev = start
 first = next((p.strip() for p in open(pidfile) if p.strip()), None)
 first0 = prev.get(first, 0.0)
-rows, total, peak = [], 0.0, 0
+rows, total, peak, procs = [], 0.0, 0, 0
 with open(out, 'w') as fh:
     fh.write('t\tcpu_pct\trss_mb\n')
     while True:
         time.sleep(1)
         alive = os.path.exists(f'/proc/{watch}') or subprocess.run(['kill', '-0', str(watch)], capture_output=True).returncode == 0
         cur, rss = read(); now = time.time()
-        d = sum(max(0.0, v - prev.get(k, 0.0)) for k, v in cur.items() if k in prev)
+        d = sum(max(0.0, v - prev.get(k, 0.0)) for k, v in cur.items() if k in prev or k in late)
+        procs = max(procs, len(cur))
         # A pid seen for the first time: count its CPU since the last sample as unknown (skip).
         pct = 100.0 * d / (now - t_prev)
         if cur:
@@ -82,7 +97,7 @@ s = sorted(rows)
 p95 = s[min(len(s) - 1, int(0.95 * len(s)))] if s else 0
 avg = 100.0 * total / wall if wall else 0
 main_avg = 100.0 * (prev.get(first, first0) - first0) / wall if wall else 0
-print(f'cpu_avg_pct={avg:.1f} cpu_p95_pct={p95:.1f} main_process_avg_pct={main_avg:.1f} rss_peak_mb={peak/1024:.0f} samples={wall}')
+print(f'cpu_avg_pct={avg:.1f} cpu_p95_pct={p95:.1f} main_process_avg_pct={main_avg:.1f} rss_peak_mb={peak/1024:.0f} procs_peak={procs} samples={wall}')
 PY
 }
 
@@ -120,7 +135,8 @@ JSON
       sleep 3
       ( sleep "$secs"; kill "$pid" 2>/dev/null ) &
     fi
-    summary=$(sample "$pidfile" "$pid")
+    echo "$before" >"$out/$tag.webkit-before"
+    summary=$(sample "$pidfile" "$pid" "$out/$tag.webkit-before")
     wait "$pid" 2>/dev/null || true
     file=$(sed -n 's/^cortex: recorded //p' "$log" | tail -1)
     ;;
