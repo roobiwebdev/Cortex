@@ -1,0 +1,32 @@
+Cortex
+Copyright 2026 the Cortex authors
+
+This product includes software developed by third parties.
+
+--------------------------------------------------------------------------------
+
+Rec (rec-rs)
+https://github.com/michaelshimeles/rec-rs
+Copyright 2026 Michael Shimeles
+Licensed under the MIT License or the Apache License, Version 2.0, at your option.
+
+Used in crates/rec-core, crates/rec-engine-macos and crates/rec-cli. The licence
+texts are in each crate's LICENSE-MIT and LICENSE-APACHE files.
+
+--------------------------------------------------------------------------------
+
+apple-cryptokit-rs 0.2.1
+https://github.com/zibo-chen/apple-cryptokit-rs
+Copyright (c) 2025 zibo-chen
+Licensed under the MIT License.
+
+A patched copy lives in third_party/apple-cryptokit-rs (see third_party/README.md).
+The licence text is in third_party/apple-cryptokit-rs/LICENSE.
+
+--------------------------------------------------------------------------------
+
+Other Rust dependencies
+
+Every Rust crate in the desktop build, with its version and licence, is listed in
+apps/desktop/THIRD_PARTY_RUST.md. Regenerate that list with
+scripts/desktop/third-party-licenses.sh.

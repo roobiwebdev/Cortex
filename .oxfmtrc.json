@@ -9,6 +9,7 @@
     ".reference/**",
     "apps/desktop/src/ipc/bindings.ts",
     "apps/desktop/src-tauri/gen/**",
+    "apps/desktop/THIRD_PARTY_RUST.md",
     ".agents/skills/**",
     ".claude/settings.local.json"
   ]
