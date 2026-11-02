@@ -1,0 +1,7 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "preview",
+  "description": "The live preview hole: only the main window may place the native preview view or turn it on.",
+  "windows": ["main"],
+  "permissions": ["allow-set-preview-rect", "allow-set-preview-enabled"]
+}

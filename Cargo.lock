@@ -806,6 +806,7 @@ version = "0.1.0"
 dependencies = [
  "rec-core",
  "rec-engine-macos",
+ "rec-macos-ui",
  "serde",
  "serde_json",
  "specta",
@@ -4244,6 +4245,7 @@ dependencies = [
  "objc2-core-video",
  "objc2-foundation 0.3.2",
  "objc2-quartz-core 0.3.2",
+ "raw-window-handle",
  "rec-engine-macos",
 ]
 

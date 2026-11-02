@@ -91,7 +91,10 @@ impl Forwarder {
                     c.state.set_devices(d);
                     state(&mut c)
                 }
-                EngineEvent::PermissionChanged { permission, state: p } => {
+                EngineEvent::PermissionChanged {
+                    permission,
+                    state: p,
+                } => {
                     c.state.permissions.set(permission, p);
                     state(&mut c)
                 }
@@ -301,9 +304,8 @@ impl Shell {
 
     pub fn open_recordings_folder(&self) -> Result<(), EngineError> {
         let dir = self.output_dir();
-        std::fs::create_dir_all(&dir).map_err(|e| {
-            EngineError::failed(format!("Could not create {}: {e}", dir.display()))
-        })?;
+        std::fs::create_dir_all(&dir)
+            .map_err(|e| EngineError::failed(format!("Could not create {}: {e}", dir.display())))?;
         open(&[dir.as_os_str()])
     }
 
@@ -395,10 +397,20 @@ mod tests {
             f.on_event(EngineEvent::Levels(Levels::default()));
         }
         let got = got.lock().unwrap();
-        let states = got.iter().filter(|o| matches!(o, Outbound::State(_))).count();
-        let levels = got.iter().filter(|o| matches!(o, Outbound::Levels(_))).count();
+        let states = got
+            .iter()
+            .filter(|o| matches!(o, Outbound::State(_)))
+            .count();
+        let levels = got
+            .iter()
+            .filter(|o| matches!(o, Outbound::Levels(_)))
+            .count();
         assert_eq!((states, levels), (1, 1), "a burst sends one of each");
-        assert_eq!(f.cache().state.elapsed_secs, 19.0, "the cache keeps the latest");
+        assert_eq!(
+            f.cache().state.elapsed_secs,
+            19.0,
+            "the cache keeps the latest"
+        );
     }
 
     #[test]

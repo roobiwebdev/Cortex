@@ -25,3 +25,4 @@ specta-typescript = "=0.0.13"
 tauri-specta = { version = "=2.0.0-rc.26", features = ["derive", "typescript"] }
 rec-core = { path = "../../../crates/rec-core", features = ["specta"] }
 rec-engine-macos = { path = "../../../crates/rec-engine-macos" }
+rec-macos-ui = { path = "../../../crates/rec-macos-ui" }

@@ -43,6 +43,16 @@ export const commands = {
 	removeStreamKey: (dest: StreamDest_Deserialize) => typedError<RecorderSettings_Serialize, EngineError>(__TAURI_INVOKE("remove_stream_key", { dest })),
 	/**  One-time import of Rec's settings.json as the current settings. */
 	importRecSettings: () => typedError<RecorderSettings_Serialize, EngineError>(__TAURI_INVOKE("import_rec_settings")),
+	/**
+	 *  Main window only: where the preview hole is, in CSS px from the webview's top-left,
+	 *  and its corner radius. The native preview view follows it.
+	 */
+	setPreviewRect: (x: number, y: number, w: number, h: number, radius: number) => __TAURI_INVOKE<void>("set_preview_rect", { x, y, w, h, radius }),
+	/**
+	 *  Main window only: the page shows (true) or removed (false) the preview hole.
+	 *  The engine previews while this is on and the window is visible.
+	 */
+	setPreviewEnabled: (enabled: boolean) => __TAURI_INVOKE<void>("set_preview_enabled", { enabled }),
 };
 
 /** Events */

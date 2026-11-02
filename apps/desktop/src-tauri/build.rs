@@ -22,6 +22,8 @@ const COMMANDS: &[&str] = &[
     "set_stream_key",
     "remove_stream_key",
     "import_rec_settings",
+    "set_preview_rect",
+    "set_preview_enabled",
 ];
 
 fn main() {
