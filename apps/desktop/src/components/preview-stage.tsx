@@ -2,6 +2,7 @@ import * as React from "react";
 
 import { cn } from "@starter/ui/lib/utils";
 
+import { hasNativePreview, useNativePreviewHole } from "../lib/native-preview";
 import type { PipCorner, PipPlace, RecorderSettings } from "../lib/types";
 import { CameraBubble } from "./camera-bubble";
 
@@ -15,6 +16,9 @@ const SNAP = 0.12; // release within this distance of a corner slot snaps to it
  * WHY:   The video content is a slot: the prototype passes a mock screen, the real app
  *        leaves a transparent hole for the native Metal preview view. The overlay
  *        handles stay in React either way, so editing feels identical.
+ *        In the Tauri main window the stage paints no background of its own: the hole's
+ *        box-shadow paints the dark surround inside the stage, and a fixed backdrop paints
+ *        the page around the stage, so nothing above the native view is opaque.
  * WHERE: main window centre.
  */
 export function PreviewStage({
@@ -35,8 +39,11 @@ export function PreviewStage({
   onPipPlace: (place: PipPlace) => void;
   children: React.ReactNode;
 }) {
+  const stage = React.useRef<HTMLDivElement>(null);
   const outer = React.useRef<HTMLDivElement>(null);
   const frame = React.useRef<HTMLDivElement>(null);
+  const [native] = React.useState(hasNativePreview);
+  const stageRect = useNativePreviewHole(native, frame, stage);
   const [box, setBox] = React.useState({ w: 0, h: 0 });
   const [drag, setDrag] = React.useState<{ x: number; y: number } | null>(null);
 
@@ -81,7 +88,14 @@ export function PreviewStage({
   }
 
   return (
-    <div className="relative flex min-h-0 flex-1 flex-col rounded-[18px] bg-stage p-4">
+    <div
+      ref={stage}
+      className={cn(
+        "relative flex min-h-0 flex-1 flex-col rounded-[18px] p-4",
+        native ? "overflow-hidden" : "bg-stage",
+      )}
+    >
+      {stageRect && <PageAroundStage rect={stageRect} />}
       <div ref={outer} className="relative flex min-h-0 flex-1 items-center justify-center">
         <div
           ref={frame}
@@ -90,9 +104,14 @@ export function PreviewStage({
             recording && !paused && "ring-2 ring-rec",
             paused && "ring-2 ring-warn",
           )}
-          style={{ width: box.w, height: box.h }}
+          style={{
+            width: box.w,
+            height: box.h,
+            // The native video shows through this box; its shadow paints the stage around it.
+            boxShadow: native ? "0 0 0 200vmax var(--color-stage)" : undefined,
+          }}
         >
-          {camOnly ? (
+          {native ? null : camOnly ? (
             <CameraBubble
               shape="rect"
               roundness={0}
@@ -130,16 +149,27 @@ export function PreviewStage({
                 )}
                 style={{ left: center.x * box.w - bubbleW / 2, top: center.y * box.h - bubbleH / 2 }}
               >
-                <CameraBubble
-                  shape={settings.pipShape}
-                  roundness={settings.pipRoundness}
-                  width={bubbleW}
-                  border={Math.round((settings.pipBorder * box.h) / 1080)}
-                  borderColor={settings.pipBorderColor}
-                  shadow={settings.pipShadow}
-                  mirror={settings.mirror}
-                  stream={cameraStream}
-                />
+                {native ? (
+                  // The engine draws the camera into the video; this is only the drag handle.
+                  <div
+                    className={cn(
+                      "rounded-md border border-dashed transition-colors",
+                      drag ? "border-primary bg-primary/10" : "border-transparent hover:border-foreground/40",
+                    )}
+                    style={{ width: bubbleW, height: bubbleH }}
+                  />
+                ) : (
+                  <CameraBubble
+                    shape={settings.pipShape}
+                    roundness={settings.pipRoundness}
+                    width={bubbleW}
+                    border={Math.round((settings.pipBorder * box.h) / 1080)}
+                    borderColor={settings.pipBorderColor}
+                    shadow={settings.pipShadow}
+                    mirror={settings.mirror}
+                    stream={cameraStream}
+                  />
+                )}
               </div>
             </>
           )}
@@ -152,6 +182,24 @@ export function PreviewStage({
           )}
         </div>
       </div>
+    </div>
+  );
+}
+
+/** Paints the page background everywhere except the stage, behind all other content. */
+function PageAroundStage({ rect }: { rect: { x: number; y: number; w: number; h: number } }) {
+  return (
+    <div aria-hidden className="pointer-events-none fixed inset-0 -z-10 overflow-hidden">
+      <div
+        className="absolute rounded-[18px]"
+        style={{
+          left: rect.x,
+          top: rect.y,
+          width: rect.w,
+          height: rect.h,
+          boxShadow: "0 0 0 200vmax var(--color-background)",
+        }}
+      />
     </div>
   );
 }

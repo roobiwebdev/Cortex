@@ -54,7 +54,10 @@ export function TauriWindow({ label }: { label: string }) {
   }
 
   return (
-    <div data-surface={label} className="relative h-full overflow-hidden bg-background text-foreground">
+    <div
+      data-surface={label}
+      className="relative h-full overflow-hidden bg-background text-foreground in-data-preview-hole:bg-transparent"
+    >
       {/* The native title bar is transparent (Overlay style); this strip makes it draggable. */}
       <div data-tauri-drag-region className="absolute inset-x-0 top-0 z-40 h-7" />
       <Component cameraStream={null} navigate={navigate} />

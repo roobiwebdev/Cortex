@@ -21,3 +21,10 @@ html[data-floating] body {
 [data-surface="menubar"] > * {
   position: static;
 }
+
+/* Main window with the native live preview: nothing above the preview may paint, so the
+   page and its ancestors are transparent and PreviewStage paints around the hole. */
+html[data-preview-hole],
+html[data-preview-hole] body {
+  background: transparent;
+}

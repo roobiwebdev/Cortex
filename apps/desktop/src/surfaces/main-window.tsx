@@ -35,7 +35,7 @@ export function MainWindow({ cameraStream, navigate }: SurfaceProps) {
 
   return (
     <TooltipProvider delayDuration={400}>
-      <div className="relative flex size-full bg-background text-foreground">
+      <div className="relative flex size-full bg-background text-foreground in-data-preview-hole:bg-transparent">
         <MainTitleBar e={e} navigate={navigate} />
         <SourcesSidebar e={e} navigate={navigate} />
         <main className="flex min-w-0 flex-1 flex-col pt-11">
