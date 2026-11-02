@@ -8,7 +8,8 @@
 //!        (see `build.rs` and `capabilities/default.json`). Stream keys go in, never out.
 //! WHERE: `lib.rs` registers `builder()`; `Shell` emits through `emitter()`.
 
-use std::sync::{Arc, Mutex};
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::{Arc, Mutex, RwLock};
 use std::time::{Duration, Instant};
 
 use rec_core::api::EngineError;
@@ -72,27 +73,85 @@ impl Event for SettingsChangedEvent {
     const NAME: &'static str = "settings://changed";
 }
 
-/// How long the list of visible windows is reused for level events.
+/// How long the list of visible windows is reused before a refresh is queued.
 const VISIBLE_REFRESH: Duration = Duration::from_millis(250);
 
-/// Labels of the windows on screen, refreshed at most every `VISIBLE_REFRESH`.
-fn visible_labels<R: Runtime>(
-    app: &AppHandle<R>,
-    cache: &Mutex<(Option<Instant>, Vec<String>)>,
-) -> Vec<String> {
-    let Ok(mut c) = cache.lock() else {
-        return vec![];
-    };
-    if c.0.is_none_or(|t| t.elapsed() >= VISIBLE_REFRESH) {
-        c.1 = app
-            .webview_windows()
-            .into_iter()
-            .filter(|(_, w)| w.is_visible().unwrap_or(true))
-            .map(|(label, _)| label)
-            .collect();
-        c.0 = Some(Instant::now());
+/**
+ * SOURCE OF TRUTH KEYWORDS: VisibleWindows, visible windows, visibility registry, refresh_visible, main thread, quit hang, event fan-out
+ * WHAT:  The labels of the windows on screen, as last read on the main thread.
+ * WHY:   Events are sent from engine threads. Asking Tauri whether a window is visible
+ *        from there waits for the main thread, and at quit the main thread waits for the
+ *        engine thread: Cortex hung. Readers here never wait on another thread. A stale
+ *        list queues one refresh on the main thread (fire and forget) and is used as is
+ *        meanwhile, so windows shown or hidden from anywhere (Rust or the webview) are
+ *        picked up within about `VISIBLE_REFRESH` without hooks at every show/hide site.
+ * WHERE: `emitter` reads it; `refresh_visible` (setup) and `window_changed` (every
+ *        window event, from `lib.rs`) keep it current.
+ */
+#[derive(Default)]
+pub struct VisibleWindows {
+    labels: RwLock<Vec<String>>,
+    refreshed: Mutex<Option<Instant>>,
+    /// A refresh has been queued and has not run yet.
+    queued: AtomicBool,
+}
+
+impl VisibleWindows {
+    /// The labels as last recorded. When they are older than `VISIBLE_REFRESH` and no
+    /// refresh is pending, `queue` is called to schedule one; it must not wait for it.
+    fn labels(&self, queue: impl FnOnce() -> bool) -> Vec<String> {
+        let stale = self
+            .refreshed
+            .lock()
+            .map_or(true, |t| t.is_none_or(|t| t.elapsed() >= VISIBLE_REFRESH));
+        if stale && !self.queued.swap(true, Ordering::SeqCst) && !queue() {
+            self.queued.store(false, Ordering::SeqCst);
+        }
+        self.labels.read().map(|l| l.clone()).unwrap_or_default()
     }
-    c.1.clone()
+
+    fn set(&self, labels: Vec<String>) {
+        if let Ok(mut l) = self.labels.write() {
+            *l = labels;
+        }
+        if let Ok(mut t) = self.refreshed.lock() {
+            *t = Some(Instant::now());
+        }
+        self.queued.store(false, Ordering::SeqCst);
+    }
+
+    /// The next read queues a refresh.
+    fn mark_stale(&self) {
+        if let Ok(mut t) = self.refreshed.lock() {
+            *t = None;
+        }
+    }
+}
+
+/// Reads which windows are visible and records it. On the main thread this runs at once;
+/// from any other thread it is queued there and this returns without waiting.
+pub fn refresh_visible<R: Runtime>(app: &AppHandle<R>) -> bool {
+    let a = app.clone();
+    app.run_on_main_thread(move || {
+        if let Some(v) = a.try_state::<Arc<VisibleWindows>>() {
+            v.set(
+                a.webview_windows()
+                    .into_iter()
+                    .filter(|(_, w)| w.is_visible().unwrap_or(true))
+                    .map(|(label, _)| label)
+                    .collect(),
+            );
+        }
+    })
+    .is_ok()
+}
+
+/// A window was focused, resized, minimised, closed or destroyed: refresh on the next event.
+/// (Runs inside Tauri's window event handler, so it only marks the list stale.)
+pub fn window_changed<R: Runtime>(app: &AppHandle<R>) {
+    if let Some(v) = app.try_state::<Arc<VisibleWindows>>() {
+        v.mark_stale();
+    }
 }
 
 /// Hidden windows still get the engine state this often, so they are current when shown.
@@ -116,9 +175,11 @@ fn not_toasts(t: &EventTarget) -> bool {
 /// is its own WebKit process, and re-rendering hidden ones at the meter rate cost more
 /// CPU than the recording, so (with `lib/engine.ts` listening per window) levels go only
 /// to visible windows, and progress-only state updates reach hidden windows once a second.
-/// Status changes always go to every window.
+/// Status changes always go to every window. Never waits on the main thread (see
+/// `VisibleWindows`): it runs on engine threads, which the main thread waits for at quit.
 pub fn emitter<R: Runtime>(app: AppHandle<R>) -> Emit {
-    let visible = Mutex::new((None, vec![]));
+    let visible = Arc::new(VisibleWindows::default());
+    app.manage(visible.clone());
     let last_all = Mutex::new((None::<Instant>, None::<EngineStatus>));
     Arc::new(move |o: Outbound| {
         let r = match o {
@@ -134,12 +195,12 @@ pub fn emitter<R: Runtime>(app: AppHandle<R>) -> Emit {
                 if all {
                     EngineStateEvent(s).emit(&app)
                 } else {
-                    let labels = visible_labels(&app, &visible);
+                    let labels = visible.labels(|| refresh_visible(&app));
                     EngineStateEvent(s).emit_filter(&app, |t| label_in(t, &labels))
                 }
             }
             Outbound::Levels(l) => {
-                let labels = visible_labels(&app, &visible);
+                let labels = visible.labels(|| refresh_visible(&app));
                 LevelsEvent(l).emit_filter(&app, |t| label_in(t, &labels))
             }
             // The toasts window gets these through `floating::observer`, which builds it on
@@ -407,5 +468,93 @@ mod tests {
                 concat!(env!("CARGO_MANIFEST_DIR"), "/../src/ipc/bindings.ts"),
             )
             .expect("failed to export TypeScript bindings");
+    }
+
+    use std::sync::Arc;
+    use std::sync::mpsc::{self, Sender};
+    use std::time::Duration;
+
+    use super::VisibleWindows;
+
+    type Task = Box<dyn FnOnce() + Send>;
+
+    /// The quit hang in miniature. A "main" thread joins a "ticker" thread (as
+    /// `MacEngine::shutdown` did at `RunEvent::Exit`) and only afterwards runs the tasks
+    /// queued for it, like AppKit's main thread. The ticker calls `query` 20 times, the
+    /// way the emitter reads window visibility for each levels event. Returns whether the
+    /// main thread got through the join within 3 s.
+    fn quits(query: impl Fn(&Sender<Task>) + Send + 'static) -> bool {
+        let (done_tx, done_rx) = mpsc::channel();
+        std::thread::spawn(move || {
+            let (tx, rx) = mpsc::channel::<Task>();
+            let ticker = std::thread::spawn(move || {
+                for _ in 0..20 {
+                    query(&tx);
+                    std::thread::sleep(Duration::from_millis(1));
+                }
+            });
+            let _ = ticker.join();
+            let _ = done_tx.send(());
+            for task in rx.try_iter() {
+                task();
+            }
+        });
+        done_rx.recv_timeout(Duration::from_secs(3)).is_ok()
+    }
+
+    /// What the old `visible_labels` did through `WebviewWindow::is_visible`: queue the
+    /// question on the main thread and wait for the answer. It deadlocks.
+    #[test]
+    fn waiting_on_the_main_thread_from_the_ticker_hangs_quit() {
+        let ok = quits(|main| {
+            let (reply_tx, reply_rx) = mpsc::channel::<bool>();
+            let _ = main.send(Box::new(move || {
+                let _ = reply_tx.send(true);
+            }));
+            let _ = reply_rx.recv();
+        });
+        assert!(!ok, "expected the old pattern to deadlock");
+    }
+
+    /// The registry only queues a refresh and returns, so quit gets through, and the
+    /// refresh still lands once the main thread runs its queue.
+    #[test]
+    fn the_visibility_registry_never_waits_on_the_main_thread() {
+        let reg = Arc::new(VisibleWindows::default());
+        let r = reg.clone();
+        let ok = quits(move |main| {
+            let r2 = r.clone();
+            let _ = r.labels(|| {
+                main.send(Box::new(move || r2.set(vec!["main".into()])))
+                    .is_ok()
+            });
+        });
+        assert!(ok, "quit hung on the visibility registry");
+        let deadline = std::time::Instant::now() + Duration::from_secs(2);
+        while reg.labels(|| true).is_empty() {
+            assert!(std::time::Instant::now() < deadline, "refresh never landed");
+            std::thread::sleep(Duration::from_millis(5));
+        }
+        assert_eq!(reg.labels(|| true), vec!["main".to_string()]);
+    }
+
+    #[test]
+    fn a_stale_registry_queues_one_refresh_at_a_time() {
+        let reg = VisibleWindows::default();
+        let mut queued = 0;
+        for _ in 0..5 {
+            let _ = reg.labels(|| {
+                queued += 1;
+                true
+            });
+        }
+        assert_eq!(queued, 1);
+        reg.set(vec!["main".into()]);
+        reg.mark_stale();
+        let _ = reg.labels(|| {
+            queued += 1;
+            true
+        });
+        assert_eq!(queued, 2);
     }
 }

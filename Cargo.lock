@@ -4237,6 +4237,7 @@ version = "0.1.0"
 dependencies = [
  "block2 0.6.2",
  "dispatch2",
+ "libc",
  "objc2 0.6.5",
  "objc2-app-kit 0.3.2",
  "objc2-av-foundation",

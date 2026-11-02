@@ -4,6 +4,7 @@
 mod floating;
 mod ipc;
 mod preview;
+mod quit;
 pub mod shell;
 mod windows;
 
@@ -84,8 +85,11 @@ pub fn run() {
 
     let app = tauri::Builder::default()
         .invoke_handler(ipc.invoke_handler())
+        // Window state read from engine threads comes from this cache (see `ipc::VisibleWindows`).
+        .on_window_event(|w, _| ipc::window_changed(w.app_handle()))
         .setup(move |app| {
             ipc.mount_events(app);
+            app.manage(quit::Quit::default());
             let debug = DebugRun::from_env();
             // ~/Library/Application Support/dev.roobi.cortex/settings.json
             let data_dir = match debug.data_dir.clone() {
@@ -173,6 +177,9 @@ pub fn run() {
             // Debug builds only: release builds keep every floating window out of captures.
             let capturable = debug.capturable && cfg!(debug_assertions);
             floating::init(app, floating, &settings, capturable);
+            // On the main thread, so this runs now: levels reach the main window at once.
+            ipc::refresh_visible(app.handle());
+            quit::watch_signals(app.handle());
             #[cfg(debug_assertions)]
             if let Some(what) = debug.open.clone() {
                 let handle = app.handle().clone();
@@ -188,7 +195,11 @@ pub fn run() {
         .expect("error while building the Cortex app");
 
     app.run(|app, event| match event {
-        // Quit finalizes a running recording and writes pending settings first.
+        // Quit finalizes a running recording and writes pending settings first, off the
+        // main thread (see `quit.rs`).
+        RunEvent::ExitRequested { code, api, .. } => quit::on_exit_requested(app, code, &api),
+        // ⌘Q from the app menu arrives here without `ExitRequested`. Already done if the
+        // quit thread ran; otherwise it finalizes now (nothing it does waits on this thread).
         RunEvent::Exit => {
             if let Some(shell) = app.try_state::<Arc<Shell>>() {
                 shell.shutdown();
