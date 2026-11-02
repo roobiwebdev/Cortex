@@ -10,7 +10,8 @@
 //! Threads: commands run on the caller's thread under one lock; a ticker thread
 //! (30 Hz) runs the countdown, meters, progress, failure checks and finalization
 //! results. Events are sent after the lock is released, so a sink may call back
-//! into the engine.
+//! into the engine. `shutdown` never waits on the ticker for long (a sink may be
+//! waiting on the thread that quits), and finalizes the recording itself.
 
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
@@ -907,11 +908,19 @@ impl Core {
         if self.devices_changed.swap(false, Ordering::SeqCst) {
             let d = list_devices();
             self.run(|inner, ev| {
-                inner.state.set_devices(d.clone());
-                ev.push(EngineEvent::DeviceChanged(d));
+                if !self.quit.load(Ordering::SeqCst) {
+                    inner.state.set_devices(d.clone());
+                    ev.push(EngineEvent::DeviceChanged(d));
+                }
             });
         }
-        self.run(|inner, ev| inner.tick(self, ev));
+        // Checked under the lock: once `shutdown` has set `quit`, a ticker that was held up
+        // (in an event sink, say) never touches the state `shutdown` cleaned up.
+        self.run(|inner, ev| {
+            if !self.quit.load(Ordering::SeqCst) {
+                inner.tick(self, ev);
+            }
+        });
     }
 }
 
@@ -989,6 +998,9 @@ impl PreviewScaler {
         out
     }
 }
+
+/// How long `shutdown` waits for the ticker thread before finalizing without it.
+const TICKER_STOP_WAIT: Duration = Duration::from_millis(500);
 
 /// The macOS recorder engine.
 pub struct MacEngine {
@@ -1346,8 +1358,23 @@ impl RecorderEngine for MacEngine {
         if self.core.quit.swap(true, Ordering::SeqCst) {
             return;
         }
-        if let Some(t) = self.ticker.lock().unwrap().take() {
-            let _ = t.join();
+        // The ticker may be inside an event sink that waits on the thread calling this (the
+        // app's main thread, at quit). Joining it unconditionally deadlocked quit, so wait a
+        // bounded time and then let it go: it exits on its own once the sink returns, and
+        // the `quit` check in `Core::tick` keeps it away from the state cleaned up below.
+        if let Some(t) = self.ticker.lock().unwrap_or_else(|p| p.into_inner()).take() {
+            let deadline = Instant::now() + TICKER_STOP_WAIT;
+            while !t.is_finished() && Instant::now() < deadline {
+                std::thread::sleep(Duration::from_millis(5));
+            }
+            if t.is_finished() {
+                let _ = t.join();
+            } else {
+                eprintln!(
+                    "rec-engine: the ticker did not stop within {} ms; finalizing without it",
+                    TICKER_STOP_WAIT.as_millis()
+                );
+            }
         }
         let core = &*self.core;
         core.run(|i, ev| {
