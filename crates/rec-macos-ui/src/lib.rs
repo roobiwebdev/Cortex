@@ -4,6 +4,7 @@
 //! - [`panel`]: floating-window behaviour for the HUD, toasts, countdown,
 //!   region picker and menu bar panel.
 //! - [`geometry`]: pure coordinate maths shared with the web layout.
+//! - [`signals`]: SIGTERM/SIGINT as a callback, so the app can quit gracefully.
 //!
 //! All `unsafe` in the desktop app's UI layer lives in this crate, each block
 //! with a SAFETY comment. AppKit calls run on the main thread via
@@ -14,6 +15,7 @@ pub mod geometry;
 pub mod main_thread;
 pub mod panel;
 pub mod preview;
+pub mod signals;
 
 pub use geometry::{Rect, aspect_fit, web_rect_to_appkit};
 pub use panel::{
