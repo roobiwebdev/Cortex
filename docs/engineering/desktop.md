@@ -8,7 +8,7 @@ Cortex ships a macOS screen, camera and audio recorder. The capture engine is Re
 | ------------------------- | ------------------------------------------------------------------------------------------------------ | ---------------------------------------- |
 | `crates/rec-core`         | Platform-neutral settings schema, engine API (`RecorderEngine`, `EngineEvent`), state, settings store. | serde, specta (optional). No Apple code. |
 | `crates/rec-engine-macos` | Rec's capture, compose, encode, mixer and live code. Exposes `MacEngine`, which implements `rec_core`. | rec-core, Apple frameworks               |
-| `crates/rec-macos-ui`     | Native window behaviour: non-activating panels, capture exclusion, levels, menu bar anchoring.         | Apple frameworks                         |
+| `crates/rec-macos-ui`     | Native window behaviour: live preview view, non-activating panels, capture exclusion, levels.          | Apple frameworks                         |
 | `crates/rec-cli`          | The `rec-rs` command-line recorder.                                                                    | rec-engine-macos                         |
 | `apps/desktop/src`        | React 19 + Vite + Tailwind 4 surfaces (main, settings, HUD, toasts, countdown, region picker, trim).   | `@starter/ui`, `@tauri-apps/api`         |
 | `apps/desktop/src-tauri`  | The Tauri shell (Rust crate `cortex-desktop`): windows, tray, IPC commands.                            | rec-core, rec-engine-macos, rec-macos-ui |
@@ -45,7 +45,27 @@ Events travel back the same way. The engine calls its `EventSink`, the shell bro
 
 Video frames never enter the webview. The preview is a native view under a transparent region of the window, so the webview only carries state, settings and levels.
 
-The shell in this branch still runs a `StubEngine`. Swapping in `MacEngine` changes `src-tauri/src/engine.rs` and nothing above the `rec_core` line.
+The shell runs `MacEngine` through `src-tauri/src/shell.rs`.
+
+## Live preview
+
+```
+MacEngine preview session ──(CVPixelBuffer, ≤30 fps, scaled to the view)──▶ PreviewView sink
+                                                                             │
+NSWindow (main) ─ contentView ─┬─ PreviewView (AVSampleBufferDisplayLayer, below)
+                               └─ WKWebView (drawsBackground = NO, page has a hole)
+```
+
+- **Native side.** `src-tauri/src/preview.rs` (`LivePreview`) attaches `rec_macos_ui::PreviewView` to the main window at setup, makes the webview transparent (`make_window_webviews_transparent`) and connects `PreviewView::sink()` to `MacEngine::set_preview_sink`. Both `rec-macos-ui` entry points take a window handle, so the shell has no `unsafe`.
+- **Commands.** `set_preview_rect(x, y, w, h, radius)` places the view (CSS px from the webview's top-left) and tells the engine the view's pixel size. `set_preview_enabled(bool)` says whether the page shows the hole. Only the main window may call them (`capabilities/preview.json`).
+- **When it runs.** The engine's preview session runs while the hole is shown and the window is visible. Visibility comes from the window's occlusion state, so hiding, minimising, covering the window or moving to another Space stops it. Rec's rule still holds: the replay buffer and streaming keep the engine capturing without a preview.
+- **Frame size and rate.** The writer sends at most 30 preview frames a second. The engine scales each one with Rec's Metal Lanczos scaler (`FrameScaler`) to the view's pixel size, at most 1920 wide, before the sink. Low-power preview halves the rate to 15.
+- **React side.** In the Tauri main window `PreviewStage` renders an empty box instead of `MockScreen` and reports its rect through `useNativePreviewHole` (`lib/native-preview.ts`): ResizeObserver, window resize and display scale changes. Nothing above the native view may paint, so `html[data-preview-hole]` makes html, body and the window roots transparent; the hole's box-shadow paints the dark stage around it, and a fixed backdrop behind everything paints the page around the stage. The camera overlay stays a React drag handle above the video (the engine draws the camera itself). The browser harness still renders `MockScreen`.
+- **Own windows stay out of recordings.** The shell calls `rec_engine::screen::require_self_exclusion(true)`. If ScreenCaptureKit doesn't list the app, the engine looks once more after refreshing and then fails the capture with a clear error, rather than recording our own windows. The CLI leaves it off: it has no windows.
+
+### Perf and self-test hooks
+
+The shell reads these at launch (never set in normal use): `CORTEX_DEBUG_DATA_DIR` (settings folder), `CORTEX_DEBUG_TEST_PATTERN=1` (record Rec's test pattern, no Screen Recording grant needed), `CORTEX_DEBUG_RECORD_SECS=N` (record N s after launch, print the path, quit), `CORTEX_DEBUG_HIDE_MAIN=1` and `CORTEX_DEBUG_PREVIEW_STATS=1` (print the preview frame rate). `scripts/desktop/perf-compare.sh` uses them to compare CPU, memory and frame counts with Rec.app's `rec-rs record --test-pattern`.
 
 ## Single sources of truth
 
@@ -74,7 +94,8 @@ pnpm --filter desktop check-types                TypeScript check
 pnpm --filter desktop ipc:bindings               regenerate src/ipc/bindings.ts from the Rust commands
 cargo test --workspace                           every Rust test
 cargo fmt --check -p rec-core -p cortex-desktop  formatting for the crates we own
-cargo clippy -p rec-core -p cortex-desktop -- -D warnings
+cargo clippy --no-deps -p rec-core -p cortex-desktop -p rec-macos-ui -- -D warnings
+scripts/desktop/perf-compare.sh cortex 4k60-hevc 60 OUT   CPU/frames of a release Cortex.app recording vs `rec` mode
 cargo run --release -p rec-engine-macos --example engine_smoke   test-pattern recording + ffprobe check
 scripts/desktop/third-party-licenses.sh          refresh apps/desktop/THIRD_PARTY_RUST.md
 ```
