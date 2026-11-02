@@ -44,5 +44,3 @@ ureq = { version = "3", default-features = false, features = ["native-tls-no-def
 objc2-metal = { version = "0.3", features = ["objc2-io-surface"] }
 objc2-metal-performance-shaders = "0.3"
 
-[profile.release]
-debug = 1
