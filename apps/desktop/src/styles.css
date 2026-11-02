@@ -1,0 +1,13 @@
+@import "@starter/ui/globals.css";
+@import "@starter/ui/studio.css";
+@source "./**/*.{ts,tsx}";
+@source "../../../packages/ui/src/**/*.{ts,tsx}";
+
+html,
+body,
+#root {
+  height: 100%;
+}
+body {
+  overscroll-behavior: none;
+}
