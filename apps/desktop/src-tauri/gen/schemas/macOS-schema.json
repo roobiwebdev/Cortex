@@ -177,22 +177,22 @@
       "description": "Permission identifier",
       "oneOf": [
         {
-          "description": "Enables the engine_pause command without any pre-configured scope.",
+          "description": "Enables the cancel_countdown command without any pre-configured scope.",
           "type": "string",
-          "const": "allow-engine-pause",
-          "markdownDescription": "Enables the engine_pause command without any pre-configured scope."
+          "const": "allow-cancel-countdown",
+          "markdownDescription": "Enables the cancel_countdown command without any pre-configured scope."
         },
         {
-          "description": "Enables the engine_resume command without any pre-configured scope.",
+          "description": "Enables the devices command without any pre-configured scope.",
           "type": "string",
-          "const": "allow-engine-resume",
-          "markdownDescription": "Enables the engine_resume command without any pre-configured scope."
+          "const": "allow-devices",
+          "markdownDescription": "Enables the devices command without any pre-configured scope."
         },
         {
-          "description": "Enables the engine_start command without any pre-configured scope.",
+          "description": "Enables the discard command without any pre-configured scope.",
           "type": "string",
-          "const": "allow-engine-start",
-          "markdownDescription": "Enables the engine_start command without any pre-configured scope."
+          "const": "allow-discard",
+          "markdownDescription": "Enables the discard command without any pre-configured scope."
         },
         {
           "description": "Enables the engine_state command without any pre-configured scope.",
@@ -201,10 +201,94 @@
           "markdownDescription": "Enables the engine_state command without any pre-configured scope."
         },
         {
-          "description": "Enables the engine_stop command without any pre-configured scope.",
+          "description": "Enables the get_settings command without any pre-configured scope.",
           "type": "string",
-          "const": "allow-engine-stop",
-          "markdownDescription": "Enables the engine_stop command without any pre-configured scope."
+          "const": "allow-get-settings",
+          "markdownDescription": "Enables the get_settings command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the go_live command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-go-live",
+          "markdownDescription": "Enables the go_live command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the import_rec_settings command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-import-rec-settings",
+          "markdownDescription": "Enables the import_rec_settings command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the open_recordings_folder command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-open-recordings-folder",
+          "markdownDescription": "Enables the open_recordings_folder command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the open_system_settings command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-open-system-settings",
+          "markdownDescription": "Enables the open_system_settings command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the pause command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-pause",
+          "markdownDescription": "Enables the pause command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the remove_stream_key command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-remove-stream-key",
+          "markdownDescription": "Enables the remove_stream_key command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the request_permission command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-request-permission",
+          "markdownDescription": "Enables the request_permission command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the resume command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-resume",
+          "markdownDescription": "Enables the resume command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the reveal_recording command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-reveal-recording",
+          "markdownDescription": "Enables the reveal_recording command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the save_replay command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-save-replay",
+          "markdownDescription": "Enables the save_replay command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the set_stream_key command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-set-stream-key",
+          "markdownDescription": "Enables the set_stream_key command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the start command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-start",
+          "markdownDescription": "Enables the start command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the stop command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-stop",
+          "markdownDescription": "Enables the stop command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the stop_live command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-stop-live",
+          "markdownDescription": "Enables the stop_live command without any pre-configured scope."
         },
         {
           "description": "Enables the update_settings command without any pre-configured scope.",
@@ -213,22 +297,22 @@
           "markdownDescription": "Enables the update_settings command without any pre-configured scope."
         },
         {
-          "description": "Denies the engine_pause command without any pre-configured scope.",
+          "description": "Denies the cancel_countdown command without any pre-configured scope.",
           "type": "string",
-          "const": "deny-engine-pause",
-          "markdownDescription": "Denies the engine_pause command without any pre-configured scope."
+          "const": "deny-cancel-countdown",
+          "markdownDescription": "Denies the cancel_countdown command without any pre-configured scope."
         },
         {
-          "description": "Denies the engine_resume command without any pre-configured scope.",
+          "description": "Denies the devices command without any pre-configured scope.",
           "type": "string",
-          "const": "deny-engine-resume",
-          "markdownDescription": "Denies the engine_resume command without any pre-configured scope."
+          "const": "deny-devices",
+          "markdownDescription": "Denies the devices command without any pre-configured scope."
         },
         {
-          "description": "Denies the engine_start command without any pre-configured scope.",
+          "description": "Denies the discard command without any pre-configured scope.",
           "type": "string",
-          "const": "deny-engine-start",
-          "markdownDescription": "Denies the engine_start command without any pre-configured scope."
+          "const": "deny-discard",
+          "markdownDescription": "Denies the discard command without any pre-configured scope."
         },
         {
           "description": "Denies the engine_state command without any pre-configured scope.",
@@ -237,10 +321,94 @@
           "markdownDescription": "Denies the engine_state command without any pre-configured scope."
         },
         {
-          "description": "Denies the engine_stop command without any pre-configured scope.",
+          "description": "Denies the get_settings command without any pre-configured scope.",
           "type": "string",
-          "const": "deny-engine-stop",
-          "markdownDescription": "Denies the engine_stop command without any pre-configured scope."
+          "const": "deny-get-settings",
+          "markdownDescription": "Denies the get_settings command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the go_live command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-go-live",
+          "markdownDescription": "Denies the go_live command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the import_rec_settings command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-import-rec-settings",
+          "markdownDescription": "Denies the import_rec_settings command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the open_recordings_folder command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-open-recordings-folder",
+          "markdownDescription": "Denies the open_recordings_folder command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the open_system_settings command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-open-system-settings",
+          "markdownDescription": "Denies the open_system_settings command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the pause command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-pause",
+          "markdownDescription": "Denies the pause command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the remove_stream_key command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-remove-stream-key",
+          "markdownDescription": "Denies the remove_stream_key command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the request_permission command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-request-permission",
+          "markdownDescription": "Denies the request_permission command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the resume command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-resume",
+          "markdownDescription": "Denies the resume command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the reveal_recording command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-reveal-recording",
+          "markdownDescription": "Denies the reveal_recording command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the save_replay command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-save-replay",
+          "markdownDescription": "Denies the save_replay command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the set_stream_key command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-set-stream-key",
+          "markdownDescription": "Denies the set_stream_key command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the start command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-start",
+          "markdownDescription": "Denies the start command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the stop command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-stop",
+          "markdownDescription": "Denies the stop command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the stop_live command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-stop-live",
+          "markdownDescription": "Denies the stop_live command without any pre-configured scope."
         },
         {
           "description": "Denies the update_settings command without any pre-configured scope.",

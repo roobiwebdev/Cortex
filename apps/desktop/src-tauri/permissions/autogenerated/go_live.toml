@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-go-live"
+description = "Enables the go_live command without any pre-configured scope."
+commands.allow = ["go_live"]
+
+[[permission]]
+identifier = "deny-go-live"
+description = "Denies the go_live command without any pre-configured scope."
+commands.deny = ["go_live"]

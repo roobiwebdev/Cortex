@@ -3,11 +3,25 @@
 // in sync with `collect_commands!` in `src/ipc.rs`.
 const COMMANDS: &[&str] = &[
     "engine_state",
-    "engine_start",
-    "engine_stop",
-    "engine_pause",
-    "engine_resume",
+    "start",
+    "cancel_countdown",
+    "stop",
+    "pause",
+    "resume",
+    "discard",
+    "save_replay",
+    "go_live",
+    "stop_live",
     "update_settings",
+    "get_settings",
+    "devices",
+    "request_permission",
+    "open_system_settings",
+    "reveal_recording",
+    "open_recordings_folder",
+    "set_stream_key",
+    "remove_stream_key",
+    "import_rec_settings",
 ];
 
 fn main() {

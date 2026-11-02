@@ -8,25 +8,70 @@ import * as __TAURI_EVENT from "@tauri-apps/api/event";
 /** Commands */
 export const commands = {
 	engineState: () => __TAURI_INVOKE<EngineState_Serialize>("engine_state"),
-	/**  Stub: skips the countdown and starts "recording" immediately. */
-	engineStart: () => __TAURI_INVOKE<EngineState_Serialize>("engine_start"),
-	/**  Stub: returns to idle without writing a file. */
-	engineStop: () => __TAURI_INVOKE<EngineState_Serialize>("engine_stop"),
-	enginePause: () => __TAURI_INVOKE<EngineState_Serialize>("engine_pause"),
-	engineResume: () => __TAURI_INVOKE<EngineState_Serialize>("engine_resume"),
+	/**  Start recording with the stored settings, after their countdown. */
+	start: () => typedError<null, EngineError>(__TAURI_INVOKE("start")),
+	cancelCountdown: () => typedError<null, EngineError>(__TAURI_INVOKE("cancel_countdown")),
+	/**  Stop and keep the file; `engine://recording-finished` follows. */
+	stop: () => typedError<null, EngineError>(__TAURI_INVOKE("stop")),
+	pause: () => typedError<null, EngineError>(__TAURI_INVOKE("pause")),
+	resume: () => typedError<null, EngineError>(__TAURI_INVOKE("resume")),
+	/**  Stop without keeping the file (or cancel the countdown). */
+	discard: () => typedError<null, EngineError>(__TAURI_INVOKE("discard")),
+	saveReplay: () => typedError<null, EngineError>(__TAURI_INVOKE("save_replay")),
+	goLive: () => typedError<null, EngineError>(__TAURI_INVOKE("go_live")),
+	stopLive: () => typedError<null, EngineError>(__TAURI_INVOKE("stop_live")),
 	/**
-	 *  Replaces the settings wholesale (the UI merges its patch first). Stub: kept
-	 *  in memory only; the real engine validates ranges and persists atomically.
+	 *  Replace the settings (the UI merges its patch first). Validated, persisted, applied;
+	 *  returns what was stored and broadcasts `settings://changed`.
 	 */
-	updateSettings: (settings: RecorderSettings_Deserialize) => __TAURI_INVOKE<EngineState_Serialize>("update_settings", { settings }),
+	updateSettings: (settings: RecorderSettings_Deserialize) => typedError<RecorderSettings_Serialize, EngineError>(__TAURI_INVOKE("update_settings", { settings })),
+	getSettings: () => __TAURI_INVOKE<RecorderSettings_Serialize>("get_settings"),
+	/**  Every capture source the engine can see right now. */
+	devices: () => typedError<Devices, EngineError>(__TAURI_INVOKE("devices")),
+	/**  Show the system prompt; resolves when answered (or after 60 s). */
+	requestPermission: (permission: Permission) => typedError<PermissionState, EngineError>(__TAURI_INVOKE("request_permission", { permission })),
+	/**  Open the System Settings privacy pane for a permission. */
+	openSystemSettings: (permission: Permission) => typedError<null, EngineError>(__TAURI_INVOKE("open_system_settings", { permission })),
+	/**  Show a recording in Finder (only files inside the recordings folder). */
+	revealRecording: (path: string) => typedError<null, EngineError>(__TAURI_INVOKE("reveal_recording", { path })),
+	openRecordingsFolder: () => typedError<null, EngineError>(__TAURI_INVOKE("open_recordings_folder")),
+	/**
+	 *  Save a destination's stream key in the Keychain. The key never comes back to the
+	 *  webview; the returned settings only say `keyStored`.
+	 */
+	setStreamKey: (dest: StreamDest_Deserialize, key: string) => typedError<RecorderSettings_Serialize, EngineError>(__TAURI_INVOKE("set_stream_key", { dest, key })),
+	removeStreamKey: (dest: StreamDest_Deserialize) => typedError<RecorderSettings_Serialize, EngineError>(__TAURI_INVOKE("remove_stream_key", { dest })),
+	/**  One-time import of Rec's settings.json as the current settings. */
+	importRecSettings: () => typedError<RecorderSettings_Serialize, EngineError>(__TAURI_INVOKE("import_rec_settings")),
 };
 
 /** Events */
 export const events = {
+	engineError: makeEvent<EngineErrorEvent, EngineErrorEvent>("engine://error"),
+	engineLevels: makeEvent<LevelsEvent, LevelsEvent>("engine://levels"),
+	engineRecordingFinished: makeEvent<RecordingFinishedEvent, RecordingFinishedEvent>("engine://recording-finished"),
+	engineReplaySaved: makeEvent<ReplaySavedEvent, ReplaySavedEvent>("engine://replay-saved"),
 	engineState: makeEvent<EngineStateEvent_Serialize, EngineStateEvent_Deserialize>("engine://state"),
+	settingsChanged: makeEvent<SettingsChangedEvent_Serialize, SettingsChangedEvent_Deserialize>("settings://changed"),
 };
 
 /* Types */
+/**  Something the engine was asked to do (or that happened to it). */
+export type Action = 
+/**  Start with a countdown first (`countdown > 0`). */
+"start-countdown" | 
+/**  Start recording now (countdown 0, or the countdown ran out). */
+"start" | "cancel-countdown" | "pause" | "resume" | 
+/**  Stop and keep the file. */
+"stop" | 
+/**  Stop and delete the file (or cancel the countdown). */
+"discard" | 
+/**  A source or the writer failed mid-recording: finalize what was written. */
+"fail" | 
+/**  The file is written (or deleted after a discard). */
+"finalized";
+
+/**  Tracks when both system audio and mic are recorded: mix + stems, mix only, stems only. */
 export type AudioTracks = "both" | "mix" | "stems";
 
 export type CameraResolution = "720p" | "1080p";
@@ -37,8 +82,10 @@ export type CaptureApp = {
 	windows: number,
 };
 
-/**  What is being captured. */
-export type CaptureTarget = { kind: "display"; displayId: number } | { kind: "window"; windowId: number } | { kind: "app"; bundleId: string } | { kind: "region"; displayId: number; x: number; y: number; w: number; h: number };
+/**  What is being captured. `displayId` is the 1-based display number (`rec devices`). */
+export type CaptureTarget = { kind: "display"; displayId: number } | { kind: "window"; windowId: number } | { kind: "app"; bundleId: string } | 
+/**  Points from the display's top-left corner. */
+{ kind: "region"; displayId: number; x: number; y: number; w: number; h: number };
 
 export type CaptureWindow = {
 	id: number,
@@ -46,10 +93,21 @@ export type CaptureWindow = {
 	title: string,
 };
 
+/**  `Auto`: H.264 up to 1080p, HEVC above (Rec's rule). */
 export type Codec = "auto" | "h264" | "hevc" | "prores";
 
 export type Container = "mov" | "mp4";
 
+/**  Every capture source the engine can see right now. */
+export type Devices = {
+	displays: Display[],
+	windows: CaptureWindow[],
+	apps: CaptureApp[],
+	cameras: InputDevice[],
+	mics: InputDevice[],
+};
+
+/**  A display; `id` is the 1-based display number (`CaptureTarget::Display`). */
 export type Display = {
 	id: number,
 	name: string,
@@ -57,26 +115,51 @@ export type Display = {
 	height: number,
 };
 
-/**  Everything the UI renders. Sent whole on every change (`engine://state`). */
+export type EngineError = 
+/**  `action` isn't allowed in `status` (e.g. pause while idle). */
+{ kind: "invalid-state"; status: EngineStatus; action: Action } | 
+/**  Privacy grants the session needs and doesn't have. */
+{ kind: "missing-permissions"; permissions: Permission[] } | 
+/**  A setting asks for something this engine can't do yet. */
+{ kind: "unsupported"; message: string } | 
+/**  Anything else (device, encoder, disk, network); the message is user-facing. */
+{ kind: "failed"; message: string };
+
+/**  Something went wrong. `recoverable` false: the recording or preview stopped. */
+export type EngineErrorEvent = {
+	message: string,
+	recoverable: boolean,
+};
+
 export type EngineState = EngineState_Serialize | EngineState_Deserialize;
 
-/**  Full engine snapshot, emitted on every change. */
+/**
+ *  The engine snapshot: on every status change, and at most 10 times a second while
+ *  recording (clock, bytes). Levels come separately.
+ */
 export type EngineStateEvent = EngineStateEvent_Serialize | EngineStateEvent_Deserialize;
 
-/**  Full engine snapshot, emitted on every change. */
+/**
+ *  The engine snapshot: on every status change, and at most 10 times a second while
+ *  recording (clock, bytes). Levels come separately.
+ */
 export type EngineStateEvent_Deserialize = EngineState_Deserialize;
 
-/**  Full engine snapshot, emitted on every change. */
+/**
+ *  The engine snapshot: on every status change, and at most 10 times a second while
+ *  recording (clock, bytes). Levels come separately.
+ */
 export type EngineStateEvent_Serialize = EngineState_Serialize;
 
-/**  Everything the UI renders. Sent whole on every change (`engine://state`). */
 export type EngineState_Deserialize = {
 	status: EngineStatus,
 	countdownLeft: number,
 	elapsedSecs: number,
 	bytesWritten: number,
 	droppedFrames: number,
+	/**  Streaming to at least one destination. */
 	live: boolean,
+	streams: StreamStatus[],
 	replayBufferedSecs: number,
 	levels: Levels,
 	permissions: Permissions,
@@ -85,20 +168,24 @@ export type EngineState_Deserialize = {
 	apps: CaptureApp[],
 	cameras: InputDevice[],
 	mics: InputDevice[],
+	/**  Recordings made in this run, newest first. */
 	recordings: Recording[],
-	toasts: Toast_Deserialize[],
-	settings: RecorderSettings_Deserialize,
 	freeDiskBytes: number,
+	/**  The output device's latency (the default system-audio offset). */
+	outputLatencyMs?: number | null,
+	/**  A preview session is running (frames go to the preview sink). */
+	previewing: boolean,
 };
 
-/**  Everything the UI renders. Sent whole on every change (`engine://state`). */
 export type EngineState_Serialize = {
 	status: EngineStatus,
 	countdownLeft: number,
 	elapsedSecs: number,
 	bytesWritten: number,
 	droppedFrames: number,
+	/**  Streaming to at least one destination. */
 	live: boolean,
+	streams: StreamStatus[],
 	replayBufferedSecs: number,
 	levels: Levels,
 	permissions: Permissions,
@@ -107,10 +194,13 @@ export type EngineState_Serialize = {
 	apps: CaptureApp[],
 	cameras: InputDevice[],
 	mics: InputDevice[],
+	/**  Recordings made in this run, newest first. */
 	recordings: Recording[],
-	toasts: Toast_Serialize[],
-	settings: RecorderSettings_Serialize,
 	freeDiskBytes: number,
+	/**  The output device's latency (the default system-audio offset). */
+	outputLatencyMs: number | null,
+	/**  A preview session is running (frames go to the preview sink). */
+	previewing: boolean,
 };
 
 export type EngineStatus = "idle" | "countdown" | "recording" | "paused" | "finalizing";
@@ -121,6 +211,7 @@ export type InputDevice = {
 	connected: boolean,
 };
 
+/**  Linear levels 0..1 (1 = full scale); peaks hold and decay. */
 export type Levels = {
 	system: number,
 	systemPeak: number,
@@ -128,10 +219,18 @@ export type Levels = {
 	micPeak: number,
 };
 
+/**  Audio meters, at most 30 times a second while a session runs. */
+export type LevelsEvent = Levels;
+
 export type MicBackend = "sck" | "avcapture";
 
-export type PermissionState = "granted" | "denied" | "not-determined";
+export type Permission = "screen" | "microphone" | "camera";
 
+export type PermissionState = "granted" | 
+/**  Also covers "restricted" (parental controls / MDM): the user can't grant it here. */
+"denied" | "not-determined";
+
+/**  `Record<Permission, PermissionState>` on the UI side. */
 export type Permissions = {
 	screen: PermissionState,
 	microphone: PermissionState,
@@ -145,86 +244,91 @@ export type PipPlace = ({ corner: PipCorner }) & { x?: never; y?: never } | ({ x
 
 export type PipShape = "rounded" | "circle" | "square" | "pill" | "squircle" | "rect";
 
-/**
- *  Every recorder option. `fps` (24|30|60) and `countdown` (0|3|5) are plain
- *  numbers on the wire; the UI narrows them (see `src/lib/engine.ts`).
- */
 export type RecorderSettings = RecorderSettings_Serialize | RecorderSettings_Deserialize;
 
-/**
- *  Every recorder option. `fps` (24|30|60) and `countdown` (0|3|5) are plain
- *  numbers on the wire; the UI narrows them (see `src/lib/engine.ts`).
- */
 export type RecorderSettings_Deserialize = {
-	outputDir: string,
-	container: Container,
-	codec: Codec,
-	resolution: Resolution,
-	fps: number,
+	/**  May start with `~/` (expanded by the engine). */
+	outputDir?: string,
+	container?: Container,
+	codec?: Codec,
+	resolution?: Resolution,
+	/**  One of `FPS_CHOICES`. */
+	fps?: number,
+	/**  None = automatic. */
 	bitrateMbps?: number | null,
-	target: CaptureTarget,
-	scene: Scene,
+	target?: CaptureTarget,
+	scene?: Scene,
+	/**  Camera unique ID; None = system default. */
 	cameraId?: string | null,
-	cameraTrack: boolean,
-	cameraResolution: CameraResolution,
-	micEnabled: boolean,
+	/**  Separate camera track (Phase 6; not recorded yet). */
+	cameraTrack?: boolean,
+	cameraResolution?: CameraResolution,
+	micEnabled?: boolean,
+	/**  Microphone unique ID; None = system default. */
 	micId?: string | null,
-	systemAudio: boolean,
-	audioTracks: AudioTracks,
-	systemGainDb: number,
-	micGainDb: number,
-	systemMuted: boolean,
-	micMuted: boolean,
+	systemAudio?: boolean,
+	audioTracks?: AudioTracks,
+	systemGainDb?: number,
+	micGainDb?: number,
+	systemMuted?: boolean,
+	micMuted?: boolean,
+	/**  None = the output device's latency. */
 	systemOffsetMs?: number | null,
-	micOffsetMs: number,
-	micBackend: MicBackend,
-	pipSize: number,
-	pipPlace: PipPlace,
-	pipShape: PipShape,
-	pipRoundness: number,
-	pipBorder: number,
-	pipBorderColor: string,
-	pipShadow: boolean,
-	mirror: boolean,
-	cursor: boolean,
-	clicks: boolean,
-	countdown: number,
-	previewLowPower: boolean,
-	replayEnabled: boolean,
-	replaySecs: number,
-	streamDests: StreamDest_Deserialize[],
-	liveResolution: Resolution,
-	streamBitrateKbps: number,
-	streamBitrateAuto: boolean,
-	streamCodec: StreamCodec,
-	keyframeSecs: number,
-	streamCbr: boolean,
-	streamAudioKbps: number,
-	theme: ThemePref,
-	showHud: boolean,
-	openAtLogin: boolean,
-	showInDock: boolean,
-	autoUpdate: boolean,
-	accentHue: number,
+	micOffsetMs?: number,
+	micBackend?: MicBackend,
+	/**  Overlay width as a fraction of the frame width. */
+	pipSize?: number,
+	pipPlace?: PipPlace,
+	pipShape?: PipShape,
+	pipRoundness?: number,
+	/**  Border width in pixels at 1080p (0 = none). */
+	pipBorder?: number,
+	/**  RRGGBB hex, no `#`. */
+	pipBorderColor?: string,
+	pipShadow?: boolean,
+	mirror?: boolean,
+	cursor?: boolean,
+	clicks?: boolean,
+	/**  Seconds; one of `COUNTDOWN_CHOICES`. */
+	countdown?: number,
+	previewLowPower?: boolean,
+	replayEnabled?: boolean,
+	replaySecs?: number,
+	streamDests?: StreamDest_Deserialize[],
+	liveResolution?: Resolution,
+	streamBitrateKbps?: number,
+	streamBitrateAuto?: boolean,
+	streamCodec?: StreamCodec,
+	keyframeSecs?: number,
+	streamCbr?: boolean,
+	streamAudioKbps?: number,
+	theme?: ThemePref,
+	showHud?: boolean,
+	openAtLogin?: boolean,
+	showInDock?: boolean,
+	autoUpdate?: boolean,
+	accentHue?: number,
 };
 
-/**
- *  Every recorder option. `fps` (24|30|60) and `countdown` (0|3|5) are plain
- *  numbers on the wire; the UI narrows them (see `src/lib/engine.ts`).
- */
 export type RecorderSettings_Serialize = {
+	/**  May start with `~/` (expanded by the engine). */
 	outputDir: string,
 	container: Container,
 	codec: Codec,
 	resolution: Resolution,
+	/**  One of `FPS_CHOICES`. */
 	fps: number,
+	/**  None = automatic. */
 	bitrateMbps: number | null,
 	target: CaptureTarget,
 	scene: Scene,
+	/**  Camera unique ID; None = system default. */
 	cameraId: string | null,
+	/**  Separate camera track (Phase 6; not recorded yet). */
 	cameraTrack: boolean,
 	cameraResolution: CameraResolution,
 	micEnabled: boolean,
+	/**  Microphone unique ID; None = system default. */
 	micId: string | null,
 	systemAudio: boolean,
 	audioTracks: AudioTracks,
@@ -232,19 +336,24 @@ export type RecorderSettings_Serialize = {
 	micGainDb: number,
 	systemMuted: boolean,
 	micMuted: boolean,
+	/**  None = the output device's latency. */
 	systemOffsetMs: number | null,
 	micOffsetMs: number,
 	micBackend: MicBackend,
+	/**  Overlay width as a fraction of the frame width. */
 	pipSize: number,
 	pipPlace: PipPlace,
 	pipShape: PipShape,
 	pipRoundness: number,
+	/**  Border width in pixels at 1080p (0 = none). */
 	pipBorder: number,
+	/**  RRGGBB hex, no `#`. */
 	pipBorderColor: string,
 	pipShadow: boolean,
 	mirror: boolean,
 	cursor: boolean,
 	clicks: boolean,
+	/**  Seconds; one of `COUNTDOWN_CHOICES`. */
 	countdown: number,
 	previewLowPower: boolean,
 	replayEnabled: boolean,
@@ -265,36 +374,72 @@ export type RecorderSettings_Serialize = {
 	accentHue: number,
 };
 
+/**  A finished recording. */
 export type Recording = {
 	id: string,
 	name: string,
 	path: string,
 	durationSecs: number,
 	bytes: number,
-	/**  Unix epoch milliseconds. */
+	/**  Unix time in milliseconds. */
 	createdAt: number,
 	width: number,
 	height: number,
 	hasCameraTrack: boolean,
+	fps: number,
+	/**  Number of audio tracks in the file. */
+	audioTracks: number,
+};
+
+/**  A recording was written. */
+export type RecordingFinishedEvent = Recording;
+
+/**  The replay buffer was saved to `path`. */
+export type ReplaySavedEvent = {
+	path: string,
 };
 
 export type Resolution = "720p" | "1080p" | "1440p" | "4k" | "native";
 
+/**  What the frame shows: the screen, the screen with the camera overlay, or the camera. */
 export type Scene = "screen" | "screen-cam" | "cam";
+
+/**  The stored settings changed (from any window, or a stream key was saved). */
+export type SettingsChangedEvent = SettingsChangedEvent_Serialize | SettingsChangedEvent_Deserialize;
+
+/**  The stored settings changed (from any window, or a stream key was saved). */
+export type SettingsChangedEvent_Deserialize = RecorderSettings_Deserialize;
+
+/**  The stored settings changed (from any window, or a stream key was saved). */
+export type SettingsChangedEvent_Serialize = RecorderSettings_Serialize;
 
 export type StreamCodec = "auto" | "h264" | "hevc";
 
+/**
+ *  A stream destination. Its key lives in the Keychain only; `key_stored` is
+ *  filled in by the engine so the UI can show "key stored".
+ */
 export type StreamDest = StreamDest_Serialize | StreamDest_Deserialize;
 
+/**
+ *  A stream destination. Its key lives in the Keychain only; `key_stored` is
+ *  filled in by the engine so the UI can show "key stored".
+ */
 export type StreamDest_Deserialize = {
-	service: StreamService,
+	service?: StreamService,
+	/**  rtmp(s):// or WHIP http(s):// URL, for `custom`. */
 	url?: string | null,
-	enabled: boolean,
-	keyStored: boolean,
+	enabled?: boolean,
+	keyStored?: boolean,
 };
 
+/**
+ *  A stream destination. Its key lives in the Keychain only; `key_stored` is
+ *  filled in by the engine so the UI can show "key stored".
+ */
 export type StreamDest_Serialize = {
 	service: StreamService,
+	/**  rtmp(s):// or WHIP http(s):// URL, for `custom`. */
 	url?: string,
 	enabled: boolean,
 	keyStored: boolean,
@@ -302,29 +447,29 @@ export type StreamDest_Serialize = {
 
 export type StreamService = "youtube" | "twitch" | "kick" | "custom";
 
+/**  One running stream. */
+export type StreamStatus = {
+	/**  Destination name (YouTube, Twitch, a host) — never the key. */
+	name: string,
+	live: boolean,
+	/**  Human-readable connection state. */
+	state: string,
+	bitrateKbps: number,
+	droppedFrames: number,
+};
+
 export type ThemePref = "system" | "light" | "dark";
 
-export type Toast = Toast_Serialize | Toast_Deserialize;
-
-export type ToastKind = "saved" | "replay" | "warning";
-
-export type Toast_Deserialize = {
-	id: string,
-	kind: ToastKind,
-	title: string,
-	detail: string,
-	recordingId?: string | null,
-};
-
-export type Toast_Serialize = {
-	id: string,
-	kind: ToastKind,
-	title: string,
-	detail: string,
-	recordingId?: string,
-};
-
 /* Tauri Specta runtime */
+async function typedError<T, E>(result: Promise<T>): Promise<{ status: "ok"; data: T } | { status: "error"; error: E }> {
+    try {
+        return { status: "ok", data: await result };
+    } catch (e) {
+        if (e instanceof Error) throw e;
+        return { status: "error", error: e as any };
+    }
+}
+
 type EventEmit<T> = [T] extends [null] ? () => Promise<void> : (payload: T) => Promise<void>;
 
 type EventEmitTo<T> = [T] extends [null] ? (target: __TAURI_EVENT.EventTarget | string) => Promise<void> : (target: __TAURI_EVENT.EventTarget | string, payload: T) => Promise<void>;
