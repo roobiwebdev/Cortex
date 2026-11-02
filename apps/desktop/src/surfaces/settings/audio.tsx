@@ -8,7 +8,7 @@ import { Slider } from "@starter/ui/components/slider";
 import { Switch } from "@starter/ui/components/switch";
 import { cn } from "@starter/ui/lib/utils";
 
-import { engine, useEngine } from "../../lib/mock-engine";
+import { engine, useEngine } from "../../lib/engine";
 import type { AudioTracks, InputDevice } from "../../lib/types";
 import { ChoiceSelect, NumberField, Readout, SettingsGroup, SettingsPage, SettingsRow } from "./parts";
 

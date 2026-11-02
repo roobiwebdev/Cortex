@@ -5,7 +5,7 @@ import { Button } from "@starter/ui/components/button";
 import { Switch } from "@starter/ui/components/switch";
 import { cn } from "@starter/ui/lib/utils";
 
-import { engine } from "../../lib/mock-engine";
+import { engine } from "../../lib/engine";
 import type { EngineState, StreamDest, StreamService } from "../../lib/types";
 import type { SurfaceId } from "../../prototype/surfaces";
 

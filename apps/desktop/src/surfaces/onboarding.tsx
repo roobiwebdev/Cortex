@@ -4,7 +4,7 @@ import { ArrowLeft, ArrowRight, RotateCcw } from "lucide-react";
 import { Button } from "@starter/ui/components/button";
 import { cn } from "@starter/ui/lib/utils";
 
-import { engine, useEngine } from "../lib/mock-engine";
+import { engine, useEngine } from "../lib/engine";
 import type { Permission } from "../lib/types";
 import type { SurfaceProps } from "../prototype/surfaces";
 import { TITLEBAR_H } from "../prototype/window-frame";

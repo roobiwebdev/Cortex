@@ -8,7 +8,7 @@ import { Slider } from "@starter/ui/components/slider";
 import { Switch } from "@starter/ui/components/switch";
 import { cn } from "@starter/ui/lib/utils";
 
-import { engine, useEngine } from "../../lib/mock-engine";
+import { engine, useEngine } from "../../lib/engine";
 import type { Resolution, StreamDest, StreamService } from "../../lib/types";
 import { ChoiceSelect, Readout, SettingsGroup, SettingsPage, SettingsRow } from "./parts";
 

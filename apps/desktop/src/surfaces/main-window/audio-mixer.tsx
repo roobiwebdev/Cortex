@@ -6,7 +6,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Slider } from "@starter/ui/components/slider";
 import { cn } from "@starter/ui/lib/utils";
 
-import { engine } from "../../lib/mock-engine";
+import { engine } from "../../lib/engine";
 import type { EngineState } from "../../lib/types";
 import { Tip } from "./parts";
 

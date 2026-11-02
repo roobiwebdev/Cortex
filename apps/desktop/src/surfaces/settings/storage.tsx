@@ -4,7 +4,7 @@ import { FolderSearch } from "lucide-react";
 import { Button } from "@starter/ui/components/button";
 
 import { formatBytes } from "../../lib/format";
-import { useEngine } from "../../lib/mock-engine";
+import { useEngine } from "../../lib/engine";
 import { NamingRow, OutputFolderRow } from "./files";
 import { ChoiceSelect, SettingsGroup, SettingsPage, SettingsRow } from "./parts";
 import { autoBitrate } from "./recording";

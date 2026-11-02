@@ -6,7 +6,7 @@ import { Kbd } from "@starter/ui/components/kbd";
 import { cn } from "@starter/ui/lib/utils";
 
 import { formatBytes, formatClock } from "../../lib/format";
-import { engine } from "../../lib/mock-engine";
+import { engine } from "../../lib/engine";
 import type { EngineState } from "../../lib/types";
 import type { SurfaceId } from "../../prototype/surfaces";
 import { GoLiveButton } from "./go-live";

@@ -18,7 +18,7 @@ import { Slider } from "@starter/ui/components/slider";
 import { cn } from "@starter/ui/lib/utils";
 
 import { formatAgo, formatBytes } from "../lib/format";
-import { engine, useEngine } from "../lib/mock-engine";
+import { engine, useEngine } from "../lib/engine";
 import type { RecorderSettings, Recording } from "../lib/types";
 import type { SurfaceProps } from "../prototype/surfaces";
 import { type ExportMode, type ExportOutput, type ExportPhase, TrimExportBar } from "./trim/export-bar";

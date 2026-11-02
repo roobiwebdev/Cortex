@@ -1,0 +1,2 @@
+# Cargo output when the crate is built outside the workspace root
+/target/

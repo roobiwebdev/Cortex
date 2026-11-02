@@ -142,13 +142,23 @@ function set(patch: Partial<EngineState>) {
   state = { ...state, ...patch };
   for (const l of listeners) l();
 }
-function subscribe(l: () => void) {
+/** Store subscription, shared with `engine.ts` so both modes use one `useSyncExternalStore`. */
+export function subscribeEngine(l: () => void) {
   listeners.add(l);
-  return () => listeners.delete(l);
+  startLevels();
+  return () => {
+    listeners.delete(l);
+    if (listeners.size === 0) stopLevels();
+  };
 }
 
 export function useEngine(): EngineState {
-  return useSyncExternalStore(subscribe, () => state);
+  return useSyncExternalStore(subscribeEngine, getEngineState);
+}
+
+/** Current mock snapshot, for callers outside React. */
+export function getEngineState(): EngineState {
+  return state;
 }
 
 let clock: ReturnType<typeof setInterval> | undefined;
@@ -169,8 +179,17 @@ function stopClock() {
 }
 
 // Simulated levels: a speech-like envelope for the mic, a steadier bed for system audio.
+// The ticker only runs while something is subscribed, so importing this module is free.
 let t = 0;
-setInterval(() => {
+let levelsTimer: ReturnType<typeof setInterval> | undefined;
+function startLevels() {
+  levelsTimer ??= setInterval(tickLevels, 1000 / 30);
+}
+function stopLevels() {
+  if (levelsTimer) clearInterval(levelsTimer);
+  levelsTimer = undefined;
+}
+function tickLevels() {
   t += 1;
   const s = state.settings;
   const speech = Math.max(0, Math.sin(t / 3.1) * 0.5 + Math.sin(t / 1.7) * 0.3 + Math.random() * 0.25);
@@ -190,7 +209,7 @@ setInterval(() => {
       systemPeak: Math.max(system, lv.systemPeak - decay),
     },
   });
-}, 1000 / 30);
+}
 
 function dbToGain(db: number) {
   return Math.pow(10, db / 20);

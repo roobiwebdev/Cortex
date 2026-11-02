@@ -2,7 +2,7 @@ import * as React from "react";
 
 import { TooltipProvider } from "@starter/ui/components/tooltip";
 
-import { useEngine } from "../lib/mock-engine";
+import { useEngine } from "../lib/engine";
 import type { SurfaceProps } from "../prototype/surfaces";
 import { AudioMixer } from "./main-window/audio-mixer";
 import { RecordBar } from "./main-window/record-bar";

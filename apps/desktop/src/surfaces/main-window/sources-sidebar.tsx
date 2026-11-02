@@ -1,7 +1,7 @@
 import { Segmented } from "@starter/ui/components/segmented";
 import { Slider } from "@starter/ui/components/slider";
 
-import { engine } from "../../lib/mock-engine";
+import { engine } from "../../lib/engine";
 import type { EngineState, Scene } from "../../lib/types";
 import type { SurfaceId } from "../../prototype/surfaces";
 import { CameraSection } from "./camera-section";

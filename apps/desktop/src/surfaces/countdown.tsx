@@ -5,7 +5,7 @@ import { Kbd } from "@starter/ui/components/kbd";
 import { Segmented } from "@starter/ui/components/segmented";
 
 import { formatClock } from "../lib/format";
-import { engine, useEngine } from "../lib/mock-engine";
+import { engine, useEngine } from "../lib/engine";
 import type { RecorderSettings } from "../lib/types";
 import type { SurfaceProps } from "../prototype/surfaces";
 import { CaptureExcludedHint, PrototypeNote } from "./floating/floating-card";

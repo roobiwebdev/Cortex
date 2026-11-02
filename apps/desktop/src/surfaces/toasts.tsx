@@ -4,7 +4,7 @@ import { Check, Copy, FolderOpen, Scissors, Settings, TriangleAlert, X } from "l
 import { Button } from "@starter/ui/components/button";
 import { cn } from "@starter/ui/lib/utils";
 
-import { engine, useEngine } from "../lib/mock-engine";
+import { engine, useEngine } from "../lib/engine";
 import type { Toast, ToastKind } from "../lib/types";
 import { MENUBAR_H } from "../prototype/desktop-backdrop";
 import type { SurfaceProps } from "../prototype/surfaces";
