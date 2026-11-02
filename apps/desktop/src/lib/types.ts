@@ -9,11 +9,7 @@
  * WHERE: every desktop surface, the mock engine and the Tauri adapter (`engine.ts`).
  */
 
-import type {
-  EngineState_Serialize,
-  RecorderSettings_Serialize,
-  StreamDest_Serialize,
-} from "../ipc/bindings";
+import type { EngineState_Serialize, RecorderSettings_Serialize, StreamDest_Serialize } from "../ipc/bindings";
 
 export type {
   AudioTracks,
