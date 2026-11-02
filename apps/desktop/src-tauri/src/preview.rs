@@ -42,7 +42,8 @@ pub struct LivePreview {
 impl LivePreview {
     /// Attaches the native view to the main window and makes its webview transparent.
     /// Call from `setup` (main thread), after the shell is managed.
-    pub fn attach(app: &App, shell: Arc<Shell>) -> Result<Arc<LivePreview>, String> {
+    /// `stats`: print the preview frame rate every 5 s (perf runs).
+    pub fn attach(app: &App, shell: Arc<Shell>, stats: bool) -> Result<Arc<LivePreview>, String> {
         let window = app
             .get_webview_window(MAIN)
             .ok_or_else(|| "no main window".to_string())?;
@@ -50,7 +51,9 @@ impl LivePreview {
         if make_window_webviews_transparent(&window) == 0 {
             eprintln!("cortex: could not make the main webview transparent");
         }
-        shell.engine().set_preview_sink(Some(view.sink()));
+        let sink = view.sink();
+        let sink = if stats { counted(sink) } else { sink };
+        shell.engine().set_preview_sink(Some(sink));
 
         let (engine_tx, rx) = mpsc::channel::<bool>();
         let worker_shell = shell.clone();
@@ -121,4 +124,21 @@ impl LivePreview {
         // The engine keeps capturing for replay or streaming even when this is false.
         let _ = self.engine_tx.send(on);
     }
+}
+
+/// Wraps a sink to print how many frames a second reach the view, and their size.
+fn counted(sink: rec_macos_ui::PreviewFn) -> rec_macos_ui::PreviewFn {
+    let window = Mutex::new((std::time::Instant::now(), 0u32));
+    Arc::new(move |pb| {
+        let (w, h) = rec_macos_ui::frame_size(&pb);
+        if let Ok(mut c) = window.lock() {
+            c.1 += 1;
+            let secs = c.0.elapsed().as_secs_f64();
+            if secs >= 5.0 {
+                println!("cortex: preview {:.1} fps {w}x{h}", f64::from(c.1) / secs);
+                *c = (std::time::Instant::now(), 0);
+            }
+        }
+        sink(pb)
+    })
 }

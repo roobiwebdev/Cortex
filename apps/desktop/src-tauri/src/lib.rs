@@ -19,6 +19,7 @@ use crate::shell::{Outbound, Shell};
 /// - `CORTEX_DEBUG_RECORD_SECS=N`: start recording 3 s after launch, stop after N recorded
 ///   seconds, print `cortex: recorded <path>` and quit.
 /// - `CORTEX_DEBUG_HIDE_MAIN=1`: hide the main window at launch (preview off).
+/// - `CORTEX_DEBUG_PREVIEW_STATS=1`: print the preview frame rate every 5 s.
 ///
 /// Used by `scripts/desktop/perf-compare.sh`.
 #[derive(Default)]
@@ -27,6 +28,7 @@ struct DebugRun {
     test_pattern: bool,
     record_secs: Option<f64>,
     hide_main: bool,
+    preview_stats: bool,
 }
 
 impl DebugRun {
@@ -39,6 +41,7 @@ impl DebugRun {
                 .and_then(|v| v.parse::<f64>().ok())
                 .filter(|v| v.is_finite() && *v > 0.0),
             hide_main: var("CORTEX_DEBUG_HIDE_MAIN").is_some_and(|v| v == "1"),
+            preview_stats: var("CORTEX_DEBUG_PREVIEW_STATS").is_some_and(|v| v == "1"),
         }
     }
 }
@@ -90,7 +93,7 @@ pub fn run() {
             let shell = Arc::new(shell);
             app.manage(shell.clone());
             windows::setup(app)?;
-            let live = match preview::LivePreview::attach(app, shell.clone()) {
+            let live = match preview::LivePreview::attach(app, shell.clone(), debug.preview_stats) {
                 Ok(p) => Some(p),
                 Err(e) => {
                     eprintln!("cortex: live preview unavailable: {e}");

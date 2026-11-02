@@ -58,6 +58,14 @@ use crate::main_thread::{MainThreadBound, on_main, run_on_main};
  */
 pub type PreviewFn = Arc<dyn Fn(CFRetained<CVPixelBuffer>) + Send + Sync>;
 
+/// A preview frame's size in pixels (for stats and logs).
+pub fn frame_size(pixels: &CVPixelBuffer) -> (usize, usize) {
+    (
+        objc2_core_video::CVPixelBufferGetWidth(pixels),
+        objc2_core_video::CVPixelBufferGetHeight(pixels),
+    )
+}
+
 /// Why `attach` failed.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum AttachError {
