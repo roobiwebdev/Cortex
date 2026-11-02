@@ -22,12 +22,13 @@ export function onPageShown(l: () => void): () => void {
   };
 }
 
+function syncVisibility() {
+  const hidden = document.hidden;
+  document.documentElement.toggleAttribute("data-hidden", hidden);
+  if (!hidden) for (const l of shownListeners) l();
+}
+
 export function trackVisibility() {
-  const sync = () => {
-    const hidden = document.hidden;
-    document.documentElement.toggleAttribute("data-hidden", hidden);
-    if (!hidden) for (const l of shownListeners) l();
-  };
-  document.addEventListener("visibilitychange", sync);
-  sync();
+  document.addEventListener("visibilitychange", syncVisibility);
+  syncVisibility();
 }
