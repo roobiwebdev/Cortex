@@ -8,7 +8,7 @@ Cortex ships a macOS screen, camera and audio recorder. The capture engine is Re
 | ------------------------- | ------------------------------------------------------------------------------------------------------ | ---------------------------------------- |
 | `crates/rec-core`         | Platform-neutral settings schema, engine API (`RecorderEngine`, `EngineEvent`), state, settings store. | serde, specta (optional). No Apple code. |
 | `crates/rec-engine-macos` | Rec's capture, compose, encode, mixer and live code. Exposes `MacEngine`, which implements `rec_core`. | rec-core, Apple frameworks               |
-| `crates/rec-macos-ui`     | Native window behaviour: live preview view, non-activating panels, capture exclusion, levels.          | Apple frameworks                         |
+| `crates/rec-macos-ui`     | Native window behaviour: live preview view, non-activating panels, capture exclusion, levels.          | Apple frameworks, raw-window-handle      |
 | `crates/rec-cli`          | The `rec-rs` command-line recorder.                                                                    | rec-engine-macos                         |
 | `apps/desktop/src`        | React 19 + Vite + Tailwind 4 surfaces (main, settings, HUD, toasts, countdown, region picker, trim).   | `@starter/ui`, `@tauri-apps/api`         |
 | `apps/desktop/src-tauri`  | The Tauri shell (Rust crate `cortex-desktop`): windows, tray, IPC commands.                            | rec-core, rec-engine-macos, rec-macos-ui |
@@ -105,6 +105,27 @@ The design harness runs every surface against `lib/mock-engine.ts`. Use it for d
 
 After changing a command, an event or any type it carries, run `ipc:bindings` and commit the new `bindings.ts` with the Rust change. Adding a command also means adding it to `COMMANDS` in `build.rs` and granting `allow-<command>` in the capability file, or the webview cannot call it.
 
+## Floating windows
+
+The HUD, toasts, countdown, region picker and menu bar panel are Tauri windows declared in `tauri.conf.json`. `src-tauri/src/floating.rs` owns their behaviour:
+
+- **Native panel behaviour.** At start, `rec_macos_ui::configure_floating_window` gives each one its `FloatingKind` level (menu bar panel highest, then countdown and toasts, region picker, HUD), puts it on all Spaces and over full-screen apps, makes it non-activating (`_setPreventsActivation:` on tao's window) and sets `sharingType = none`. The countdown also ignores mouse clicks. The safe wrappers take the window handle, so the shell has no `unsafe`.
+- **Driven by the engine.** Every outbound event passes through `floating::observer` before it reaches the webviews. The countdown window shows centred on the main display while the status is `countdown`. The HUD shows while recording or paused if `settings.showHud` is on, the user did not hide it, and the main window is not frontmost. Its bottom-centre is remembered per display in `hud-positions.json` (Application Support) and kept inside the visible area.
+- **Toasts have one owner.** The toasts window builds the queue from `engine://recording-finished`, `engine://replay-saved` and `engine://error`. Other windows send their toasts (failed commands) to it as `ui://toast`. It shows itself top-right under the menu bar on the display under the cursor, and hides when the queue is empty.
+- **Sized to content.** In a window, a floating surface renders only its card (`useWindowed()` from `lib/floating.ts`). `FittedHost` in `app/tauri-window.tsx` measures it and calls `fit_floating`, which keeps the HUD's bottom-centre and the countdown's centre in place. The browser harness keeps the fake desktop layout.
+- **Opening and closing.** `open_floating` places the menu bar panel under the status item and the region picker over the full display under the cursor (one overlay per display is still to do). `hide_floating` closes the calling window; the menu bar panel also closes on blur and Esc, the region picker on confirm or cancel. A hidden HUD comes back from the panel menu ("Show recording HUD") or on the next recording.
+- **Global hotkeys** use Carbon (`rec_engine::hotkey`), which needs no Accessibility permission: ⇧⌘R starts, cancels the countdown, or stops; ⇧⌘S saves the replay and is registered only while the replay buffer is on; Esc is registered only during the countdown and cancels it.
+- **Main window and quit.** Closing the main window hides it; the app stays in the menu bar and a Dock click reopens it. Quit (tray menu, ⌘Q, Dock) reaches `RunEvent::Exit`, which runs `Shell::shutdown` to finalize an active recording and flush settings.
+
+Screenshots cannot see these windows, because they are excluded from sharing. To check them, run a debug build with the test pattern:
+
+```
+CORTEX_DEBUG_TEST_PATTERN=1 CORTEX_DEBUG_RECORD_SECS=6 CORTEX_DEBUG_HIDE_MAIN=1 CORTEX_DEBUG_CAPTURABLE=1 \
+  target/debug/bundle/macos/Cortex.app/Contents/MacOS/cortex-desktop
+```
+
+It keeps its settings and recordings in a temporary folder, starts one recording with a 3 s countdown, and with `CORTEX_DEBUG_CAPTURABLE=1` lets `screencapture` see the floating windows. Release builds ignore these variables.
+
 ## Dev signing identity
 
 macOS ties Screen Recording, Camera and Microphone grants (TCC) to the app's code signature. An ad-hoc signature changes on every build, so each rebuild looks like a new app and macOS asks again. A stable self-signed certificate keeps the grants across rebuilds.
@@ -143,7 +164,7 @@ There is no server in the recorder yet, so the tRPC procedure builder does not a
 - **No remote content.** The CSP in `tauri.conf.json` allows only `'self'`, IPC, and `blob:`/`data:` media. Fonts and assets are bundled. Do not add CDN URLs or `withGlobalTauri`.
 - **Writes stay in the output folder.** The engine writes recordings only under the chosen output directory, and the settings store only under the app's Application Support folder.
 - **Minimal entitlements.** `Entitlements.plist` grants camera and audio input only. Add one only with a stated reason.
-- **Hidden from recordings.** HUD, toasts, countdown and the region picker must never appear in a capture. `rec-macos-ui` excludes them from the `SCContentFilter`, not only through `sharingType`.
+- **Hidden from recordings.** HUD, toasts, countdown, the region picker and the menu bar panel must never appear in a capture. The engine's `SCContentFilter` excludes the whole app, and `rec-macos-ui` sets `sharingType = none` so other apps' screenshots miss them too.
 
 ## Rust rules
 
