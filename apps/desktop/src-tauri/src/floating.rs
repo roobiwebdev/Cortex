@@ -532,6 +532,16 @@ pub fn hide_floating(window: WebviewWindow) -> Result<(), EngineError> {
     Ok(())
 }
 
+/// Debug runs only (`CORTEX_DEBUG_CAPTURABLE=1`): let screenshots see the floating windows.
+#[cfg(debug_assertions)]
+pub fn make_capturable(app: &AppHandle) {
+    for (label, _) in KINDS {
+        if let Some(w) = app.get_webview_window(label) {
+            rec_macos_ui::panel::set_window_capturable(&w);
+        }
+    }
+}
+
 /// Saves the HUD spots on quit.
 pub fn shutdown(app: &AppHandle) {
     if app.try_state::<Arc<Floating>>().is_some() {

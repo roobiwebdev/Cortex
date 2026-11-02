@@ -227,6 +227,19 @@ pub fn set_window_ignores_mouse_events(window: &impl HasWindowHandle, ignore: bo
     }
 }
 
+/// Lets screenshots see the window again (`sharingType = readOnly`). Debug evidence
+/// only: the shipped windows stay excluded from capture.
+pub fn set_window_capturable(window: &impl HasWindowHandle) {
+    if let Some(ns) = ns_window_of(window) {
+        let addr = ns as usize;
+        run_on_main(move |_mtm| {
+            // SAFETY: `addr` comes from the live window the caller still borrows; main thread.
+            let window: &NSWindow = unsafe { &*(addr as *const NSWindow) };
+            window.setSharingType(NSWindowSharingType::ReadOnly);
+        });
+    }
+}
+
 /// Safe [`invalidate_shadow`] for a window handle.
 pub fn invalidate_window_shadow(window: &impl HasWindowHandle) {
     if let Some(ns) = ns_window_of(window) {
