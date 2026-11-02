@@ -839,7 +839,9 @@ impl Sink {
             if !write {
                 self.stats.paused_slots += 1;
             }
-            let want_preview = self.preview.is_some() && slot_t - self.last_preview >= 1.0 / 30.0;
+            // 30 preview frames a second: every 2nd slot at 60 fps. Half a slot of
+            // slack, or float error in slot times turns some 2-slot gaps into 3 (~22 fps).
+            let want_preview = self.preview.is_some() && slot_t - self.last_preview >= 1.0 / 30.0 - 0.5 / self.fps as f64;
             // The replay buffer and streams get every frame, paused or not.
             let want_live = self.live.as_ref().is_some_and(|l| l.active());
             if !write && !want_preview && !want_live {

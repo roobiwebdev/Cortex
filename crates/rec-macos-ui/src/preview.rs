@@ -429,11 +429,13 @@ pub fn make_window_webviews_transparent(window: &impl HasWindowHandle) -> usize 
         let Some(root) = view.window().and_then(|w| w.contentView()) else {
             return 0;
         };
+        let wk = objc2::runtime::AnyClass::get(c"WKWebView");
         let mut found = 0;
         let mut stack = vec![root];
         while let Some(v) = stack.pop() {
-            let class = v.class().name().to_str().unwrap_or_default();
-            if class.contains("WKWebView") {
+            // wry's WryWebView subclasses WKWebView.
+            let is_webview = wk.is_some_and(|c| objc2_foundation::NSObjectProtocol::isKindOfClass(&*v, c));
+            if is_webview {
                 let ptr = Retained::as_ptr(&v) as *mut c_void;
                 // SAFETY: `v` is a live WKWebView (retained in this scope).
                 if unsafe { make_webview_transparent(ptr) } {
