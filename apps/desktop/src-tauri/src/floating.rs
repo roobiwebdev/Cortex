@@ -418,13 +418,11 @@ fn save_hud_spots(app: &AppHandle) {
 }
 
 /// Top-right of `m`'s visible area, just under the menu bar.
-fn place_toasts(win: &WebviewWindow, m: &Monitor) {
-    let Ok(size) = win.outer_size() else { return };
+/// `width` is the window's new physical width (the window may not report it yet).
+fn place_toasts(win: &WebviewWindow, m: &Monitor, width: f64) {
     let scale = m.scale_factor();
     let area = m.work_area();
-    let x = f64::from(area.position.x) + f64::from(area.size.width)
-        - f64::from(size.width)
-        - TOAST_MARGIN * scale;
+    let x = f64::from(area.position.x) + f64::from(area.size.width) - width - TOAST_MARGIN * scale;
     let y = f64::from(area.position.y) + TOAST_MARGIN * scale;
     let _ = win.set_position(PhysicalPosition::new(x.round(), y.round()));
 }
@@ -461,6 +459,9 @@ pub fn fit_floating(window: WebviewWindow, width: f64, height: f64) -> Result<()
     window
         .set_size(LogicalSize::new(width, height))
         .map_err(failed)?;
+    // The new size in pixels; the window reports it only after AppKit applies the resize.
+    let scale = window.scale_factor().map_err(failed)?;
+    let (new_w, new_h) = (width * scale, height * scale);
     match label.as_str() {
         TOASTS => {
             let shown = visible(&window);
@@ -471,16 +472,16 @@ pub fn fit_floating(window: WebviewWindow, width: f64, height: f64) -> Result<()
                 active_monitor(app)
             };
             if let Some(m) = monitor {
-                place_toasts(&window, &m);
+                place_toasts(&window, &m, new_w);
             }
             if !shown {
                 window.show().map_err(failed)?;
             }
         }
         _ => {
-            if let (Some((fy, pos, old)), Ok(new)) = (anchor, window.outer_size()) {
-                let x = f64::from(pos.x) + (f64::from(old.width) - f64::from(new.width)) / 2.0;
-                let y = f64::from(pos.y) + (f64::from(old.height) - f64::from(new.height)) * fy;
+            if let Some((fy, pos, old)) = anchor {
+                let x = f64::from(pos.x) + (f64::from(old.width) - new_w) / 2.0;
+                let y = f64::from(pos.y) + (f64::from(old.height) - new_h) * fy;
                 let _ = window.set_position(PhysicalPosition::new(x.round(), y.round()));
             }
         }
