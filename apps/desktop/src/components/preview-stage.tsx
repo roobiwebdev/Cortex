@@ -175,7 +175,14 @@ export function PreviewStage({
           )}
 
           {recording && (
-            <div className="pointer-events-none absolute top-2 left-2 flex items-center gap-1.5 rounded-full bg-stage/70 px-2 py-0.5 text-[10.5px] font-semibold tracking-wider text-rec-fg uppercase backdrop-blur">
+            <div
+              className={cn(
+                "pointer-events-none absolute top-2 left-2 flex items-center gap-1.5 rounded-full bg-stage/70 px-2 py-0.5 text-[10.5px] font-semibold tracking-wider text-rec-fg uppercase",
+                // Over the native preview the page behind the badge is transparent: a blur would
+                // show nothing and only add a filter layer above the video.
+                !native && "backdrop-blur",
+              )}
+            >
               <span className={cn("size-1.5 rounded-full", paused ? "bg-warn" : "animate-rec-pulse bg-rec")} />
               {paused ? "Paused" : "Rec"}
             </div>

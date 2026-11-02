@@ -29,13 +29,14 @@ import {
   DropdownMenuTrigger,
 } from "@starter/ui/components/dropdown-menu";
 import { Kbd } from "@starter/ui/components/kbd";
-import { LevelMeter } from "@starter/ui/components/level-meter";
+import { LevelMeter, type LevelSource } from "@starter/ui/components/level-meter";
 import { Segmented } from "@starter/ui/components/segmented";
 import { Switch } from "@starter/ui/components/switch";
 import { cn } from "@starter/ui/lib/utils";
 
+import { BytesWritten, DroppedFrames, ElapsedClock } from "../components/progress-text";
 import { formatAgo, formatBytes, formatClock } from "../lib/format";
-import { engine, useEngine } from "../lib/engine";
+import { engine, micLevels, systemLevels, useEngineCalm } from "../lib/engine";
 import type { EngineState } from "../lib/types";
 import { MENUBAR_H } from "../prototype/desktop-backdrop";
 import type { SurfaceProps } from "../prototype/surfaces";
@@ -55,7 +56,7 @@ type QuickTarget = "screen" | "window" | "area";
  * WHERE: Prototype surface "menubar"; later a non-activating NSPanel anchored to the status item.
  */
 export function MenuBarPanel({ navigate }: SurfaceProps) {
-  const e = useEngine();
+  const e = useEngineCalm();
   const capturing = isCapturing(e.status);
 
   return (
@@ -324,7 +325,9 @@ function RecordingBody({ e }: { e: EngineState }) {
       <div className="rounded-[14px] bg-muted p-4">
         <div className="flex items-center justify-between text-xs text-muted-foreground tabular">
           <span className="min-w-0 truncate">{targetLabel(e)}</span>
-          <span className="shrink-0">{formatBytes(e.bytesWritten)}</span>
+          <span className="shrink-0">
+            <BytesWritten />
+          </span>
         </div>
         <div
           className={cn(
@@ -333,27 +336,14 @@ function RecordingBody({ e }: { e: EngineState }) {
           )}
           aria-live="off"
         >
-          {formatClock(e.elapsedSecs)}
+          <ElapsedClock />
         </div>
         <div className="mt-1 text-xs text-muted-foreground tabular">
-          {s.resolution === "native" ? "Native" : s.resolution} · {s.fps} fps ·{" "}
-          {e.droppedFrames === 0 ? "no dropped frames" : `${e.droppedFrames} dropped`}
+          {s.resolution === "native" ? "Native" : s.resolution} · {s.fps} fps · <DroppedFrames />
         </div>
         <div className="mt-3 space-y-1.5">
-          <MeterLine
-            icon={<Volume2 />}
-            label="System"
-            on={s.systemAudio && !s.systemMuted}
-            level={e.levels.system}
-            peak={e.levels.systemPeak}
-          />
-          <MeterLine
-            icon={<Mic />}
-            label="Mic"
-            on={s.micEnabled && !s.micMuted}
-            level={e.levels.mic}
-            peak={e.levels.micPeak}
-          />
+          <MeterLine icon={<Volume2 />} label="System" on={s.systemAudio && !s.systemMuted} levels={systemLevels} />
+          <MeterLine icon={<Mic />} label="Mic" on={s.micEnabled && !s.micMuted} levels={micLevels} />
         </div>
       </div>
 
@@ -400,14 +390,12 @@ function MeterLine({
   icon,
   label,
   on,
-  level,
-  peak,
+  levels,
 }: {
   icon: React.ReactNode;
   label: string;
   on: boolean;
-  level: number;
-  peak: number;
+  levels: LevelSource;
 }) {
   return (
     <div className="flex items-center gap-2 text-[11.5px] text-muted-foreground">
@@ -415,14 +403,7 @@ function MeterLine({
         {icon}
       </span>
       <span className="w-11">{label}</span>
-      <LevelMeter
-        aria-label={`${label} level`}
-        className="h-1.5 flex-1"
-        segments={20}
-        level={level}
-        peak={peak}
-        muted={!on}
-      />
+      <LevelMeter aria-label={`${label} level`} className="h-1.5 flex-1" segments={20} source={levels} muted={!on} />
     </div>
   );
 }

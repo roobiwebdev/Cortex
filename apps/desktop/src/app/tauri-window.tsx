@@ -1,7 +1,8 @@
 import * as React from "react";
 
 import { commands, type AppWindow } from "../ipc/bindings";
-import { useEngine } from "../lib/engine";
+import { useClock, useEngine, useEngineCalm } from "../lib/engine";
+import type { EngineState } from "../lib/types";
 import { WindowedContext, floatingWindow } from "../lib/floating";
 import { useStudioTheme } from "../lib/use-studio-theme";
 import { SURFACES, type SurfaceId } from "../prototype/surfaces";
@@ -10,6 +11,9 @@ import { SURFACES, type SurfaceId } from "../prototype/surfaces";
 const FITTED: ReadonlySet<string> = new Set(["menubar", "hud", "toasts", "countdown"]);
 /** Floating windows that close when they open something else or press Esc. */
 const TRANSIENT: ReadonlySet<string> = new Set(["menubar", "region"]);
+
+const themeOf = (s: EngineState) => s.settings.theme;
+const accentHueOf = (s: EngineState) => s.settings.accentHue;
 
 /**
  * SOURCE OF TRUTH KEYWORDS: TauriWindow, production router, window label, surface per window
@@ -22,8 +26,8 @@ const TRANSIENT: ReadonlySet<string> = new Set(["menubar", "region"]);
  * WHERE: main.tsx when running inside Tauri. The browser keeps the PrototypeShell.
  */
 export function TauriWindow({ label }: { label: string }) {
-  const e = useEngine();
-  useStudioTheme(e.settings.theme, e.settings.accentHue);
+  // Only the theme: the root must not re-render (and re-render the surface) on engine updates.
+  useStudioTheme(useEngine(themeOf), useEngine(accentHueOf));
   const surface = SURFACES.find((s) => s.id === label);
   const floating = surface?.frame.kind === "overlay";
 
@@ -92,7 +96,9 @@ export function TauriWindow({ label }: { label: string }) {
  * window must learn it has a toast while still hidden).
  */
 function FittedHost({ label, children }: { label: string; children: React.ReactNode }) {
-  const e = useEngine();
+  // Real changes, plus the clock once a second (its text can widen the HUD).
+  const e = useEngineCalm();
+  const secs = useClock();
   const ref = React.useRef<HTMLDivElement>(null);
   const sent = React.useRef("");
 
@@ -108,7 +114,7 @@ function FittedHost({ label, children }: { label: string; children: React.ReactN
     floatingWindow.fit(w, h);
   }, []);
 
-  React.useLayoutEffect(measure, [measure, e]);
+  React.useLayoutEffect(measure, [measure, e, secs]);
   React.useEffect(() => {
     const el = ref.current;
     if (!el) return;

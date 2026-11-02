@@ -4,9 +4,9 @@ import { HardDrive, History, Loader2, MonitorX, SquareUser } from "lucide-react"
 import { Button } from "@starter/ui/components/button";
 import { cn } from "@starter/ui/lib/utils";
 
+import { FreeDisk } from "../../components/progress-text";
 import { PreviewStage } from "../../components/preview-stage";
-import { formatBytes } from "../../lib/format";
-import { engine } from "../../lib/engine";
+import { engine, useEngine } from "../../lib/engine";
 import type { Codec, EngineState, Resolution } from "../../lib/types";
 import { MockScreen } from "../../prototype/mock-screen";
 import type { SurfaceId } from "../../prototype/surfaces";
@@ -128,10 +128,12 @@ function PermissionCard({ onFix }: { onFix: () => void }) {
   );
 }
 
+const isLowDisk = (s: EngineState) => s.freeDiskBytes < LOW_DISK;
+
 function ChipRow({ e, navigate }: { e: EngineState; navigate: (id: SurfaceId) => void }) {
   const s = e.settings;
   const format = [RES_LABEL[s.resolution], `${s.fps} fps`, CODEC_LABEL[s.codec], s.container.toUpperCase()].join(" · ");
-  const lowDisk = e.freeDiskBytes < LOW_DISK;
+  const lowDisk = useEngine(isLowDisk);
   return (
     <div className="flex h-7 shrink-0 items-center gap-1.5">
       <Tip
@@ -163,7 +165,7 @@ function ChipRow({ e, navigate }: { e: EngineState; navigate: (id: SurfaceId) =>
       )}
       <span className={cn(chip, "ml-auto", lowDisk && "border-warn/40 bg-warn-tint text-warn")}>
         <HardDrive aria-hidden />
-        {formatBytes(e.freeDiskBytes)} free
+        <FreeDisk /> free
       </span>
     </div>
   );

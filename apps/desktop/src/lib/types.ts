@@ -61,8 +61,12 @@ export interface Toast {
   recordingId?: string;
 }
 
-/** The engine snapshot plus the stored settings and the UI's toasts: what `useEngine()` returns. */
-export type EngineState = EngineSnapshot & {
+/**
+ * The engine snapshot plus the stored settings and the UI's toasts: what `useEngine()` returns.
+ * Audio levels are left out: they change ~30 times a second and live in their own store
+ * (`micLevels` / `systemLevels` in `engine.ts`), read only by the meters.
+ */
+export type EngineState = Omit<EngineSnapshot, "levels"> & {
   settings: RecorderSettings;
   toasts: Toast[];
 };

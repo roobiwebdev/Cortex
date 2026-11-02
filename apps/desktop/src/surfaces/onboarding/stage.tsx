@@ -1,10 +1,11 @@
 import type * as React from "react";
 import { CameraOff, Lock, Mic, Speaker, TriangleAlert, Video, Wifi } from "lucide-react";
 
-import { LevelMeter } from "@starter/ui/components/level-meter";
+import { LevelMeter, type LevelSource } from "@starter/ui/components/level-meter";
 import { cn } from "@starter/ui/lib/utils";
 
 import { CameraBubble } from "../../components/camera-bubble";
+import { micLevels, silentLevels, systemLevels } from "../../lib/engine";
 import type { EngineState } from "../../lib/types";
 import { MockScreen } from "../../prototype/mock-screen";
 import type { ChipState } from "./permission-chip";
@@ -39,7 +40,7 @@ export function OnboardingStage({
         className="relative flex size-full items-center justify-center px-10 pt-11 pb-6 duration-300 ease-out-quick animate-in fade-in-0 slide-in-from-bottom-2"
       >
         {step === "welcome" && <WelcomeScene engine={engine} cameraStream={cameraStream} />}
-        {step === "screen" && <ScreenScene engine={engine} state={chips.screen} />}
+        {step === "screen" && <ScreenScene state={chips.screen} />}
         {step === "microphone" && <MicScene engine={engine} state={chips.microphone} />}
         {step === "camera" && <CameraScene engine={engine} state={chips.camera} cameraStream={cameraStream} />}
         {step === "ready" && <ReadyScene />}
@@ -92,13 +93,13 @@ function WelcomeScene({ engine, cameraStream }: { engine: EngineState; cameraStr
           <span className="size-2.5 rounded-[3px] bg-rec" />
         </span>
         <span className="text-[13px] font-semibold tabular">0:12</span>
-        <LevelMeter className="w-16" level={engine.levels.mic} peak={engine.levels.micPeak} segments={12} />
+        <LevelMeter className="w-16" source={micLevels} segments={12} />
       </div>
     </div>
   );
 }
 
-function ScreenScene({ engine, state }: { engine: EngineState; state: ChipState }) {
+function ScreenScene({ state }: { state: ChipState }) {
   const granted = state === "granted";
   return (
     <div className="flex flex-col items-center gap-4">
@@ -126,8 +127,7 @@ function ScreenScene({ engine, state }: { engine: EngineState; state: ChipState 
       <SourceRow
         icon={<Speaker className="size-3.5" />}
         label="System audio"
-        level={granted ? engine.levels.system : 0}
-        peak={granted ? engine.levels.systemPeak : 0}
+        levels={granted ? systemLevels : silentLevels}
         live={granted}
       />
     </div>
@@ -157,8 +157,7 @@ function MicScene({ engine, state }: { engine: EngineState; state: ChipState }) 
       </div>
       <LevelMeter
         className="mt-4 h-3"
-        level={granted ? engine.levels.mic : 0}
-        peak={granted ? engine.levels.micPeak : 0}
+        source={granted ? micLevels : silentLevels}
         muted={!granted}
         segments={28}
         aria-label="Microphone level"
@@ -241,14 +240,12 @@ function ReadyScene() {
 function SourceRow({
   icon,
   label,
-  level,
-  peak,
+  levels,
   live,
 }: {
   icon: React.ReactNode;
   label: string;
-  level: number;
-  peak: number;
+  levels: LevelSource;
   live: boolean;
 }) {
   return (
@@ -262,14 +259,7 @@ function SourceRow({
         {icon}
       </span>
       <span className="w-24 text-[12.5px] font-medium">{label}</span>
-      <LevelMeter
-        className="flex-1"
-        level={level}
-        peak={peak}
-        muted={!live}
-        segments={18}
-        aria-label={`${label} level`}
-      />
+      <LevelMeter className="flex-1" source={levels} muted={!live} segments={18} aria-label={`${label} level`} />
     </div>
   );
 }

@@ -2,7 +2,7 @@ import { Scissors, Settings } from "lucide-react";
 
 import { Button } from "@starter/ui/components/button";
 
-import { formatClock } from "../../lib/format";
+import { ElapsedClock } from "../../components/progress-text";
 import type { EngineState } from "../../lib/types";
 import type { SurfaceId } from "../../prototype/surfaces";
 import { Tip } from "./parts";
@@ -26,13 +26,13 @@ export function MainTitleBar({ e, navigate }: { e: EngineState; navigate: (id: S
         {st === "recording" && (
           <span className="tabular flex items-center gap-1.5 font-mono text-[12px] text-rec" role="status">
             <span className="size-2 animate-rec-pulse rounded-full bg-rec" aria-hidden />
-            {formatClock(e.elapsedSecs)}
+            <ElapsedClock />
           </span>
         )}
         {st === "paused" && (
           <span className="tabular flex items-center gap-1.5 font-mono text-[12px] text-warn" role="status">
             <span className="size-2 rounded-full bg-warn" aria-hidden />
-            Paused {formatClock(e.elapsedSecs)}
+            Paused <ElapsedClock />
           </span>
         )}
         {st === "finalizing" && (
