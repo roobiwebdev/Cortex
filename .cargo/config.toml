@@ -1,0 +1,3 @@
+# Rec targets macOS 15 (ScreenCaptureKit APIs used by the engine), matching its Info.plist.
+[env]
+MACOSX_DEPLOYMENT_TARGET = "15.0"
