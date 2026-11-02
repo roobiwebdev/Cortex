@@ -44,7 +44,10 @@ fn wait_finished(rx: &mpsc::Receiver<Outbound>, seen: &mut Vec<EngineStatus>) ->
     let deadline = Instant::now() + Duration::from_secs(30);
     loop {
         let left = deadline.saturating_duration_since(Instant::now());
-        match rx.recv_timeout(left).expect("RecordingFinished within 30 s") {
+        match rx
+            .recv_timeout(left)
+            .expect("RecordingFinished within 30 s")
+        {
             Outbound::State(s) => {
                 if seen.last() != Some(&s.status) {
                     seen.push(s.status);
@@ -115,7 +118,10 @@ fn records_the_test_pattern_through_the_shell() {
     assert!(matches!(p["codec_name"].as_str(), "h264" | "hevc"));
     assert_eq!(p["r_frame_rate"], "60/1");
     assert_eq!(p["nb_read_frames"], "180");
-    assert_eq!((p["width"].as_str(), p["height"].as_str()), ("1920", "1080"));
+    assert_eq!(
+        (p["width"].as_str(), p["height"].as_str()),
+        ("1920", "1080")
+    );
     assert!(seen.contains(&EngineStatus::Recording));
 
     // 2. Countdown, pause/resume, then the stop command.
@@ -158,7 +164,10 @@ fn records_the_test_pattern_through_the_shell() {
     }
     let p = ffprobe(&rec.path);
     let frames: u32 = p["nb_read_frames"].parse().unwrap();
-    assert!((60..180).contains(&frames), "about 1.3 s recorded, got {frames} frames");
+    assert!(
+        (60..180).contains(&frames),
+        "about 1.3 s recorded, got {frames} frames"
+    );
 
     // Reveal is limited to the output folder.
     assert!(shell.reveal_recording("/etc/hosts").is_err());

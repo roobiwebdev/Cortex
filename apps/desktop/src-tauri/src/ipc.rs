@@ -18,6 +18,7 @@ use specta::Type;
 use tauri::{AppHandle, Runtime, State};
 use tauri_specta::{Event, collect_commands, collect_events};
 
+use crate::preview::LivePreview;
 use crate::shell::{self, Emit, Outbound, Shell};
 
 /// The engine snapshot: on every status change, and at most 10 times a second while
@@ -250,6 +251,29 @@ async fn import_rec_settings(shell: Shared<'_>) -> Result<RecorderSettings, Engi
     blocking(&shell, Shell::import_rec_settings).await
 }
 
+/// The main window's live preview, if it could be attached (see `preview.rs`).
+pub type PreviewSlot = Option<Arc<LivePreview>>;
+
+/// Main window only: where the preview hole is, in CSS px from the webview's top-left,
+/// and its corner radius. The native preview view follows it.
+#[tauri::command]
+#[specta::specta]
+fn set_preview_rect(preview: State<'_, PreviewSlot>, x: f64, y: f64, w: f64, h: f64, radius: f64) {
+    if let Some(p) = preview.inner() {
+        p.set_rect(x, y, w, h, radius);
+    }
+}
+
+/// Main window only: the page shows (true) or removed (false) the preview hole.
+/// The engine previews while this is on and the window is visible.
+#[tauri::command]
+#[specta::specta]
+fn set_preview_enabled(preview: State<'_, PreviewSlot>, enabled: bool) {
+    if let Some(p) = preview.inner() {
+        p.set_enabled(enabled);
+    }
+}
+
 /// The command + event registry shared by the app and the bindings exporter.
 /// Keep `build.rs` COMMANDS and `capabilities/default.json` in step with this list.
 pub fn builder() -> tauri_specta::Builder<tauri::Wry> {
@@ -275,6 +299,8 @@ pub fn builder() -> tauri_specta::Builder<tauri::Wry> {
             set_stream_key,
             remove_stream_key,
             import_rec_settings,
+            set_preview_rect,
+            set_preview_enabled,
         ])
         .events(collect_events![
             EngineStateEvent,

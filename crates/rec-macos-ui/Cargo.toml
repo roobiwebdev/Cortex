@@ -20,6 +20,8 @@ objc2-core-media = { version = "0.3", features = ["objc2-core-video"] }
 objc2-core-video = "0.3"
 objc2-foundation = "0.3"
 objc2-quartz-core = "0.3"
+# Safe entry points for hosts (Tauri windows implement HasWindowHandle).
+raw-window-handle = "0.6"
 
 [dev-dependencies]
 # The demo feeds frames through the same PreviewFn type the engine uses.

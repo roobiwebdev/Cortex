@@ -19,10 +19,14 @@ use std::ptr::NonNull;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 
+use block2::RcBlock;
 use objc2::rc::Retained;
 use objc2::runtime::AnyObject;
 use objc2::{MainThreadMarker, MainThreadOnly, msg_send};
-use objc2_app_kit::{NSAutoresizingMaskOptions, NSColor, NSView, NSWindow, NSWindowOrderingMode};
+use objc2_app_kit::{
+    NSAutoresizingMaskOptions, NSColor, NSView, NSWindow,
+    NSWindowDidChangeOcclusionStateNotification, NSWindowOcclusionState, NSWindowOrderingMode,
+};
 use objc2_av_foundation::{
     AVLayerVideoGravityResizeAspect, AVQueuedSampleBufferRendering,
     AVQueuedSampleBufferRenderingStatus, AVSampleBufferDisplayLayer, AVSampleBufferVideoRenderer,
@@ -36,8 +40,11 @@ use objc2_core_media::{
     kCMTimingInfoInvalid,
 };
 use objc2_core_video::CVPixelBuffer;
-use objc2_foundation::{NSNumber, NSString};
+use objc2_foundation::{
+    NSNotification, NSNotificationCenter, NSNumber, NSOperationQueue, NSString,
+};
 use objc2_quartz_core::CATransaction;
+use raw_window_handle::{HasWindowHandle, RawWindowHandle};
 
 use crate::geometry::{Rect, web_rect_to_appkit};
 use crate::main_thread::{MainThreadBound, on_main, run_on_main};
@@ -226,6 +233,20 @@ impl PreviewView {
         })
     }
 
+    /// Safe form of [`PreviewView::attach`] for any window that exposes an
+    /// AppKit handle (Tauri's `WebviewWindow`, winit). Call on the main thread
+    /// or with the main run loop running.
+    pub fn attach_to(window: &impl HasWindowHandle) -> Result<PreviewView, AttachError> {
+        let ns_view = appkit_view(window).ok_or(AttachError::NullWindow)?;
+        run_on_main(move |mtm| {
+            // SAFETY: the handle contract guarantees a live NSView while `window`
+            // is borrowed (this call is synchronous); main thread.
+            let view: &NSView = unsafe { &*(ns_view as *const NSView) };
+            let window = view.window().ok_or(AttachError::NullWindow)?;
+            build(&window, mtm)
+        })
+    }
+
     /// Positions the preview from a rect measured by the web layout
     /// (`getBoundingClientRect()` in CSS px, top-left origin of the webview).
     pub fn set_frame(&self, x: f64, y: f64, w: f64, h: f64) {
@@ -293,6 +314,37 @@ impl PreviewView {
         on_main(move |mtm| views.get(mtm).view.removeFromSuperview());
     }
 
+    /// Calls `f(visible)` now and whenever the window's occlusion state
+    /// changes: shown or hidden, minimised, fully covered, or on another
+    /// Space. Runs `f` on the main thread. Lets the host stop the engine's
+    /// preview session while nobody can see it.
+    pub fn on_window_visibility(&self, f: impl Fn(bool) + 'static + Send) {
+        let views = self.views.clone();
+        on_main(move |mtm| {
+            let v = views.get(mtm);
+            let Some(window) = v.view.window() else {
+                return;
+            };
+            let visible =
+                |w: &NSWindow| w.occlusionState().contains(NSWindowOcclusionState::Visible);
+            f(visible(&window));
+            let w = window.clone();
+            let block = RcBlock::new(move |_n: NonNull<NSNotification>| f(visible(&w)));
+            // SAFETY: main thread; the block and window are retained by the
+            // notification centre for the life of the app (the main window
+            // is never released: closing it only hides it).
+            unsafe {
+                let _ = NSNotificationCenter::defaultCenter()
+                    .addObserverForName_object_queue_usingBlock(
+                        Some(NSWindowDidChangeOcclusionStateNotification),
+                        Some(&window),
+                        Some(&NSOperationQueue::mainQueue()),
+                        &block,
+                    );
+            }
+        });
+    }
+
     /// The frame callback for `MacEngine::set_preview_sink`. Thread-safe and
     /// non-blocking: frames are dropped when hidden or when the layer is busy.
     pub fn sink(&self) -> PreviewFn {
@@ -347,6 +399,44 @@ fn without_animation(f: impl FnOnce()) {
     CATransaction::setDisableActions(true);
     f();
     CATransaction::commit();
+}
+
+/// The `NSView*` (as an address) behind an AppKit window handle.
+fn appkit_view(window: &impl HasWindowHandle) -> Option<usize> {
+    match window.window_handle().ok()?.as_raw() {
+        RawWindowHandle::AppKit(h) => Some(h.ns_view.as_ptr() as usize),
+        _ => None,
+    }
+}
+
+/// Safe form of [`make_webview_transparent`]: applies it to every WKWebView
+/// in `window`'s content view. Returns how many were changed.
+pub fn make_window_webviews_transparent(window: &impl HasWindowHandle) -> usize {
+    let Some(ns_view) = appkit_view(window) else {
+        return 0;
+    };
+    run_on_main(move |_mtm| {
+        // SAFETY: live NSView per the handle contract (synchronous call); main thread.
+        let view: &NSView = unsafe { &*(ns_view as *const NSView) };
+        let Some(root) = view.window().and_then(|w| w.contentView()) else {
+            return 0;
+        };
+        let mut found = 0;
+        let mut stack = vec![root];
+        while let Some(v) = stack.pop() {
+            let class = v.class().name().to_str().unwrap_or_default();
+            if class.contains("WKWebView") {
+                let ptr = Retained::as_ptr(&v) as *mut c_void;
+                // SAFETY: `v` is a live WKWebView (retained in this scope).
+                if unsafe { make_webview_transparent(ptr) } {
+                    found += 1;
+                }
+                continue;
+            }
+            stack.extend(v.subviews().to_vec());
+        }
+        found
+    })
 }
 
 /**

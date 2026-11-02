@@ -2,6 +2,7 @@
 //! the macOS recorder engine (`rec-engine-macos`, driven through `shell::Shell`).
 
 mod ipc;
+mod preview;
 pub mod shell;
 mod windows;
 
@@ -12,6 +13,36 @@ use tauri::{Manager, RunEvent};
 
 use crate::shell::{Outbound, Shell};
 
+/// Perf and self-test hooks, read once at startup (never set in normal use):
+/// - `CORTEX_DEBUG_DATA_DIR`: settings folder instead of Application Support.
+/// - `CORTEX_DEBUG_TEST_PATTERN=1`: record Rec's test pattern (no Screen Recording grant).
+/// - `CORTEX_DEBUG_RECORD_SECS=N`: start recording 3 s after launch, stop after N recorded
+///   seconds, print `cortex: recorded <path>` and quit.
+/// - `CORTEX_DEBUG_HIDE_MAIN=1`: hide the main window at launch (preview off).
+///
+/// Used by `scripts/desktop/perf-compare.sh`.
+#[derive(Default)]
+struct DebugRun {
+    data_dir: Option<std::path::PathBuf>,
+    test_pattern: bool,
+    record_secs: Option<f64>,
+    hide_main: bool,
+}
+
+impl DebugRun {
+    fn from_env() -> DebugRun {
+        let var = |k: &str| std::env::var(k).ok().filter(|v| !v.is_empty());
+        DebugRun {
+            data_dir: var("CORTEX_DEBUG_DATA_DIR").map(Into::into),
+            test_pattern: var("CORTEX_DEBUG_TEST_PATTERN").is_some_and(|v| v == "1"),
+            record_secs: var("CORTEX_DEBUG_RECORD_SECS")
+                .and_then(|v| v.parse::<f64>().ok())
+                .filter(|v| v.is_finite() && *v > 0.0),
+            hide_main: var("CORTEX_DEBUG_HIDE_MAIN").is_some_and(|v| v == "1"),
+        }
+    }
+}
+
 pub fn run() {
     let ipc = ipc::builder();
 
@@ -19,13 +50,33 @@ pub fn run() {
         .invoke_handler(ipc.invoke_handler())
         .setup(move |app| {
             ipc.mount_events(app);
+            let debug = DebugRun::from_env();
             // ~/Library/Application Support/dev.roobi.cortex/settings.json
-            let settings_path = app.path().app_data_dir()?.join("settings.json");
+            let data_dir = match debug.data_dir.clone() {
+                Some(d) => d,
+                None => app.path().app_data_dir()?,
+            };
+            let settings_path = data_dir.join("settings.json");
             let opts = EngineOptions {
                 home: app.path().home_dir()?,
-                ..Default::default()
+                test_pattern: debug.test_pattern,
+                max_duration_secs: debug.record_secs,
             };
+            // Our windows must never show up in a screen recording: fail instead.
+            rec_engine::screen::require_self_exclusion(true);
             let emit = ipc::emitter(app.handle().clone());
+            let emit: shell::Emit = if debug.record_secs.is_some() {
+                let handle = app.handle().clone();
+                Arc::new(move |o: Outbound| {
+                    if let Outbound::RecordingFinished(r) = &o {
+                        println!("cortex: recorded {}", r.path);
+                        handle.exit(0);
+                    }
+                    emit(o)
+                })
+            } else {
+                emit
+            };
             let shell = Shell::open(opts, settings_path, emit.clone());
             if let Some(message) = &shell.load_error {
                 eprintln!("cortex: {message}");
@@ -36,8 +87,31 @@ pub fn run() {
             }
             // On the main thread, as the device notifications require.
             shell.engine().watch_devices();
-            app.manage(Arc::new(shell));
+            let shell = Arc::new(shell);
+            app.manage(shell.clone());
             windows::setup(app)?;
+            let live = match preview::LivePreview::attach(app, shell.clone()) {
+                Ok(p) => Some(p),
+                Err(e) => {
+                    eprintln!("cortex: live preview unavailable: {e}");
+                    None
+                }
+            };
+            app.manage::<ipc::PreviewSlot>(live);
+            if debug.hide_main
+                && let Some(main) = app.get_webview_window("main")
+            {
+                let _ = main.hide();
+            }
+            if debug.record_secs.is_some() {
+                std::thread::spawn(move || {
+                    std::thread::sleep(std::time::Duration::from_secs(3));
+                    if let Err(e) = shell.start() {
+                        eprintln!("cortex: debug record failed: {e}");
+                        std::process::exit(2);
+                    }
+                });
+            }
             Ok(())
         })
         .build(tauri::generate_context!())

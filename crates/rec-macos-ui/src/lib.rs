@@ -17,4 +17,6 @@ pub mod preview;
 
 pub use geometry::{Rect, aspect_fit, web_rect_to_appkit};
 pub use panel::{FloatingKind, NonActivation, configure_floating, set_ignores_mouse_events};
-pub use preview::{AttachError, PreviewFn, PreviewView, make_webview_transparent};
+pub use preview::{
+    AttachError, PreviewFn, PreviewView, make_webview_transparent, make_window_webviews_transparent,
+};
