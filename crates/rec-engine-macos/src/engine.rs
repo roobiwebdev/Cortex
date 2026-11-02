@@ -13,7 +13,7 @@
 //! into the engine.
 
 use std::path::{Path, PathBuf};
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
@@ -239,6 +239,16 @@ fn read_permissions() -> Permissions {
     }
 }
 
+/// Permissions as the UI should see them: the test pattern needs no Screen
+/// Recording grant, so it reports screen as granted (self-tests, perf runs).
+fn state_permissions(test_pattern: bool) -> Permissions {
+    let mut p = read_permissions();
+    if test_pattern {
+        p.screen = PermissionState::Granted;
+    }
+    p
+}
+
 /// Turn an engine error from `prepare`/`Session::start` into an API error.
 fn engine_error(e: anyhow::Error) -> EngineError {
     match e.downcast_ref::<record::MissingPermissions>() {
@@ -454,7 +464,10 @@ impl Inner {
     fn preview_callback(core: &Core) -> PreviewFn {
         let sink = core.preview_sink.clone();
         let low_power = core.low_power.clone();
+        let view_px = core.preview_px.clone();
         let last = Mutex::new(None::<Instant>);
+        let scaler = Mutex::new(None::<PreviewScaler>);
+        // The writer already limits preview frames to 30 a second.
         Arc::new(move |pb| {
             let Some(f) = sink.lock().unwrap().clone() else {
                 return;
@@ -467,6 +480,12 @@ impl Inner {
                 }
                 *l = Some(Instant::now());
             }
+            let packed = view_px.load(Ordering::Relaxed);
+            let view = ((packed >> 32) as usize, (packed & 0xffff_ffff) as usize);
+            let pb = match scaler.try_lock() {
+                Ok(mut s) => PreviewScaler::downscale(&mut s, pb, view),
+                Err(_) => pb,
+            };
             f(pb)
         })
     }
@@ -797,7 +816,7 @@ impl Inner {
         }
         // About once a second: permissions granted in System Settings, disk space.
         if self.ticks.is_multiple_of(30) {
-            let p = read_permissions();
+            let p = state_permissions(self.opts.test_pattern);
             for perm in Permission::ALL {
                 if p.get(perm) != self.state.permissions.get(perm) {
                     ev.push(EngineEvent::PermissionChanged {
@@ -861,6 +880,9 @@ struct Core {
     inner: Mutex<Inner>,
     events: EventSink,
     preview_sink: Arc<Mutex<Option<PreviewFn>>>,
+    /// The preview view's size in pixels, packed `w << 32 | h` (0 = unknown,
+    /// frames go out at the output size).
+    preview_px: Arc<AtomicU64>,
     low_power: Arc<AtomicBool>,
     devices_changed: Arc<AtomicBool>,
     quit: AtomicBool,
@@ -893,6 +915,81 @@ impl Core {
     }
 }
 
+/// Widest preview frame worth sending: a preview never needs more pixels.
+const PREVIEW_MAX_WIDTH: usize = 1920;
+
+/// The size to scale a `src` preview frame to for a view of `view` pixels,
+/// keeping the aspect ratio (even sizes, as 4:2:0 needs). None = send as is
+/// (unknown view size, or less than ~10% to gain).
+fn preview_target(src: (usize, usize), view: (usize, usize)) -> Option<(usize, usize)> {
+    let (sw, sh) = src;
+    let (vw, vh) = view;
+    if sw == 0 || sh == 0 || vw == 0 || vh == 0 {
+        return None;
+    }
+    let fit = (vw as f64 / sw as f64)
+        .min(vh as f64 / sh as f64)
+        .min(PREVIEW_MAX_WIDTH as f64 / sw as f64);
+    if fit > 0.9 {
+        return None;
+    }
+    let even = |v: f64| ((v / 2.0).round() as usize * 2).max(2);
+    Some((even(sw as f64 * fit), even(sh as f64 * fit)))
+}
+
+/// Rec's Metal scaler plus a buffer pool, sized for the current preview view.
+struct PreviewScaler {
+    scaler: crate::scale::FrameScaler,
+    pool: objc2_core_foundation::CFRetained<objc2_core_video::CVPixelBufferPool>,
+    size: (usize, usize),
+    format: u32,
+}
+
+// SAFETY: only used behind the preview callback's mutex. CVPixelBufferPool is
+// a thread-safe CF type, and FrameScaler is already Send (same rule as the
+// writer's scaler).
+unsafe impl Send for PreviewScaler {}
+
+impl PreviewScaler {
+    /// `pb` scaled down for a `view`-sized preview, or `pb` itself when no
+    /// scaling is needed or it fails (the layer then scales it on the GPU).
+    fn downscale(
+        slot: &mut Option<PreviewScaler>,
+        pb: objc2_core_foundation::CFRetained<objc2_core_video::CVPixelBuffer>,
+        view: (usize, usize),
+    ) -> objc2_core_foundation::CFRetained<objc2_core_video::CVPixelBuffer> {
+        use objc2_core_video::{
+            CVPixelBufferGetHeight, CVPixelBufferGetPixelFormatType, CVPixelBufferGetWidth,
+            CVPixelBufferPool,
+        };
+        let src = (CVPixelBufferGetWidth(&pb), CVPixelBufferGetHeight(&pb));
+        let Some(size) = preview_target(src, view) else {
+            return pb;
+        };
+        let format = CVPixelBufferGetPixelFormatType(&pb);
+        if slot.as_ref().is_none_or(|s| s.size != size || s.format != format) {
+            *slot = crate::scale::FrameScaler::new(size.0, size.1).map(|scaler| PreviewScaler {
+                scaler,
+                pool: crate::util::make_pool(size.0, size.1, format),
+                size,
+                format,
+            });
+        }
+        let Some(s) = slot.as_mut() else { return pb };
+        let mut buf = std::ptr::null_mut();
+        // SAFETY: `buf` is a valid out-pointer; the pool is alive.
+        unsafe { CVPixelBufferPool::create_pixel_buffer(None, &s.pool, std::ptr::NonNull::from(&mut buf)) };
+        let Some(b) = std::ptr::NonNull::new(buf) else { return pb };
+        // SAFETY: the pool returned a +1 pixel buffer.
+        let out = unsafe { objc2_core_foundation::CFRetained::from_raw(b) };
+        if !s.scaler.scale(&pb, &out) {
+            return pb;
+        }
+        crate::scale::tag_bt709(&out);
+        out
+    }
+}
+
 /// The macOS recorder engine.
 pub struct MacEngine {
     core: Arc<Core>,
@@ -909,7 +1006,7 @@ impl MacEngine {
             live.set_config(r.live_config());
         }
         let mut state = EngineState {
-            permissions: read_permissions(),
+            permissions: state_permissions(opts.test_pattern),
             ..Default::default()
         };
         state.free_disk_bytes = free_disk_bytes(&settings.output_dir_in(&opts.home));
@@ -941,6 +1038,7 @@ impl MacEngine {
             inner: Mutex::new(inner),
             events,
             preview_sink: Arc::new(Mutex::new(None)),
+            preview_px: Arc::new(AtomicU64::new(0)),
             low_power,
             devices_changed: Arc::new(AtomicBool::new(false)),
             quit: AtomicBool::new(false),
@@ -966,6 +1064,15 @@ impl MacEngine {
     /// CVPixelBuffer to a Metal layer, don't process it there).
     pub fn set_preview_sink(&self, sink: Option<PreviewFn>) {
         *self.core.preview_sink.lock().unwrap() = sink;
+    }
+
+    /// The preview view's size in device pixels (0 × 0 = unknown). Preview
+    /// frames larger than this (or than 1920 wide) are scaled down to it
+    /// before they reach the sink, so the window server composites a small
+    /// buffer instead of a 4K one.
+    pub fn set_preview_pixel_size(&self, width: u32, height: u32) {
+        let packed = (u64::from(width) << 32) | u64::from(height);
+        self.core.preview_px.store(packed, Ordering::Relaxed);
     }
 
     /// Watch for cameras and mics being plugged in or removed
@@ -1279,6 +1386,21 @@ impl Drop for MacEngine {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn preview_frames_shrink_to_the_view() {
+        // 4K output in a 1200×675-point view on a 2x display: 2400 px is
+        // capped at 1920 wide.
+        assert_eq!(preview_target((3840, 2160), (2400, 1350)), Some((1920, 1080)));
+        // A small view gets a small buffer, aspect kept, even sizes.
+        assert_eq!(preview_target((3840, 2160), (800, 600)), Some((800, 450)));
+        // Fitting by height when the view is taller-than-wide relative to the frame.
+        assert_eq!(preview_target((1920, 1080), (1920, 540)), Some((960, 540)));
+        // Nothing to gain (<10% smaller) or unknown size: send as is.
+        assert_eq!(preview_target((1920, 1080), (1800, 1013)), None);
+        assert_eq!(preview_target((1920, 1080), (0, 0)), None);
+        assert_eq!(preview_target((1280, 720), (2560, 1440)), None);
+    }
 
     fn args(s: &RecorderSettings, test_pattern: bool) -> Vec<String> {
         let rec = rec_settings_for(s, Path::new("/Users/u")).unwrap();
