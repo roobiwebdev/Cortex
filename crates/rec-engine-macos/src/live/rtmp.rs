@@ -500,6 +500,14 @@ impl Conn {
         Ok(())
     }
 
+    /// End the broadcast the way OBS does (FCUnpublish, deleteStream), so
+    /// the server ends the stream now rather than on a socket timeout.
+    fn unpublish(&mut self, key: &str) -> Result<()> {
+        self.cmd(0, &[Amf::Str("FCUnpublish".into()), Amf::Number(6.0), Amf::Null, Amf::Str(key.into())])?;
+        let sid = self.stream_id as f64;
+        self.cmd(0, &[Amf::Str("deleteStream".into()), Amf::Number(7.0), Amf::Null, Amf::Number(sid)])
+    }
+
     /// Answer pings and notice a closed connection (non-blocking).
     fn poll(&mut self) -> Result<()> {
         self.s.set_read_timeout(Some(Duration::from_millis(1)))?;
@@ -651,6 +659,8 @@ fn run(u: RtmpUrl, key: String, shared: Arc<(Mutex<Shared>, Condvar)>, stop: Arc
         let mut headers_sent = false;
         let result: Result<()> = (|| loop {
             if stop.load(Ordering::SeqCst) {
+                // Best effort: the socket closes next either way.
+                let _ = conn.unpublish(&key);
                 return Ok(());
             }
             let (tags, formats, wh) = {
