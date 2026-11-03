@@ -152,7 +152,8 @@ pub struct RecorderSettings {
     pub scene: Scene,
     /// Camera unique ID; None = system default.
     pub camera_id: Option<String>,
-    /// Separate camera track (Phase 6; not recorded yet).
+    /// Also record the raw camera: a second video track in a .mov, a
+    /// `<name>.camera.mov` sidecar for .mp4.
     pub camera_track: bool,
     pub camera_resolution: CameraResolution,
     pub mic_enabled: bool,

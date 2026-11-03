@@ -321,7 +321,10 @@ export type RecorderSettings_Deserialize = {
 	scene?: Scene,
 	/**  Camera unique ID; None = system default. */
 	cameraId?: string | null,
-	/**  Separate camera track (Phase 6; not recorded yet). */
+	/**
+	 *  Also record the raw camera: a second video track in a .mov, a
+	 *  `<name>.camera.mov` sidecar for .mp4.
+	 */
 	cameraTrack?: boolean,
 	cameraResolution?: CameraResolution,
 	micEnabled?: boolean,
@@ -385,7 +388,10 @@ export type RecorderSettings_Serialize = {
 	scene: Scene,
 	/**  Camera unique ID; None = system default. */
 	cameraId: string | null,
-	/**  Separate camera track (Phase 6; not recorded yet). */
+	/**
+	 *  Also record the raw camera: a second video track in a .mov, a
+	 *  `<name>.camera.mov` sidecar for .mp4.
+	 */
 	cameraTrack: boolean,
 	cameraResolution: CameraResolution,
 	micEnabled: boolean,

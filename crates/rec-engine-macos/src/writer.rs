@@ -1417,7 +1417,7 @@ mod tests {
                 let path = dir.join(format!("rec-probe-{name}.mov"));
                 let _ = std::fs::remove_file(&path);
                 let spec = super::VideoSpec { width: 320, height: 64, fps: 30, codec: crate::writer::Codec::H264, bitrate: 20_000_000, pixel_format: crate::util::PIX_BGRA };
-                let o = super::open_output(&path, &spec, false, false, super::AudioLayout::Both).unwrap();
+                let o = super::open_output(&path, &spec, false, false, super::AudioLayout::Both, None).unwrap();
                 o.writer.startSessionAtSourceTime(objc2_core_media::CMTime::new(0, 30));
                 let src = crate::compose::color_probe::stripes(320, 64, &vals, tag);
                 // Through the compositor as the camera (full frame) or as is.
@@ -1455,6 +1455,70 @@ mod tests {
                     vals.iter().map(|&v| 16 + (v as u32 * 219 + 127) / 255).collect::<Vec<_>>());
             }
         }
+    }
+
+    /// Video streams of `path` as (width, height, frames, duration), via ffprobe.
+    fn probe_video(path: &std::path::Path) -> Option<Vec<(u32, u32, u64, f64)>> {
+        let out = std::process::Command::new("ffprobe")
+            .args(["-v", "error", "-count_frames", "-select_streams", "v"])
+            .args(["-show_entries", "stream=width,height,nb_read_frames,duration", "-of", "csv=p=0"])
+            .arg(path)
+            .output()
+            .ok()?;
+        let text = String::from_utf8(out.stdout).ok()?;
+        text.lines()
+            .map(|l| {
+                let v: Vec<&str> = l.split(',').collect();
+                Some((v.first()?.parse().ok()?, v.get(1)?.parse().ok()?, v.get(3)?.parse().ok()?, v.get(2)?.parse().ok()?))
+            })
+            .collect()
+    }
+
+    /// The camera track (in the .mov, or the .mp4's sidecar) has the main
+    /// track's start, length and frame count, pauses included.
+    #[test]
+    fn camera_track_follows_the_main_timeline() {
+        use super::*;
+        let dir = std::env::temp_dir().join(format!("rec-camtrack-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        for ext in ["mov", "mp4"] {
+            let path = dir.join(format!("t.{ext}"));
+            let spec = VideoSpec { width: 320, height: 180, fps: 30, codec: Codec::H264, bitrate: 2_000_000, pixel_format: PIX_BGRA };
+            let cam = CamTrackSpec::for_output(CameraTrack::File, &path, (192, 108)).unwrap();
+            let mut sink = Sink::new(Some(&path), &spec, false, false, AudioLayout::Both, [crate::mixer::Volume { db: 0.0, muted: false }; 2], None, Scene::Screen, None, Some(&cam)).unwrap();
+            let screen = crate::compose::color_probe::stripes(320, 180, &[200], None);
+            let camf = crate::compose::color_probe::stripes(192, 108, &[90], None);
+            let t0 = secs(host_now());
+            let at = |t: f64| unsafe { CMTime::new((t * TIMESCALE as f64).round() as i64, TIMESCALE) };
+            sink.push_screen(at(t0), screen.clone());
+            // 2 s of camera at 30 fps, paused for 0.5 s in the middle.
+            for i in 0..60 {
+                let t = t0 + i as f64 / 30.0;
+                if i == 20 {
+                    sink.pause(t);
+                }
+                if i == 35 {
+                    sink.resume(t);
+                }
+                sink.push_cam(at(t), camf.clone());
+                sink.emit_until(t);
+                std::thread::sleep(std::time::Duration::from_millis(4));
+            }
+            let stats = sink.finish(t0 + 2.0).unwrap();
+            assert!(stats.cam_track_frames > 40, "{stats:?}");
+            let main = probe_video(&path);
+            let side = if ext == "mp4" { probe_video(&sidecar_path(&path)) } else { None };
+            let Some(main) = main else { return }; // no ffprobe here
+            let streams: Vec<_> = main.into_iter().chain(side.unwrap_or_default()).collect();
+            assert_eq!(streams.len(), 2, "{ext}: {streams:?}");
+            assert_eq!((streams[0].0, streams[1].0), (320, 192));
+            assert_eq!(streams[0].2, streams[1].2, "{ext}: frame counts {streams:?}");
+            assert!((streams[0].3 - streams[1].3).abs() < 1.0 / 30.0, "{ext}: durations {streams:?}");
+            // The pause cut 15 slots out of 60.
+            assert!((streams[0].3 - 1.5).abs() < 0.1, "{ext}: {streams:?}");
+        }
+        let _ = std::fs::remove_dir_all(&dir);
     }
 
     use super::Pauses;

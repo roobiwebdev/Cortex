@@ -217,7 +217,10 @@ pub fn record_args_for(
     if s.camera_track {
         a.extend(["--camera-track".into(), "file".into()]);
     }
-    a.extend(["--camera-resolution".into(), s.camera_resolution.as_str().into()]);
+    a.extend([
+        "--camera-resolution".into(),
+        s.camera_resolution.as_str().into(),
+    ]);
     a
 }
 
@@ -390,7 +393,9 @@ struct Inner {
     finishing: Option<Finishing>,
     preview: Option<Session>,
     /// Rec's `capture_key` of the settings the preview runs with.
-    preview_key: Option<Settings>,
+    /// What the running preview was opened with: a change reopens it (the
+    /// camera resolution too, so a recording can take over its camera).
+    preview_key: Option<(Settings, cs::CameraResolution)>,
     preview_wanted: bool,
     /// Set when the preview failed to start; cleared by a settings change, so
     /// a broken setup isn't retried 30 times a second.
@@ -698,7 +703,10 @@ impl Inner {
             && self.finishing.is_none()
             && self.rec.is_some()
             && !core.quit.load(Ordering::SeqCst);
-        let key = self.rec.as_ref().map(Settings::capture_key);
+        let key = self
+            .rec
+            .as_ref()
+            .map(|r| (r.capture_key(), self.settings.camera_resolution));
         let stale = self.preview_key != key;
         if self.preview.is_some() && (!want || stale) {
             if let Some(mut s) = self.preview.take() {
@@ -1521,6 +1529,8 @@ mod tests {
             ["--pip-roundness", "0.35"],
             ["--pip-border-color", "ffffff"],
             ["-o", "/tmp/x.mov"],
+            ["--camera-track", "file"],
+            ["--camera-resolution", "1080p"],
         ] {
             assert!(has(&a, p), "{p:?} in {a:?}");
         }
@@ -1531,6 +1541,42 @@ mod tests {
             || x == "--region"));
         let rec = rec_settings_for(&s, Path::new("/Users/u")).unwrap();
         assert_eq!(rec.output_dir, PathBuf::from("/Users/u/Movies/Cortex"));
+    }
+
+    #[test]
+    fn camera_track_settings_reach_the_session_options() {
+        let s = RecorderSettings {
+            camera_track: false,
+            camera_resolution: cs::CameraResolution::R720p,
+            ..Default::default()
+        };
+        let a = args(&s, false);
+        assert!(!a.iter().any(|x| x == "--camera-track"));
+        assert!(has(&a, ["--camera-resolution", "720p"]));
+        // A .mov keeps the camera in the file; an .mp4 gets the sidecar.
+        let mov = writer::CamTrackSpec::for_output(
+            writer::CameraTrack::File,
+            Path::new("/m/a.mov"),
+            (1920, 1080),
+        );
+        assert!(mov.is_some_and(|c| c.sidecar.is_none() && c.width == 1920));
+        let mp4 = writer::CamTrackSpec::for_output(
+            writer::CameraTrack::File,
+            Path::new("/m/a.mp4"),
+            (1920, 1080),
+        );
+        assert_eq!(
+            mp4.and_then(|c| c.sidecar),
+            Some(PathBuf::from("/m/a.camera.mov"))
+        );
+        assert!(
+            writer::CamTrackSpec::for_output(
+                writer::CameraTrack::Off,
+                Path::new("/m/a.mov"),
+                (1, 1)
+            )
+            .is_none()
+        );
     }
 
     #[test]

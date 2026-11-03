@@ -116,6 +116,17 @@ Only the main window exists at launch. Every other window in `tauri.conf.json` (
 - **Toasts.** Toasts go through the shell, not straight to the toasts window, because that window may not exist yet. The floating observer turns `recording-finished`, `replay-saved` and `error` into toasts, other windows call `push_toast`, and the shell holds them until the toasts window calls `window_ready` after its first render. Every window calls `window_ready`, and the shell logs how long the window took from creation to that point.
 - **Hidden pages idle.** `lib/visibility.ts` mirrors `document.hidden` onto `html[data-hidden]`, which pauses every CSS animation (`styles.css`), and `engine.ts` defers state renders until the page is visible. WebKit reports an ordered-out or fully covered window as hidden (checked with a debug probe: the countdown and HUD flip to `hidden` when the shell hides them and back when it shows them).
 
+## Camera track
+
+With **Save camera as separate track** on (`cameraTrack`, Settings → Camera) and a camera in the recording, the engine also records the raw camera (`rec record --camera-track file|sidecar`, `writer::CameraTrack`). The burned-in overlay stays in the main track either way.
+
+- **Where it goes.** A `.mov` gets a second video track, in one alternate group with the main track (main is the default), so QuickTime and AVPlayer show the composite and editors see both. An `.mp4` gets a sidecar `<name>.camera.mov` next to it instead, because many editors ignore a second video track in MP4. `Recording.hasCameraTrack` is true only for the in-file track (an `.mp4`'s camera is in the sidecar).
+- **Unmirrored.** The track holds the frames as the camera delivers them. Mirroring is a display choice applied by the compositor to the overlay only.
+- **Timeline.** The pacer appends the newest camera frame on every main-track slot, with the main track's timestamp: CFR at the output fps, same start, same pause cuts, same end (`endSessionAtSourceTime` trims both). A 30 fps camera on a 60 fps grid repeats each frame, which costs almost nothing in H.264/HEVC. The sidecar starts its session at the same host time, so it lines up at 0 with the main file.
+- **Encoding.** Same codec as the main track (ProRes main gives a ProRes camera track), at the camera's size, with a bitrate sized for 30 real frames (`writer::camera_video_spec`). Both files are fragmented every 2 s, so a crash leaves the camera playable up to the last fragment too.
+- **Resolution.** `cameraResolution` (720p or 1080p) caps the capture format. `camera::pick_format` takes the largest device format at or under that height (24 fps or faster), so a 720p-only camera falls back to 720p. The frames are delivered at exactly that size, and a running camera is reused for a recording only when it was opened at the same cap (the preview reopens when the setting changes).
+- **Camera-only scene.** The track is recorded there too: the scene can switch live, and the track keeps the camera's native size.
+
 ## Floating windows
 
 The HUD, toasts, countdown, region picker and menu bar panel are built on demand (see above). `src-tauri/src/floating.rs` owns their behaviour:
