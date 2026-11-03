@@ -4,15 +4,15 @@ Cortex ships a macOS screen, camera and audio recorder. The capture engine is Re
 
 ## The layout
 
-| Folder                    | Job                                                                                                    | May depend on                            |
-| ------------------------- | ------------------------------------------------------------------------------------------------------ | ---------------------------------------- |
-| `crates/rec-core`         | Platform-neutral settings schema, engine API (`RecorderEngine`, `EngineEvent`), state, settings store. | serde, specta (optional). No Apple code. |
-| `crates/rec-engine-macos` | Rec's capture, compose, encode, mixer and live code. Exposes `MacEngine`, which implements `rec_core`. | rec-core, Apple frameworks               |
-| `crates/rec-macos-ui`     | Native window behaviour: live preview view, non-activating panels, capture exclusion, levels.          | Apple frameworks, raw-window-handle      |
-| `crates/rec-cli`          | The `rec-rs` command-line recorder.                                                                    | rec-engine-macos                         |
-| `apps/desktop/src`        | React 19 + Vite + Tailwind 4 surfaces (main, settings, HUD, toasts, countdown, region picker, trim).   | `@starter/ui`, `@tauri-apps/api`         |
-| `apps/desktop/src-tauri`  | The Tauri shell (Rust crate `cortex-desktop`): windows, tray, IPC commands.                            | rec-core, rec-engine-macos, rec-macos-ui |
-| `third_party/`            | Patched copies of upstream crates. See `third_party/README.md`.                                        |                                          |
+| Folder                    | Job                                                                                                        | May depend on                                     |
+| ------------------------- | ---------------------------------------------------------------------------------------------------------- | ------------------------------------------------- |
+| `crates/rec-core`         | Platform-neutral settings schema, engine API (`RecorderEngine`, `EngineEvent`), state, settings store.     | serde, specta (optional). No Apple code.          |
+| `crates/rec-engine-macos` | Rec's capture, compose, encode, mixer and live code. Exposes `MacEngine`, which implements `rec_core`.     | rec-core, Apple frameworks                        |
+| `crates/rec-macos-ui`     | Native window behaviour: live preview view, non-activating panels, capture exclusion, levels.              | Apple frameworks, raw-window-handle               |
+| `crates/rec-cli`          | The `rec-rs` command-line recorder.                                                                        | rec-engine-macos                                  |
+| `apps/desktop/src`        | React 19 + Vite + Tailwind 4 surfaces (main, settings, HUD, toasts, countdown, region picker, trim).       | `@starter/ui`, `@tauri-apps/api`                  |
+| `apps/desktop/src-tauri`  | The Tauri shell (Rust crate `cortex-desktop`): windows, tray, IPC commands. `src/platform` is the OS seam. | rec-core; on macOS rec-engine-macos, rec-macos-ui |
+| `third_party/`            | Patched copies of upstream crates. See `third_party/README.md`.                                            |                                                   |
 
 The Rust workspace is the root `Cargo.toml` (members `crates/*` and `apps/desktop/src-tauri`). The toolchain is pinned in `rust-toolchain.toml`. `.cargo/config.toml` sets `MACOSX_DEPLOYMENT_TARGET=15.0`, because the engine uses ScreenCaptureKit APIs from macOS 15. The pnpm workspace sees `apps/desktop` as the package `desktop`.
 
@@ -45,7 +45,7 @@ Events travel back the same way. The engine calls its `EventSink`, the shell bro
 
 Video frames never enter the webview. The preview is a native view under a transparent region of the window, so the webview only carries state, settings and levels.
 
-The shell runs `MacEngine` through `src-tauri/src/shell.rs`.
+The shell runs the platform's engine (`MacEngine` on macOS) through `src-tauri/src/shell.rs`, which gets it from `src-tauri/src/platform`. Every call into macOS code goes through that module; see [Platforms](platforms.md).
 
 ## Live preview
 
@@ -303,8 +303,8 @@ Real ScreenCaptureKit capture cannot run in CI because hosted runners cannot gra
 
 `.github/workflows/desktop.yml` runs on a macOS runner when a change touches `crates/**`, `apps/desktop/**`, `packages/ui/**`, `Cargo.*` or `third_party/**`. It runs fmt and clippy on the crates we own, `cargo test --workspace`, the `engine_smoke` recording, `pnpm --filter desktop check-types`, and an unsigned `tauri build --debug --bundles app`. No signing secrets are configured. The Linux `ci.yml` job does not build Rust.
 
-## Windows later
+## Windows and Linux
 
-`rec-core` has no Apple code on purpose. A future `rec-engine-windows` (Windows.Graphics.Capture, Media Foundation, WASAPI loopback) would implement the same `RecorderEngine` trait, and the shell would pick the engine with `#[cfg(target_os)]`. The React surfaces and the generated bindings would not change.
+`rec-core` has no Apple code on purpose, and the shell reaches macOS code only through `src-tauri/src/platform` (`RecorderEngine` and `MediaLibrary` from `rec-core`, plus the shell's `DesktopEngine`, `WindowChrome`, `Hotkeys` and `SystemIntegration`). On Windows and Linux the shell builds against a stub engine that says recording is not available yet. `EngineState.capabilities` tells the UI what the running engine supports.
 
-Expect to rework the macOS-only parts: `rec-macos-ui` (panels, capture exclusion), the Keychain store, TCC permission flows, `macOSPrivateApi` transparent windows, and the `.cargo/config.toml` deployment target. Keep new platform-specific code behind a crate or `cfg` boundary so that work stays contained.
+[Platforms](platforms.md) has the full inventory of macOS touch points, the cross-target build status, and the design for the Windows and Linux engines.

@@ -57,6 +57,7 @@ Desktop request flow: **React surface → `lib/engine.ts` → generated `ipc/bin
 - **IPC types are generated.** Never hand-edit `apps/desktop/src/ipc/bindings.ts`. Run `pnpm --filter desktop ipc:bindings` and commit the result with the Rust change.
 - **Capabilities are an allow-list.** A new command goes in `COMMANDS` (`src-tauri/build.rs`) and gets an `allow-<command>` grant in `src-tauri/capabilities/`. No shell, fs or http plugins for the webview. No remote content.
 - **No secrets over IPC.** Stream keys stay in the Keychain. The webview only sees whether a key is stored.
+- **OS calls go through `src-tauri/src/platform`.** No other shell module names `rec_engine` or `rec_macos_ui`. See `docs/engineering/platforms.md`.
 - **`unsafe` only in `rec-engine-macos` and `rec-macos-ui`**, each block with a `// SAFETY:` comment.
 - **New crates pass `cargo fmt --check` and `cargo clippy -- -D warnings`.** The imported Rec crates keep upstream style.
 - The TypeScript rules (section 3) and UI rules (section 6) apply to `apps/desktop/src`. Recorder tokens live in `packages/ui/src/styles/studio.css`.
