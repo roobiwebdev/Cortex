@@ -6,6 +6,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Slider } from "@starter/ui/components/slider";
 import { cn } from "@starter/ui/lib/utils";
 
+import { ALLOW_ACCESS, PermissionAsk, allowAccessItem, askPermission } from "../../components/permission-ask";
 import { engine, micLevels, systemLevels } from "../../lib/engine";
 import type { EngineState } from "../../lib/types";
 import { Tip } from "./parts";
@@ -39,6 +40,7 @@ function formatDb(db: number) {
  */
 export function AudioMixer({ e }: { e: EngineState }) {
   const s = e.settings;
+  const allowMic = allowAccessItem("microphone", e.mics, e.permissions.microphone);
   return (
     <div className="space-y-1 px-4 py-2.5" role="group" aria-label="Audio mixer">
       <MixerStrip
@@ -57,18 +59,34 @@ export function AudioMixer({ e }: { e: EngineState }) {
         icon={<Mic />}
         name="Microphone"
         device={
-          <Select value={s.micId ?? undefined} onValueChange={(micId) => engine.update({ micId })}>
-            <SelectTrigger size="sm" className="h-7 w-full min-w-0 bg-card text-[12px]" aria-label="Microphone device">
-              <SelectValue placeholder="Choose a microphone" />
-            </SelectTrigger>
-            <SelectContent position="popper">
-              {e.mics.map((m) => (
-                <SelectItem key={m.id} value={m.id} disabled={!m.connected}>
-                  {m.connected ? m.name : `${m.name} (not connected)`}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
+          s.micEnabled && e.permissions.microphone !== "granted" ? (
+            <PermissionAsk permission="microphone" state={e.permissions.microphone} className="bg-card shadow-none" />
+          ) : (
+            <Select
+              value={s.micId ?? undefined}
+              onValueChange={(micId) =>
+                micId === ALLOW_ACCESS
+                  ? void askPermission("microphone", e.permissions.microphone)
+                  : engine.update({ micId })
+              }
+            >
+              <SelectTrigger
+                size="sm"
+                className="h-7 w-full min-w-0 bg-card text-[12px]"
+                aria-label="Microphone device"
+              >
+                <SelectValue placeholder="Choose a microphone" />
+              </SelectTrigger>
+              <SelectContent position="popper">
+                {e.mics.map((m) => (
+                  <SelectItem key={m.id} value={m.id} disabled={!m.connected}>
+                    {m.connected ? m.name : `${m.name} (not connected)`}
+                  </SelectItem>
+                ))}
+                {allowMic && <SelectItem value={allowMic.value}>{allowMic.label}</SelectItem>}
+              </SelectContent>
+            </Select>
+          )
         }
         enabled={s.micEnabled}
         levels={micLevels}

@@ -8,6 +8,7 @@ import { Slider } from "@starter/ui/components/slider";
 import { Switch } from "@starter/ui/components/switch";
 import { cn } from "@starter/ui/lib/utils";
 
+import { ALLOW_ACCESS, allowAccessItem, askPermission } from "../../components/permission-ask";
 import { engine, micLevels, systemLevels, useEngine } from "../../lib/engine";
 import type { AudioTracks, InputDevice } from "../../lib/types";
 import { ChoiceSelect, NumberField, Readout, SettingsGroup, SettingsPage, SettingsRow } from "./parts";
@@ -25,10 +26,15 @@ export function formatDb(db: number) {
 }
 
 /** Device options with the saved-but-unplugged device kept in the list (AUD-07). */
-export function deviceOptions(devices: InputDevice[], defaultLabel: string) {
+export function deviceOptions(
+  devices: InputDevice[],
+  defaultLabel: string,
+  allow: { value: string; label: string } | null = null,
+) {
   return [
     { value: DEFAULT_ID, label: defaultLabel },
     ...devices.map((d) => ({ value: d.id, label: d.connected ? d.name : `${d.name} (not connected)` })),
+    ...(allow ? [allow] : []),
   ];
 }
 export const toDeviceValue = (id: string | null) => id ?? DEFAULT_ID;
@@ -70,8 +76,16 @@ export function AudioSection() {
             aria-label="Microphone"
             disabled={!s.micEnabled}
             value={toDeviceValue(s.micId)}
-            onChange={(v) => engine.update({ micId: fromDeviceValue(v) })}
-            options={deviceOptions(e.mics, "Default microphone")}
+            onChange={(v) =>
+              v === ALLOW_ACCESS
+                ? void askPermission("microphone", e.permissions.microphone)
+                : engine.update({ micId: fromDeviceValue(v) })
+            }
+            options={deviceOptions(
+              e.mics,
+              "Default microphone",
+              allowAccessItem("microphone", e.mics, e.permissions.microphone),
+            )}
             className="w-52"
           />
         </SettingsRow>

@@ -1,17 +1,51 @@
 import * as React from "react";
+import { isTauri } from "@tauri-apps/api/core";
 import { ArrowLeft, ArrowRight, RotateCcw } from "lucide-react";
 
 import { Button } from "@starter/ui/components/button";
 import { cn } from "@starter/ui/lib/utils";
 
 import { engine, useEngine } from "../lib/engine";
-import type { Permission } from "../lib/types";
+import type { Permission, PermissionReport } from "../lib/types";
 import type { SurfaceProps } from "../prototype/surfaces";
 import { TITLEBAR_H } from "../prototype/window-frame";
 import { PermissionPanel, ReadyPanel, WelcomePanel } from "./onboarding/panels";
 import type { ChipState } from "./onboarding/permission-chip";
 import { OnboardingStage } from "./onboarding/stage";
 import { PERMISSION_STEPS, STEPS, type StepId } from "./onboarding/steps";
+
+/** The design harness shows review controls; the real app (Tauri) never does. */
+const SHOW_PROTOTYPE_CONTROLS = !isTauri();
+/** How often a permission step re-reads the grants (System Settings may change them). */
+const POLL_MS = 1000;
+
+/**
+ * SOURCE OF TRUTH KEYWORDS: usePermissionReport, TCC polling, checkPermissions, screen relaunch, preflight
+ * WHAT:  The privacy grants, re-read about once a second while `active`.
+ * WHY:   Grants change in System Settings, outside the app; the chips must follow without
+ *        a restart, and must learn when a Screen Recording grant waits for a relaunch.
+ * WHERE: the onboarding permission steps.
+ */
+function usePermissionReport(active: boolean): PermissionReport | null {
+  const [report, setReport] = React.useState<PermissionReport | null>(null);
+  React.useEffect(() => {
+    if (!active) return;
+    let alive = true;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const poll = async () => {
+      const r = await engine.checkPermissions();
+      if (!alive) return;
+      setReport(r);
+      timer = setTimeout(() => void poll(), POLL_MS);
+    };
+    void poll();
+    return () => {
+      alive = false;
+      clearTimeout(timer);
+    };
+  }, [active]);
+  return active ? report : null;
+}
 
 /**
  * SOURCE OF TRUTH KEYWORDS: OnboardingWindow, onboarding, permissions flow, first run, TCC, welcome, setup
@@ -25,9 +59,9 @@ import { PERMISSION_STEPS, STEPS, type StepId } from "./onboarding/steps";
 export function OnboardingWindow({ cameraStream, navigate }: SurfaceProps) {
   const e = useEngine();
   const [index, setIndex] = React.useState(0);
-  // prototype-local: which permission is "in System Settings" right now (real app: TCC polling).
+  // The permission whose prompt (or System Settings) is open right now.
   const [waiting, setWaiting] = React.useState<Permission | null>(null);
-  // prototype-local: make the next request come back denied, to review that state.
+  // Harness only: make the next mock request come back denied, to review that state.
   const [denyNext, setDenyNext] = React.useState(false);
   // Ignore answers that arrive after a reset or after the window closed.
   const generation = React.useRef(0);
@@ -43,10 +77,17 @@ export function OnboardingWindow({ cameraStream, navigate }: SurfaceProps) {
   const permission = isPermissionStep(step) ? step : null;
   const titleId = React.useId();
 
+  const report = usePermissionReport(permission !== null);
+  const perms = report?.permissions ?? e.permissions;
+  const chipFor = (p: Permission): ChipState => {
+    if (perms[p] === "granted") return "granted";
+    if (p === "screen" && report?.screenNeedsRelaunch) return "relaunch";
+    return waiting === p ? "waiting" : perms[p];
+  };
   const chips: Record<Permission, ChipState> = {
-    screen: waiting === "screen" ? "waiting" : e.permissions.screen,
-    microphone: waiting === "microphone" ? "waiting" : e.permissions.microphone,
-    camera: waiting === "camera" ? "waiting" : e.permissions.camera,
+    screen: chipFor("screen"),
+    microphone: chipFor("microphone"),
+    camera: chipFor("camera"),
   };
 
   // Shows the macOS prompt (or System Settings) and waits for the answer. In the browser
@@ -71,7 +112,7 @@ export function OnboardingWindow({ cameraStream, navigate }: SurfaceProps) {
     setIndex(0);
   }
 
-  const granted = permission ? e.permissions[permission] === "granted" : true;
+  const granted = permission ? perms[permission] === "granted" : true;
   const skippable = permission ? PERMISSION_STEPS[permission].need !== "required" : false;
   const canAdvance = waiting === null && (granted || skippable);
   const primaryLabel =
@@ -117,27 +158,29 @@ export function OnboardingWindow({ cameraStream, navigate }: SurfaceProps) {
 
       <div className="relative flex min-h-0 flex-col" style={{ paddingTop: TITLEBAR_H }}>
         {/* Prototype-only controls; not part of the shipped window. */}
-        <div className="absolute top-2.5 right-3 flex items-center gap-1 rounded-full border border-dashed px-1 py-0.5 text-[11px] text-muted-foreground">
-          <span className="pl-1.5">Prototype</span>
-          <button
-            type="button"
-            onClick={() => setDenyNext((d) => !d)}
-            aria-pressed={denyNext}
-            className={cn(
-              "rounded-full px-2 py-0.5 outline-none hover:bg-muted focus-visible:ring-2 focus-visible:ring-ring",
-              denyNext && "bg-warn-tint text-warn",
-            )}
-          >
-            Next answer: {denyNext ? "Don’t Allow" : "Allow"}
-          </button>
-          <button
-            type="button"
-            onClick={resetPrototype}
-            className="flex items-center gap-1 rounded-full px-2 py-0.5 outline-none hover:bg-muted focus-visible:ring-2 focus-visible:ring-ring"
-          >
-            <RotateCcw className="size-3" /> Reset
-          </button>
-        </div>
+        {SHOW_PROTOTYPE_CONTROLS && (
+          <div className="absolute top-2.5 right-3 flex items-center gap-1 rounded-full border border-dashed px-1 py-0.5 text-[11px] text-muted-foreground">
+            <span className="pl-1.5">Prototype</span>
+            <button
+              type="button"
+              onClick={() => setDenyNext((d) => !d)}
+              aria-pressed={denyNext}
+              className={cn(
+                "rounded-full px-2 py-0.5 outline-none hover:bg-muted focus-visible:ring-2 focus-visible:ring-ring",
+                denyNext && "bg-warn-tint text-warn",
+              )}
+            >
+              Next answer: {denyNext ? "Don’t Allow" : "Allow"}
+            </button>
+            <button
+              type="button"
+              onClick={resetPrototype}
+              className="flex items-center gap-1 rounded-full px-2 py-0.5 outline-none hover:bg-muted focus-visible:ring-2 focus-visible:ring-ring"
+            >
+              <RotateCcw className="size-3" /> Reset
+            </button>
+          </div>
+        )}
 
         <div className="flex min-h-0 flex-1 flex-col justify-center overflow-y-auto px-10 pb-2">
           <div key={step} className="duration-300 ease-out-quick animate-in fade-in-0 slide-in-from-right-2">
@@ -150,6 +193,7 @@ export function OnboardingWindow({ cameraStream, navigate }: SurfaceProps) {
                 chip={chips[permission]}
                 onRequest={() => request(permission, false)}
                 onOpenSettings={() => request(permission, true)}
+                onRelaunch={() => engine.relaunch()}
               />
             )}
             {step === "ready" && <ReadyPanel kicker={kicker} titleId={titleId} chips={chips} />}

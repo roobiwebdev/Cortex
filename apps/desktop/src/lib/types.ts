@@ -27,6 +27,7 @@ export type {
   Levels,
   MicBackend,
   Permission,
+  PermissionReport,
   PermissionState,
   Permissions,
   PipCorner,

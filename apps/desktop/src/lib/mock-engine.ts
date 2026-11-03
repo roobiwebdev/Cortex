@@ -5,6 +5,7 @@ import type {
   EngineState,
   Levels,
   Permission,
+  PermissionReport,
   PermissionState,
   RecorderSettings,
   Recording,
@@ -339,6 +340,12 @@ export const engine = {
   update(patch: Partial<RecorderSettings>) {
     set({ settings: { ...state.settings, ...patch } });
   },
+  /** The harness's grants; nothing waits for a relaunch here. */
+  checkPermissions(): Promise<PermissionReport> {
+    return Promise.resolve({ permissions: state.permissions, screenNeedsRelaunch: false });
+  },
+  /** The real app quits and reopens; the harness has nothing to reopen. */
+  relaunch() {},
   setPermission(p: Permission, value: PermissionState) {
     set({ permissions: { ...state.permissions, [p]: value } });
   },

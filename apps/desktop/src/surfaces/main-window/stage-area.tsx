@@ -10,6 +10,7 @@ import { engine, useEngine } from "../../lib/engine";
 import type { Codec, EngineState, Resolution } from "../../lib/types";
 import { MockScreen } from "../../prototype/mock-screen";
 import type { SurfaceId } from "../../prototype/surfaces";
+import { PermissionAsk } from "../../components/permission-ask";
 import { Tip } from "./parts";
 
 const RES_LABEL: Record<Resolution, string> = {
@@ -59,6 +60,11 @@ export function StageArea({
             paused={e.status === "paused"}
             cameraStream={cameraStream}
             onPipPlace={(pipPlace) => engine.update({ pipPlace })}
+            cameraBlocked={
+              e.permissions.camera === "granted" ? undefined : (
+                <PermissionAsk permission="camera" state={e.permissions.camera} />
+              )
+            }
           >
             <MockScreen />
           </PreviewStage>

@@ -6,6 +6,7 @@ import { Switch } from "@starter/ui/components/switch";
 import { cn } from "@starter/ui/lib/utils";
 
 import { CameraBubble } from "../../components/camera-bubble";
+import { ALLOW_ACCESS, allowAccessItem, askPermission } from "../../components/permission-ask";
 import { engine, useEngine } from "../../lib/engine";
 import type { PipShape, RecorderSettings } from "../../lib/types";
 import { deviceOptions, fromDeviceValue, toDeviceValue } from "./audio";
@@ -41,8 +42,16 @@ export function CameraSection({ cameraStream }: { cameraStream: MediaStream | nu
           <ChoiceSelect<string>
             aria-label="Camera"
             value={toDeviceValue(s.cameraId)}
-            onChange={(v) => engine.update({ cameraId: fromDeviceValue(v) })}
-            options={deviceOptions(e.cameras, "Default camera")}
+            onChange={(v) =>
+              v === ALLOW_ACCESS
+                ? void askPermission("camera", e.permissions.camera)
+                : engine.update({ cameraId: fromDeviceValue(v) })
+            }
+            options={deviceOptions(
+              e.cameras,
+              "Default camera",
+              allowAccessItem("camera", e.cameras, e.permissions.camera),
+            )}
             className="w-52"
           />
         </SettingsRow>

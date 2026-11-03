@@ -14,6 +14,7 @@ import type {
   EngineState,
   Levels,
   Permission,
+  PermissionReport,
   PermissionState,
   RecorderSettings,
   Toast,
@@ -208,6 +209,14 @@ const tauriEngine: typeof mock.engine = {
     void run(commands.updateSettings(next)).then((stored) => {
       if (stored) setSettings(stored);
     });
+  },
+  // A failed check reports the last known state instead of toasting once a second.
+  async checkPermissions(): Promise<PermissionReport> {
+    const r = await commands.checkPermissions().catch(() => undefined);
+    return r?.status === "ok" ? r.data : { permissions: current().permissions, screenNeedsRelaunch: false };
+  },
+  relaunch() {
+    void run(commands.relaunch());
   },
   // Permissions are the system's to change; the harness-only override does nothing here.
   setPermission(_p: Permission, _value: PermissionState) {},
