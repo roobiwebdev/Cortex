@@ -6,12 +6,14 @@
 pub mod api;
 pub mod library;
 pub mod output;
+pub mod platform;
 pub mod settings;
 pub mod sources;
 pub mod state;
 pub mod store;
 
 pub use api::{Action, EngineError, EngineEvent, EventSink, RecorderEngine};
+pub use platform::PlatformCapabilities;
 pub use settings::RecorderSettings;
 pub use state::{EngineState, EngineStatus};
 
@@ -25,5 +27,6 @@ mod specta_tests {
         is_type::<crate::EngineState>();
         is_type::<crate::EngineEvent>();
         is_type::<crate::EngineError>();
+        is_type::<crate::PlatformCapabilities>();
     }
 }
