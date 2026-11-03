@@ -548,7 +548,7 @@ mod tests {
             (l.settings.fps, l.settings.pip_size, l.settings.scene),
             (24, 0.5, Scene::Cam)
         );
-        assert_eq!(l.settings.output_dir, "~/Movies/Cortex");
+        assert_eq!(l.settings.output_dir, crate::settings::DEFAULT_OUTPUT_DIR);
     }
 
     #[test]
