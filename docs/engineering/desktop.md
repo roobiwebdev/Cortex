@@ -137,6 +137,18 @@ CORTEX_DEBUG_TEST_PATTERN=1 CORTEX_DEBUG_RECORD_SECS=6 CORTEX_DEBUG_HIDE_MAIN=1 
 
 It keeps its settings and recordings in a temporary folder, starts one recording with a 3 s countdown, and with `CORTEX_DEBUG_CAPTURABLE=1` lets `screencapture` see the floating windows. Release builds ignore these variables.
 
+## Permissions
+
+macOS privacy grants (TCC) are read and requested by `rec_engine::tcc`. The app never runs `tccutil reset` (that wiped grants the user had given) and never re-launches its own executable to ask; both stay in the `rec` CLI's `permissions --request` path only.
+
+- **Run with what is granted.** `rec_core::sources::plan_sources` decides per source from the scene, the mic switch and the grants. A missing camera or microphone grant drops that source from the preview and recordings; it does not stop them. Only a source the scene cannot do without blocks it: the screen for Screen and Screen + Camera, the camera for Camera only. The camera-only scene runs without a Screen Recording grant (the camera's frames drive the clock, and the mic uses AVCapture). The CLI keeps its strict check (`record::check_permissions`).
+- **Say what is missing.** The preview shows "Camera needs permission · Allow" where the overlay goes and "Microphone needs permission · Allow" in the mixer strip. Empty camera and mic menus offer "Allow camera access…" / "Allow microphone access…". Allow shows the system prompt when macOS has never asked, and opens System Settings otherwise (macOS asks only once).
+- **Starting a recording** asks first for an undecided microphone (and camera, in camera scenes), waiting for the answer. A source that stays missing is left out, with a warning toast.
+- **`request_permission`** shows the prompt for camera and microphone (`requestAccessForMediaType`, answered off the main thread) and calls `CGRequestScreenCaptureAccess` for the screen, which lists Cortex in System Settings. It returns the resulting state.
+- **`check_permissions`** is cheap and polled once a second by onboarding. A running process keeps the Screen Recording answer it had at launch, so when this process still sees no grant, the command asks a new process of the same app (`cortex-desktop --cortex-screen-preflight`). If that one sees the grant, `screenNeedsRelaunch` is set and onboarding shows **Reopen Cortex** (`relaunch`, refused while recording).
+- The engine re-reads grants about once a second. A change re-lists cameras and mics and rebuilds the preview, so a grant takes effect without a restart. Devices are also listed on the engine's first tick.
+- Usage strings (`NSCameraUsageDescription`, `NSMicrophoneUsageDescription`, `NSScreenCaptureUsageDescription`) live in `src-tauri/Info.plist` and must be in the built bundle, or macOS refuses to prompt.
+
 ## Dev signing identity
 
 macOS ties Screen Recording, Camera and Microphone grants (TCC) to the app's code signature. An ad-hoc signature changes on every build, so each rebuild looks like a new app and macOS asks again. A stable self-signed certificate keeps the grants across rebuilds.
