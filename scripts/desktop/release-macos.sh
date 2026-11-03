@@ -254,6 +254,10 @@ VERSION="$version" NOTES="$notes" PLATFORM="$platform" URL="$base_url/$version/$
 
 step "Done. Nothing was uploaded."
 ls -lh "$out"
+if [[ $local_feed == 1 ]]; then
+  echo "Local test build: serve it only from 127.0.0.1 (see docs/engineering/desktop.md). Never publish it."
+  exit 0
+fi
 cat <<EOF
 
 To publish (by hand, once hosting exists):

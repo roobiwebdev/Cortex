@@ -159,6 +159,8 @@ pnpm --filter desktop tauri build --debug   debug .app (sign with APPLE_SIGNING_
 pnpm --filter desktop ipc:bindings          regenerate apps/desktop/src/ipc/bindings.ts
 cargo test --workspace                      Rust tests (needs rustup on PATH)
 cargo run --release -p rec-engine-macos --example engine_smoke   test-pattern recording + ffprobe check
+scripts/desktop/bump-version.sh <version>   set the desktop version everywhere
+scripts/desktop/release-macos.sh            signed macOS release into dist/desktop/<version>/ (never uploads)
 
 pnpm --filter site dev                      landing page on http://localhost:3010
 pnpm --filter site build                    prerendered build (+ preview on :3010 with `pnpm --filter site preview`)
