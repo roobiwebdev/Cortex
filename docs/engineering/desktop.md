@@ -81,11 +81,37 @@ The shell reads these at launch (never set in normal use): `CORTEX_DEBUG_DATA_DI
 | `app`     | `initWithDisplay:includingApplications:[app]` on the display holding the app's frontmost window | `--app BUNDLE_ID\|name` |
 
 - **Units.** A region is in **points** from its display's top-left, as `sourceRect` takes it. `Display.width/height` are pixels, `Display.frame` is the display's place on the desktop in points, and `Display.scale` is pixels per point. `CaptureWindow.frame` is in points from the top-left of `CaptureWindow.displayId`. The region picker and the Area tab show pixels (points × scale), which is what gets recorded, and convert back to points when they save (`toPixels` / `toPoints` in `region-picker/geometry.ts`).
-- **Output size.** The source's pixels (region × scale, the window at its display's scale, the whole display for an app) are fitted inside the Resolution setting, never upscaled (`args::parse_size`). A region is clipped to its display.
+- **Output size.** The source's pixels (region × scale, the window at its display's scale, the whole display for an app) go through `rec_core::output::output_size`; see [Resolution and bitrate](#resolution-and-bitrate). A region is clipped to its display.
 - **Our windows never appear.** Display and region capture exclude our app; app capture includes only the chosen app, and `screen::find_app` refuses this process; the window list (`screen::windows`) leaves our windows out, so they can't be picked as a window either.
 - **App capture** records every window of the app on that display, including windows it opens later. The rest of the frame is black.
 - **Icons.** `app_icon(bundleId)` returns a 64 px PNG `data:` URL (cached by bundle ID); `useAppIcon` in `lib/app-icons.ts` loads it. Icons stay out of the engine state so state events stay small.
 - **Region picker.** The overlay covers the whole display under the cursor (sized in that display's points) and finds its display from its own screen position. Each time it is shown it re-lists windows, starts from the saved area on that display or the last one remembered for it (`settings.lastRegions`, kept by `validate` while `rememberRegion` is on), and snaps to real window frames. Clicking a window in Area mode sets the area to the window's frame; Window mode records the window itself. Enter or the button saves the target and closes the overlay; Esc cancels.
+
+## Resolution and bitrate
+
+`crates/rec-core/src/output.rs` decides the recorded frame size, the codec Auto becomes and the automatic bitrate. The engine uses it through `args::prepare`; `apps/desktop/src/lib/output-size.ts` mirrors it for the pickers. Both are tested against `crates/rec-core/tests/fixtures/output-sizes.json` (`cargo test -p rec-core`, `pnpm --filter desktop test`), so the UI shows the size the engine writes.
+
+| Setting                 | Frame                                                                                             | 3456×2234 MacBook Pro display    |
+| ----------------------- | ------------------------------------------------------------------------------------------------- | -------------------------------- |
+| 720p / 1080p / 1440p    | Fitted inside 1280×720 / 1920×1080 / 2560×1440 (swapped for a portrait source). Never upscaled.   | 1114×720 / 1670×1080 / 2228×1440 |
+| 4K (HEVC, Auto, ProRes) | 3840 on the long side at the source's shape, scaled up or down. Same as fitting inside 3840×3840. | 3840×2482                        |
+| 4K (H.264)              | Fitted inside 3840×2160, never upscaled (the rule before 4K became 3840 wide).                    | 3342×2160                        |
+| Native                  | The source's pixels, rounded down to even.                                                        | 3456×2234                        |
+
+- **Examples.** A 4K monitor (3840×2160) is recorded as is. A 5K display gives 3840×2160. A 1080p display or a small region is upscaled to 3840 wide. A portrait window is 3840 tall (1080×1920 → 2160×3840). Output sizes are always even and keep the source's shape, so there are no bars.
+- **Scaling.** Whenever the output differs from the source, ScreenCaptureKit delivers the source's own pixels and the Metal Lanczos scaler (`scale::FrameScaler`) resizes them, down or up (`record::capture_size`). ScreenCaptureKit's own scaling is softer (measurements in `scale.rs`).
+- **Why H.264 keeps the old rule.** On the 3456×2234 MacBook Pro, real-screen recordings at 60 fps with the hardware H.264 encoder dropped frames at 3840×2482 (326 and 329 of 360) and at 3582×2314 (1137 and 1138 of 1200), and none at 3456×2234 or 3342×2160. HEVC kept every frame at 3840×2482. Auto picks HEVC above 1080p, so only an explicit H.264 choice gets the smaller frame, and the picker shows it.
+- **Go live** is separate: `liveResolution` is a bounding box for the live encode (`args::live_box`) and does not use this rule.
+- **Camera track** has its own size (`cameraResolution`, below) and uses the base bits-per-pixel rates.
+
+**Automatic bitrate** = pixels × fps × bits per pixel, clamped to 1–400 Mb/s (`auto_bitrate`). A manual `bitrateMbps` replaces it. ProRes is fixed quality.
+
+| Codec | Up to 1440p (≤ 2560×1440 pixels) | Above (4K-class, Native on Retina) |
+| ----- | -------------------------------- | ---------------------------------- |
+| HEVC  | 0.10                             | 0.14                               |
+| H.264 | 0.16                             | 0.20                               |
+
+That gives about 70 Mb/s HEVC or 100 Mb/s H.264 at 3840×2160 60 fps, 80 Mb/s HEVC at 3840×2482 60 fps, 65 Mb/s for Native on the MacBook Pro display, and half of each at 30 fps. Rec's 0.10 HEVC gave 42 Mb/s at 3342×2160 60 fps. Text on a 4K-class frame has finer strokes per pixel area than an upscaled 1080p frame would, and fast scrolling of dense text is where screen recordings smear first; the extra 40% (HEVC) and 25% (H.264) aims at that case. It is an average target, not a constant rate: a mostly still desktop encoded at 6 to 12 Mb/s in our 4K runs, so the higher rate costs file size only when the screen moves. 1440p and below keep Rec's rates.
 
 ## Recordings library and Quick trim
 
@@ -118,6 +144,7 @@ rec_engine::trim (AVFoundation)   inspect · thumbnails (JPEG) · waveform (peak
 | Recorder settings schema, engine API, engine state  | `crates/rec-core/src/{settings,api,state}.rs`                                               |
 | Settings persistence (versioned, atomic writes)     | `crates/rec-core/src/store.rs`                                                              |
 | Recording names, trim request and range rules       | `crates/rec-core/src/library.rs`                                                            |
+| Output size, Auto codec, automatic bitrate          | `crates/rec-core/src/output.rs` (mirrored in `apps/desktop/src/lib/output-size.ts`)         |
 | Track roles and the trim export (AVFoundation)      | `crates/rec-engine-macos/src/trim.rs`                                                       |
 | IPC TypeScript types                                | `apps/desktop/src/ipc/bindings.ts`, generated from `src-tauri/src/ipc.rs`. Never hand-edit. |
 | Which IPC commands a window may call                | `src-tauri/capabilities/default.json` plus the `COMMANDS` list in `src-tauri/build.rs`      |
@@ -137,6 +164,7 @@ pnpm --filter desktop dev                        browser design harness on http:
 pnpm --filter desktop tauri dev                  the real app with hot reload
 pnpm --filter desktop tauri build --debug        debug .app in target/debug/bundle/macos
 pnpm --filter desktop check-types                TypeScript check
+pnpm --filter desktop test                       output-size mirror against the shared Rust fixture
 pnpm --filter desktop ipc:bindings               regenerate src/ipc/bindings.ts from the Rust commands
 cargo test --workspace                           every Rust test
 cargo fmt --check -p rec-core -p cortex-desktop  formatting for the crates we own
