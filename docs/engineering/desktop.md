@@ -73,12 +73,12 @@ The shell reads these at launch (never set in normal use): `CORTEX_DEBUG_DATA_DI
 
 `rec_core::settings::CaptureTarget` says what is recorded. The engine turns it into Rec's `record` arguments (`engine::rec_settings_for`), so the GUI and the `rec-rs` CLI share one path, and the target is part of the capture key: a new area or app restarts the preview on it.
 
-| Target    | ScreenCaptureKit filter                                                                                  | CLI                     |
-| --------- | -------------------------------------------------------------------------------------------------------- | ----------------------- |
-| `display` | `initWithDisplay:excludingApplications:` (our app)                                                       | `--display N`           |
-| `region`  | the display filter plus `sourceRect`                                                                     | `--region X,Y,W,H`      |
-| `window`  | `initWithDesktopIndependentWindow:`                                                                      | `--window ID\|text`     |
-| `app`     | `initWithDisplay:includingApplications:[app]` on the display holding the app's frontmost window          | `--app BUNDLE_ID\|name` |
+| Target    | ScreenCaptureKit filter                                                                         | CLI                     |
+| --------- | ----------------------------------------------------------------------------------------------- | ----------------------- |
+| `display` | `initWithDisplay:excludingApplications:` (our app)                                              | `--display N`           |
+| `region`  | the display filter plus `sourceRect`                                                            | `--region X,Y,W,H`      |
+| `window`  | `initWithDesktopIndependentWindow:`                                                             | `--window ID\|text`     |
+| `app`     | `initWithDisplay:includingApplications:[app]` on the display holding the app's frontmost window | `--app BUNDLE_ID\|name` |
 
 - **Units.** A region is in **points** from its display's top-left, as `sourceRect` takes it. `Display.width/height` are pixels, `Display.frame` is the display's place on the desktop in points, and `Display.scale` is pixels per point. `CaptureWindow.frame` is in points from the top-left of `CaptureWindow.displayId`. The region picker and the Area tab show pixels (points × scale), which is what gets recorded, and convert back to points when they save (`toPixels` / `toPoints` in `region-picker/geometry.ts`).
 - **Output size.** The source's pixels (region × scale, the window at its display's scale, the whole display for an app) are fitted inside the Resolution setting, never upscaled (`args::parse_size`). A region is clipped to its display.
