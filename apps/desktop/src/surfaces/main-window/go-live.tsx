@@ -5,6 +5,7 @@ import { Button } from "@starter/ui/components/button";
 import { Switch } from "@starter/ui/components/switch";
 import { cn } from "@starter/ui/lib/utils";
 
+import { CoachMark } from "../../components/coach-mark";
 import { engine } from "../../lib/engine";
 import { needsKey } from "../../lib/streaming";
 import type { EngineState, StreamDest, StreamService } from "../../lib/types";
@@ -83,6 +84,10 @@ export function GoLiveButton({ e, navigate }: { e: EngineState; navigate: (id: S
           aria-label="Live streaming"
           className="absolute right-0 bottom-full z-30 mb-2 w-[320px] origin-bottom-right animate-in rounded-[18px] border bg-popover p-3 text-popover-foreground shadow-float duration-150 ease-out-quick fade-in-0 zoom-in-95"
         >
+          <CoachMark hint="go-live" title="Going live" className="mb-3 w-full shadow-none">
+            Switch on where to stream, then Start. Add each stream key once in Settings › Live &amp; Replay; Cortex can
+            record and stream at the same time.
+          </CoachMark>
           <div className="flex items-baseline justify-between px-1 pb-2">
             <span className="text-[10.5px] font-semibold tracking-[0.08em] text-muted-foreground uppercase">
               Destinations

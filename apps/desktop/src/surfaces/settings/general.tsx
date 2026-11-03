@@ -1,5 +1,5 @@
 import * as React from "react";
-import { Check, Monitor, Moon, RefreshCw, Sun } from "lucide-react";
+import { Check, Compass, Monitor, Moon, RefreshCw, Sun } from "lucide-react";
 
 import { Button } from "@starter/ui/components/button";
 import { Segmented } from "@starter/ui/components/segmented";
@@ -9,12 +9,13 @@ import { cn } from "@starter/ui/lib/utils";
 import { engine, useEngine } from "../../lib/engine";
 import type { ThemePref } from "../../lib/types";
 import { ACCENT_PRESETS } from "../../lib/use-studio-theme";
+import type { SurfaceId } from "../../prototype/surfaces";
 import { SettingsGroup, SettingsPage, SettingsRow } from "./parts";
 
 export const APP_VERSION = "0.1.0";
 
-/** General: appearance, app presence (login, Dock, HUD) and updates. Matrix UI-04, UPD-02/03. */
-export function GeneralSection() {
+/** General: appearance, app presence (login, Dock, HUD), help and updates. Matrix UI-04, UPD-02/03. */
+export function GeneralSection({ navigate }: { navigate: (id: SurfaceId) => void }) {
   const s = useEngine().settings;
   return (
     <SettingsPage title="General" subtitle="How Cortex looks and where it lives on your Mac.">
@@ -109,6 +110,39 @@ export function GeneralSection() {
           htmlFor="set-hud"
         >
           <Switch id="set-hud" checked={s.showHud} onCheckedChange={(showHud) => engine.update({ showHud })} />
+        </SettingsRow>
+      </SettingsGroup>
+
+      <SettingsGroup title="Help">
+        <SettingsRow
+          label="Interface sounds"
+          hint="A soft click as you step through the tour. Never while recording."
+          htmlFor="set-sounds"
+        >
+          <Switch id="set-sounds" checked={s.sounds} onCheckedChange={(sounds) => engine.update({ sounds })} />
+        </SettingsRow>
+        <SettingsRow label="Tour" hint="A two-minute walk through recording, the camera, shortcuts and trimming.">
+          <Button variant="soft" size="sm" onClick={() => navigate("onboarding")}>
+            <Compass />
+            Show the tour
+          </Button>
+        </SettingsRow>
+        <SettingsRow
+          label="Tips"
+          hint={
+            s.seenHints.length > 0
+              ? "Short tips appear the first time you use area picking, Quick trim and Go live."
+              : "Every tip will show the next time you use its feature."
+          }
+        >
+          <Button
+            variant="soft"
+            size="sm"
+            disabled={s.seenHints.length === 0}
+            onClick={() => engine.update({ seenHints: [] })}
+          >
+            Show tips again
+          </Button>
         </SettingsRow>
       </SettingsGroup>
 

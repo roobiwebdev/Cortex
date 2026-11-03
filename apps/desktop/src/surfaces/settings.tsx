@@ -44,7 +44,8 @@ const SECTIONS: ReadonlyArray<{
     label: "General",
     icon: Settings2,
     tile: "bg-muted-foreground text-background",
-    keywords: "appearance theme dark light accent colour login dock menu bar hud update version",
+    keywords:
+      "appearance theme dark light accent colour login dock menu bar hud update version tour onboarding tips sounds help",
     group: 0,
   },
   {
@@ -122,7 +123,7 @@ const SECTIONS: ReadonlyArray<{
  *        All values read and write the engine, so other surfaces update live.
  * WHERE: prototype surface "settings"; later the Tauri settings window.
  */
-export function SettingsWindow({ cameraStream }: SurfaceProps) {
+export function SettingsWindow({ cameraStream, navigate }: SurfaceProps) {
   const [active, setActive] = React.useState<SectionId>("general");
   const [query, setQuery] = React.useState("");
   const [scrolled, setScrolled] = React.useState(false);
@@ -212,7 +213,7 @@ export function SettingsWindow({ cameraStream }: SurfaceProps) {
           </span>
         </div>
         <div className="pt-1">
-          {active === "general" && <GeneralSection />}
+          {active === "general" && <GeneralSection navigate={navigate} />}
           {active === "recording" && <RecordingSection />}
           {active === "audio" && <AudioSection />}
           {active === "camera" && <CameraSection cameraStream={cameraStream} />}
