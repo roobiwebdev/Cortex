@@ -290,7 +290,10 @@ mod tests {
 
     #[test]
     fn defaults_record_1080p_h264_with_overlay_camera_track_and_three_tracks() {
-        let s = RecorderSettings::default();
+        let s = RecorderSettings {
+            container: Container::Mov,
+            ..RecorderSettings::default()
+        };
         let p = plan_recording(&s, &sources(), &have).unwrap();
         assert_eq!(p.plan.out, (1728, 1080), "16:10 source fitted in 1080p");
         assert_eq!(p.plan.fps, 60);

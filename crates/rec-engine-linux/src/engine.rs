@@ -16,9 +16,11 @@ use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
 use rec_core::api::{Action, EngineError, EngineEvent, EventSink, RecorderEngine, transition};
-use rec_core::library::{RECORDING_TIME_FORMAT, recording_file_name};
+use rec_core::library::{LocalTime, timestamped_name};
 use rec_core::platform::{EngineOptions, PlatformCapabilities, Secrets};
-use rec_core::settings::{CaptureTarget, RecorderSettings, Scene, StreamDest, StreamService};
+use rec_core::settings::{
+    CaptureTarget, Container, RecorderSettings, Scene, StreamDest, StreamService,
+};
 use rec_core::sources::{dropped_note, plan_sources};
 use rec_core::state::{
     Devices, Display, EngineState, EngineStatus, InputDevice, Levels, Permission, PermissionState,
@@ -48,6 +50,21 @@ fn now_ms() -> f64 {
         .duration_since(std::time::UNIX_EPOCH)
         .map(|d| d.as_secs_f64() * 1000.0)
         .unwrap_or(0.0)
+}
+
+/// The wall-clock time in the user's time zone, for file names.
+fn local_now() -> LocalTime {
+    use chrono::{Datelike, Timelike};
+    let t = chrono::Local::now();
+    let b = |v: u32| u8::try_from(v).unwrap_or(0);
+    LocalTime {
+        year: u16::try_from(t.year()).unwrap_or(0),
+        month: b(t.month()),
+        day: b(t.day()),
+        hour: b(t.hour()),
+        minute: b(t.minute()),
+        second: b(t.second()),
+    }
 }
 
 fn free_disk_bytes(dir: &Path) -> u64 {
@@ -191,10 +208,11 @@ impl Inner {
             std::fs::create_dir_all(&dir).map_err(|e| {
                 EngineError::failed(format!("Could not create {}: {e}", dir.display()))
             })?;
-            let stamp = chrono::Local::now()
-                .format(RECORDING_TIME_FORMAT)
-                .to_string();
-            let file = dir.join(recording_file_name(&stamp, s.container, s.codec));
+            let ext = match s.container {
+                Container::Mp4 => "mp4",
+                Container::Mov => "mov",
+            };
+            let file = dir.join(timestamped_name("rec", ext, local_now()));
             let planned =
                 plan_recording(&s, &prepared.sources, &has_factory).map_err(EngineError::failed)?;
             let notes: Vec<String> = prepared
