@@ -33,6 +33,8 @@
     "allow-window-ready",
     "allow-push-toast",
     "allow-open-window",
+    "allow-list-recordings",
+    "allow-rename-recording",
     "core:event:allow-listen",
     "core:event:allow-unlisten",
     "core:window:allow-show",
