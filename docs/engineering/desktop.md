@@ -87,12 +87,38 @@ The shell reads these at launch (never set in normal use): `CORTEX_DEBUG_DATA_DI
 - **Icons.** `app_icon(bundleId)` returns a 64 px PNG `data:` URL (cached by bundle ID); `useAppIcon` in `lib/app-icons.ts` loads it. Icons stay out of the engine state so state events stay small.
 - **Region picker.** The overlay covers the whole display under the cursor (sized in that display's points) and finds its display from its own screen position. Each time it is shown it re-lists windows, starts from the saved area on that display or the last one remembered for it (`settings.lastRegions`, kept by `validate` while `rememberRegion` is on), and snaps to real window frames. Clicking a window in Area mode sets the area to the window's frame; Window mode records the window itself. Enter or the button saves the target and closes the overlay; Esc cancels.
 
+## Recordings library and Quick trim
+
+```
+output folder ──scan──▶ trim::Library (src-tauri/src/trim.rs) ──recordings://changed──▶ lib/engine.ts (every window's `recordings`)
+                              │
+Trim window ── commands ──────┤  list_recordings · rename_recording · recording_thumbnails · recording_waveform · trim_recording · cancel_trim
+            ── <video> ───────┘  cortex-media://localhost/<recording id>   (Trim window only, Range requests)
+                              │
+                              ▼
+rec_engine::trim (AVFoundation)   inspect · thumbnails (JPEG) · waveform (peaks) · export (Fast/Exact) · trash
+```
+
+- **The list.** The shell scans the output folder for `.mov`/`.mp4` at launch, after each finished recording and after a trim or rename: newest first (file creation time), at most 200, hidden and unreadable files left out. While recording, files written in the last 4 s are skipped (the file in progress). Track details come from AVFoundation once per file (cached by inode, size and modification time). Ids are file stems, like the engine's; a stem shared by two files uses the file name. Once loaded, the scan replaces the engine's per-run `recordings` in `useEngine()`.
+- **Ids, never paths.** Every command takes a recording id that must be in the latest scan. Rename takes a name, checked by `rec_core::library::validate_name` (no separators, `:`, control characters or leading dot), and keeps the folder and extension.
+- **Timeline.** `recording_thumbnails` returns small JPEGs (192 px wide) as `data:` URLs and `recording_waveform` the peak level per slice of the played audio track. Both are cached in `~/Library/Caches/dev.roobi.cortex/{thumbs,waveforms}` (`<CORTEX_DEBUG_DATA_DIR>/Caches` in debug runs). The webview gets no file access for them.
+- **Playback.** `cortex-media://localhost/<id>` (`trim::media_protocol`, registered in `lib.rs`) serves the scanned file with Range support, 4 MB per response, and only to the Trim window; anything else gets 403 or 404. The CSP allows it in `media-src` only. WKWebView plays H.264 and HEVC `.mov`/`.mp4` from it (checked with the test pattern). `usePlayback` drives the `<video>`; reverse shuttle (J) steps the position, since WebKit cannot play backwards.
+- **Export.** `trim_recording(id, { startSecs, endSecs, mode, output, keep })`:
+  - Fast: `AVMutableComposition` plus the passthrough preset. No re-encode; the cut starts at the keyframe before the in point and an edit list hides the extra frames, so Apple players start on the exact frame.
+  - Exact: re-encoded with the HighestQuality preset (HEVC for HEVC sources). Frame-accurate in every player. The export session may reorder tracks (audio first).
+  - Kept tracks follow the writer's layout (mix, system, mic; `rec_engine::trim::audio_plan`): the mix is kept only when both system and mic are, and when the mix is dropped the kept stems are enabled so the file still plays its audio. Later video tracks are the camera track.
+  - Copy writes `<name>-trim.<ext>` (then `<name>-trim 2.<ext>`, ...) and never overwrites. Replace writes a hidden temporary file, moves the original to the Trash (`NSFileManager trashItemAtURL`, never deleted outright) and renames the new file to the original name.
+  - Progress arrives as `trim://progress`; `cancel_trim` stops the export and removes the partial file. The new file is announced like a finished recording, so the toast and the menu bar list update.
+- **Browser harness.** `surfaces/trim/native.ts` is `null` outside Tauri, and the Trim window keeps its simulated player, filmstrip and export.
+
 ## Single sources of truth
 
 | Concern                                             | Lives in                                                                                    |
 | --------------------------------------------------- | ------------------------------------------------------------------------------------------- |
 | Recorder settings schema, engine API, engine state  | `crates/rec-core/src/{settings,api,state}.rs`                                               |
 | Settings persistence (versioned, atomic writes)     | `crates/rec-core/src/store.rs`                                                              |
+| Recording names, trim request and range rules       | `crates/rec-core/src/library.rs`                                                            |
+| Track roles and the trim export (AVFoundation)      | `crates/rec-engine-macos/src/trim.rs`                                                       |
 | IPC TypeScript types                                | `apps/desktop/src/ipc/bindings.ts`, generated from `src-tauri/src/ipc.rs`. Never hand-edit. |
 | Which IPC commands a window may call                | `src-tauri/capabilities/default.json` plus the `COMMANDS` list in `src-tauri/build.rs`      |
 | Design tokens for the recorder                      | `packages/ui/src/styles/studio.css` (scoped under `.studio`)                                |
@@ -117,6 +143,7 @@ cargo fmt --check -p rec-core -p cortex-desktop  formatting for the crates we ow
 cargo clippy --no-deps -p rec-core -p cortex-desktop -p rec-macos-ui -- -D warnings
 scripts/desktop/perf-compare.sh cortex 4k60-hevc 60 OUT   CPU/frames of a release Cortex.app recording vs `rec` mode
 cargo run --release -p rec-engine-macos --example engine_smoke   test-pattern recording + ffprobe check
+cargo test --release -p rec-engine-macos --test trim_test_pattern  6 s test-pattern recording, trimmed 1-4 s in both modes, ffprobe checks
 scripts/desktop/third-party-licenses.sh          refresh apps/desktop/THIRD_PARTY_RUST.md
 ```
 
@@ -217,7 +244,8 @@ There is no server in the recorder yet, so the tRPC procedure builder does not a
 - **Validate in Rust.** Commands take serde types from `rec-core`. Rust checks ranges, enums and paths before the engine sees them. Settings forms in React also validate with Zod, as on the web.
 - **No secrets over IPC.** Stream keys live in the macOS Keychain. The webview can set or remove a key but only ever reads back a `keyStored` flag. Never log a key.
 - **No remote content.** The CSP in `tauri.conf.json` allows only `'self'`, IPC, and `blob:`/`data:` media. Fonts and assets are bundled. Do not add CDN URLs or `withGlobalTauri`.
-- **Writes stay in the output folder.** The engine writes recordings only under the chosen output directory, and the settings store only under the app's Application Support folder.
+- **Writes stay in the output folder.** The engine writes recordings only under the chosen output directory, and the settings store only under the app's Application Support folder. Trim and rename write only next to the recording they act on; Replace moves the original to the Trash.
+- **Media by id.** The webview reads recordings only through `cortex-media://`, which serves files from the latest output-folder scan to the Trim window. There is no asset protocol or fs scope.
 - **Minimal entitlements.** `Entitlements.plist` grants camera and audio input only. Add one only with a stated reason.
 - **Hidden from recordings.** HUD, toasts, countdown, the region picker and the menu bar panel must never appear in a capture. The engine's `SCContentFilter` excludes the whole app, and `rec-macos-ui` sets `sharingType = none` so other apps' screenshots miss them too.
 
@@ -233,6 +261,7 @@ There is no server in the recorder yet, so the tRPC procedure builder does not a
 
 - **Rust unit tests.** `cargo test --workspace`. `rec-core` covers the state machine, settings migration and the store. The imported engine keeps Rec's tests.
 - **Quit regressions.** `ipc::tests` reproduces the quit deadlock in miniature (a wait on the main thread from the ticker while the main thread joins it) and checks the visibility registry gets through. `crates/rec-engine-macos/tests/shutdown_blocked_sink.rs` holds the ticker inside the event sink and requires `shutdown` to return and leave a playable file.
+- **Quick trim.** `crates/rec-engine-macos/tests/trim_test_pattern.rs` records 6 s of the test pattern and trims 1.0 to 4.0 s. Exact must be 3.0 s ± 1 frame (180 frames); Fast must keep the same streams and codecs, with video packets that are a byte-identical run of the source's (no re-encode), and AVFoundation must report 3.0 s. It also checks thumbnails, the waveform, track dropping on a three-audio-track file and cancel. `rec-core` (`library`) and `cortex-desktop` (`trim`) unit-test names, ranges, copy names, Range headers and the scan.
 - **Test-pattern recordings.** Rec's test pattern draws a synthetic picture with a white flash and a beep, so it needs no Screen Recording permission. `engine_smoke` records 3 s at 1080p60 through `MacEngine` and checks the file with ffprobe (H.264, 1920x1080, 60/1, 180 frames) and with an AVFoundation probe. `crates/rec-engine-macos/scripts/selftest.sh` runs Rec's longer checks, including A/V sync.
 - **UI logic.** Vitest for React logic, and Playwright against the browser harness on :3002 with the mock engine.
 - **Real app.** Tauri WebDriver does not support macOS. For changed UI or runtime behaviour in the real app, use the `evidence-driven-testing` skill and keep the recordings in `.artifacts/<task-name>/`.
