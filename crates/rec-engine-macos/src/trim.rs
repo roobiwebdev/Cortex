@@ -32,27 +32,9 @@ use rec_core::library::{KeepTracks, TrimMode};
 
 use crate::util::*;
 
-/// One audio track as the file stores it.
-#[derive(Clone, Copy, Debug, PartialEq)]
-pub struct AudioTrackInfo {
-    pub channels: u32,
-    pub enabled: bool,
-}
-
-/// What the recordings list shows about a file.
-#[derive(Clone, Debug, PartialEq)]
-pub struct MediaInfo {
-    pub duration_secs: f64,
-    pub width: u32,
-    pub height: u32,
-    pub fps: f64,
-    /// Video tracks: the screen first, then a separate camera track if there is one.
-    pub video_tracks: u32,
-    pub audio: Vec<AudioTrackInfo>,
-    /// The first video track is HEVC (`hvc1`/`hev1`).
-    pub hevc: bool,
-    pub playable: bool,
-}
+// The file facts and export request are platform-neutral (rec-core), shared with other
+// platforms' media backends.
+pub use rec_core::platform::{AudioTrackInfo, ExportOptions, MediaInfo};
 
 /// What an audio track holds, from the writer's track order (mix, system, mic).
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -321,16 +303,6 @@ pub fn waveform(path: &Path, buckets: u32) -> Result<Vec<f32>> {
     }
 }
 
-/// What `export` writes.
-pub struct ExportOptions<'a> {
-    pub src: &'a Path,
-    /// Must not exist yet; `.mp4` writes MPEG-4, anything else QuickTime.
-    pub dst: &'a Path,
-    pub start_secs: f64,
-    pub end_secs: f64,
-    pub mode: TrimMode,
-    pub keep: KeepTracks,
-}
 
 /// Write `start..end` of `src` to `dst` with the kept tracks. `progress` gets 0..1 about ten
 /// times a second; setting `cancel` stops the export (the error says "cancelled") and

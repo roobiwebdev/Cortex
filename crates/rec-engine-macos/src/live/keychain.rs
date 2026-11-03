@@ -23,6 +23,21 @@ pub fn delete(dest: &str) -> Result<()> {
     passwords::delete_generic_password(SERVICE, &account(dest)).map_err(|e| anyhow!("Keychain: {e}"))
 }
 
+/// The Keychain as the platform-neutral secret store.
+pub struct Keychain;
+
+impl rec_core::platform::Secrets for Keychain {
+    fn get(&self, account: &str) -> Option<String> {
+        get(account)
+    }
+    fn set(&self, account: &str, secret: &str) -> std::result::Result<(), String> {
+        set(account, secret).map_err(|e| e.to_string())
+    }
+    fn delete(&self, account: &str) -> std::result::Result<(), String> {
+        delete(account).map_err(|e| e.to_string())
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

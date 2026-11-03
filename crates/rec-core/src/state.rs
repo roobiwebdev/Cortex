@@ -348,6 +348,8 @@ pub struct EngineState {
     pub output_latency_ms: Option<f64>,
     /// A preview session is running (frames go to the preview sink).
     pub previewing: bool,
+    /// What this platform's engine can do; the UI hides or explains the rest.
+    pub capabilities: crate::platform::PlatformCapabilities,
 }
 
 impl EngineState {

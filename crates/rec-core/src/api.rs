@@ -8,7 +8,8 @@
 
 use serde::{Deserialize, Serialize};
 
-use crate::settings::RecorderSettings;
+use crate::platform::PlatformCapabilities;
+use crate::settings::{RecorderSettings, StreamDest};
 use crate::state::{
     Devices, EngineState, EngineStatus, Levels, Permission, PermissionState, Progress, Recording,
 };
@@ -133,10 +134,15 @@ pub type EventSink = std::sync::Arc<dyn Fn(EngineEvent) + Send + Sync>;
 
 /// The recorder. Calls may come from any thread; the engine serializes them.
 /// Preview frames are platform-specific (a CVPixelBuffer on macOS), so the
-/// preview sink is set on the platform engine, not here.
+/// preview sink is set on the platform engine, not here. Every platform engine
+/// (macOS today, Windows and Linux later) implements all of it; see
+/// `docs/engineering/platforms.md`.
 pub trait RecorderEngine: Send + Sync {
-    /// The current state (also sent as `StateChanged` events).
+    /// The current state (also sent as `StateChanged` events). Its `capabilities` is
+    /// `self.capabilities()`.
     fn state(&self) -> EngineState;
+    /// What this engine can do on this computer.
+    fn capabilities(&self) -> PlatformCapabilities;
     /// Start recording with these settings (after `settings.countdown` seconds).
     fn start(&self, settings: &RecorderSettings) -> Result<(), EngineError>;
     fn cancel_countdown(&self) -> Result<(), EngineError>;
@@ -162,6 +168,17 @@ pub trait RecorderEngine: Send + Sync {
     fn request_permission(&self, p: Permission) -> PermissionState;
     /// Finalize anything running (quit). Blocks until files are written.
     fn shutdown(&self);
+    /// The preview view's size in device pixels (0 x 0 = unknown); larger preview frames
+    /// are scaled down to it before they reach the platform's preview sink.
+    fn set_preview_pixel_size(&self, width: u32, height: u32);
+    /// Start watching for cameras and mics being plugged in or removed (`DeviceChanged`).
+    /// Call once, on the main thread.
+    fn watch_devices(&self);
+    /// Store a destination's stream key in the OS secret store (never in settings or logs).
+    fn set_stream_key(&self, dest: &StreamDest, key: &str) -> Result<(), EngineError>;
+    fn remove_stream_key(&self, dest: &StreamDest);
+    /// `settings` with each destination's `key_stored` read from the secret store.
+    fn with_key_status(&self, settings: RecorderSettings) -> RecorderSettings;
 }
 
 #[cfg(test)]

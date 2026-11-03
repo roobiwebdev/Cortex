@@ -19,6 +19,7 @@ use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
 use rec_core::api::{Action, EngineError, EngineEvent, EventSink, RecorderEngine, transition};
+use rec_core::platform::{PlatformCapabilities, PlatformOs, PreviewKind, SourcePicker};
 use rec_core::settings::{self as cs, CaptureTarget, RecorderSettings, StreamService};
 use rec_core::state::{
     CaptureWindow, Devices, Display, EngineState, EngineStatus, InputDevice, Levels, Permission,
@@ -1093,6 +1094,31 @@ impl PreviewScaler {
     }
 }
 
+/// What this engine does on macOS 15+: every capture target through ScreenCaptureKit (app
+/// capture records only that app's sound), VideoToolbox H.264/HEVC, AVFoundation ProRes 422,
+/// our windows excluded from captures, Carbon hotkeys and the native preview view.
+pub fn mac_capabilities() -> PlatformCapabilities {
+    PlatformCapabilities {
+        os: PlatformOs::Macos,
+        recording: true,
+        display_capture: true,
+        region_capture: true,
+        window_capture: true,
+        app_capture: true,
+        source_picker: SourcePicker::App,
+        system_audio: true,
+        per_app_audio: true,
+        capture_exclusion: true,
+        global_hotkeys: true,
+        hevc: true,
+        prores: true,
+        preview: PreviewKind::Native,
+        live_streaming: true,
+        replay_buffer: true,
+        quick_trim: true,
+    }
+}
+
 /// How long `shutdown` waits for the ticker thread before finalizing without it.
 const TICKER_STOP_WAIT: Duration = Duration::from_millis(500);
 
@@ -1113,6 +1139,7 @@ impl MacEngine {
         }
         let mut state = EngineState {
             permissions: state_permissions(&opts),
+            capabilities: mac_capabilities(),
             ..Default::default()
         };
         state.free_disk_bytes = free_disk_bytes(&settings.output_dir_in(&opts.home));
@@ -1503,6 +1530,30 @@ impl RecorderEngine for MacEngine {
                 let _ = h.join();
             }
         });
+    }
+
+    fn capabilities(&self) -> PlatformCapabilities {
+        mac_capabilities()
+    }
+
+    fn set_preview_pixel_size(&self, width: u32, height: u32) {
+        MacEngine::set_preview_pixel_size(self, width, height);
+    }
+
+    fn watch_devices(&self) {
+        MacEngine::watch_devices(self);
+    }
+
+    fn set_stream_key(&self, dest: &cs::StreamDest, key: &str) -> Result<(), EngineError> {
+        MacEngine::set_stream_key(self, dest, key)
+    }
+
+    fn remove_stream_key(&self, dest: &cs::StreamDest) {
+        MacEngine::remove_stream_key(self, dest);
+    }
+
+    fn with_key_status(&self, settings: RecorderSettings) -> RecorderSettings {
+        MacEngine::with_key_status(self, settings)
     }
 }
 
