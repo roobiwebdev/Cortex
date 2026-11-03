@@ -238,7 +238,10 @@ impl PipelinePlan {
 /// The video aggregator: always present, so the frame rate is constant even when the screen
 /// only sends damaged frames.
 fn compositor(plan: &PipelinePlan) -> String {
-    let mut s = format!("compositor name={} background=black", names::COMPOSITOR);
+    let mut s = format!(
+        "compositor name={} background=black start-time-selection=first",
+        names::COMPOSITOR
+    );
     if let Some(CameraPlan {
         place: CameraUse::Overlay([x, y, _, _]),
         ..
@@ -349,7 +352,7 @@ fn audio_track(n: usize, kind: TrackKind, plan: &PipelinePlan) -> Vec<String> {
     );
     match kind {
         TrackKind::Mix => vec![
-            format!("audiomixer name=amix ! {AUDIO_CAPS} ! {tail}"),
+            format!("audiomixer name=amix start-time-selection=first ! {AUDIO_CAPS} ! {tail}"),
             "t_sys. ! queue ! amix.".into(),
             "t_mic. ! queue ! amix.".into(),
         ],
@@ -469,7 +472,7 @@ mod tests {
     fn three_audio_tracks_in_order() {
         let d = describe(&plan());
         assert!(d.starts_with("mp4mux name=mux fragment-duration=1000 ! filesink name=sink"));
-        assert!(d.contains("audiomixer name=amix ! audio/x-raw,format=F32LE,rate=48000,channels=2,layout=interleaved ! identity name=gate_a0 silent=true ! audioconvert ! avenc_aac bitrate=192000 ! queue ! mux.audio_0"));
+        assert!(d.contains("audiomixer name=amix start-time-selection=first ! audio/x-raw,format=F32LE,rate=48000,channels=2,layout=interleaved ! identity name=gate_a0 silent=true ! audioconvert ! avenc_aac bitrate=192000 ! queue ! mux.audio_0"));
         assert!(d.contains("t_sys. ! queue ! identity name=gate_a1"));
         assert!(d.contains("t_mic. ! queue ! identity name=gate_a2"));
         assert!(d.contains("volume name=vol_mic volume=0.5 mute=true ! level name=lvl_mic"));
@@ -506,7 +509,7 @@ mod tests {
         let d = describe(&p);
         assert!(d.starts_with("qtmux name=mux"));
         assert!(d.contains("pipewiresrc fd=7 path=42 ! queue max-size-buffers=3 leaky=downstream ! videocrop left=100 right=20 top=0 bottom=40 ! videoconvert ! videoscale ! video/x-raw,width=1920,height=1080,pixel-aspect-ratio=1/1 ! comp.sink_0"));
-        assert!(d.contains("compositor name=comp background=black ! video/x-raw,width=1920,height=1080,framerate=60/1 ! identity name=gate_v silent=true ! videoconvert ! queue ! x264enc ! h264parse ! queue ! mux.video_0"));
+        assert!(d.contains("compositor name=comp background=black start-time-selection=first ! video/x-raw,width=1920,height=1080,framerate=60/1 ! identity name=gate_v silent=true ! videoconvert ! queue ! x264enc ! h264parse ! queue ! mux.video_0"));
     }
 
     #[test]
@@ -520,7 +523,7 @@ mod tests {
         });
         p.camera_encoder = Some(("x264enc".into(), "h264parse".into()));
         let d = describe(&p);
-        assert!(d.contains("compositor name=comp background=black sink_1::xpos=1460 sink_1::ypos=806 sink_1::zorder=1"));
+        assert!(d.contains("compositor name=comp background=black start-time-selection=first sink_1::xpos=1460 sink_1::ypos=806 sink_1::zorder=1"));
         assert!(d.contains("tee name=camtee"));
         assert!(d.contains("aspectratiocrop aspect-ratio=422/238 ! videoscale ! video/x-raw,width=422,height=238,pixel-aspect-ratio=1/1 ! videoflip method=horizontal-flip ! videoconvert ! video/x-raw,format=BGRA ! identity name=cammask ! comp.sink_1"));
         assert!(d.contains("framerate=30/1 ! identity name=gate_c silent=true ! queue ! x264enc ! h264parse ! queue ! mux.video_1"));

@@ -10,7 +10,7 @@
 use std::path::{Path, PathBuf};
 
 /// Percent-encode a path for `Path=` (the spec uses URL escaping; `/` stays).
-fn encode_path(p: &str) -> String {
+pub(crate) fn encode_path(p: &str) -> String {
     let mut out = String::with_capacity(p.len());
     for b in p.bytes() {
         let keep = b.is_ascii_alphanumeric() || matches!(b, b'/' | b'-' | b'_' | b'.' | b'~');

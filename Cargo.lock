@@ -5020,14 +5020,15 @@ name = "rec-engine-linux"
 version = "0.1.0"
 dependencies = [
  "ashpd",
+ "chrono",
  "futures-util",
  "gstreamer",
  "gstreamer-app",
  "gstreamer-pbutils",
  "keyring",
- "libc",
  "pollster",
  "rec-core",
+ "rustix 1.1.5",
  "serde",
  "serde_json",
 ]

@@ -17,3 +17,25 @@ pub mod portal_state;
 pub mod recording;
 pub mod timeline;
 pub mod trash;
+
+#[cfg(target_os = "linux")]
+pub mod desktop;
+#[cfg(target_os = "linux")]
+pub mod devices;
+#[cfg(target_os = "linux")]
+pub mod engine;
+#[cfg(target_os = "linux")]
+pub mod media;
+#[cfg(target_os = "linux")]
+pub mod portal;
+#[cfg(target_os = "linux")]
+pub mod secrets;
+#[cfg(target_os = "linux")]
+pub mod session;
+
+#[cfg(target_os = "linux")]
+pub use engine::LinuxEngine;
+#[cfg(target_os = "linux")]
+pub use media::GstMedia;
+#[cfg(target_os = "linux")]
+pub use secrets::SecretService;
