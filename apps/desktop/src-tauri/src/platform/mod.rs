@@ -1,8 +1,9 @@
 //! SOURCE OF TRUTH KEYWORDS: platform, DesktopEngine, PreviewSurface, WindowChrome, Hotkeys, SystemIntegration, open_engine, cfg target_os
 //! WHAT:  The shell's door to the operating system. Everything the shell needs from the
 //!        platform goes through these traits; `#[cfg(target_os)]` picks the implementation
-//!        once, here: `macos.rs` delegates to `rec-engine-macos` and `rec-macos-ui`, and
-//!        `unsupported.rs` is the Windows and Linux stub (compiles, records nothing).
+//!        once, here: `macos.rs` delegates to `rec-engine-macos` and `rec-macos-ui`,
+//!        `windows.rs` to `rec-engine-windows`, and `unsupported.rs` is the Linux stub
+//!        (compiles, records nothing).
 //! WHY:   The rest of the shell (shell.rs, ipc.rs, preview.rs, floating.rs, trim.rs, quit.rs,
 //!        lib.rs) has no `rec_engine::` or `rec_macos_ui::` calls, so a Windows or Linux
 //!        engine is added here without touching them. The engine contract itself
@@ -24,9 +25,14 @@ mod macos;
 #[cfg(target_os = "macos")]
 use macos as imp;
 
-#[cfg(not(target_os = "macos"))]
+#[cfg(target_os = "windows")]
+mod windows;
+#[cfg(target_os = "windows")]
+use windows as imp;
+
+#[cfg(not(any(target_os = "macos", target_os = "windows")))]
 mod unsupported;
-#[cfg(not(target_os = "macos"))]
+#[cfg(not(any(target_os = "macos", target_os = "windows")))]
 use unsupported as imp;
 
 /// The recorder engine as the desktop shell drives it: the platform-neutral API plus the
