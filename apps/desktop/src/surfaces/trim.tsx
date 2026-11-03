@@ -34,6 +34,7 @@ import {
   TRIM_FPS,
 } from "./trim/time";
 import { TrimTimeline } from "./trim/timeline";
+import { nativeTrim, reportTrimError } from "./trim/native";
 import { EditableTitle } from "./trim/title-name";
 import { type KeptTracks, TrimTracksPanel } from "./trim/tracks-panel";
 import { usePlayback } from "./trim/use-playback";
@@ -44,13 +45,21 @@ import { usePlayback } from "./trim/use-playback";
  *        timeline, choose which tracks to keep, and export fast (passthrough) or exact.
  * WHY:   Most recordings only need their dead start and end cut. Doing that here, without a
  *        full editor, is the MVP trim feature (NEW-TR-01..06, NEW-CT-01/02).
+ *        In the app it plays, thumbnails and exports the real file through the shell
+ *        (`trim/native.ts`); the browser harness keeps its simulated player and mock data.
  * WHERE: Opened from "Reveal last" / after stop; prototype surface id "trim".
  */
 export function TrimWindow({ cameraStream, navigate }: SurfaceProps) {
   const e = useEngine();
   const latest = React.useMemo(() => e.recordings.toSorted((a, b) => b.createdAt - a.createdAt)[0], [e.recordings]);
+  // The window stays on the recording it opened with (by file path, which follows a rename)
+  // until it closes, even when an export adds a newer file.
+  const [pinnedPath, setPinnedPath] = React.useState<string>();
+  const [session, setSession] = React.useState(0);
+  const rec = e.recordings.find((r) => r.path === pinnedPath) ?? latest;
+  if (pinnedPath === undefined && latest) setPinnedPath(latest.path);
 
-  if (!latest) {
+  if (!rec) {
     return (
       <div className="grid size-full place-items-center pt-11 text-center">
         <div>
@@ -61,15 +70,20 @@ export function TrimWindow({ cameraStream, navigate }: SurfaceProps) {
       </div>
     );
   }
-  // Remount per recording so in/out and playback reset.
+  // Remount per session so in/out and playback reset after the window closes.
   return (
     <TrimEditor
-      key={latest.id}
-      recording={latest}
+      key={session}
+      recording={rec}
       settings={e.settings}
       micName={e.mics.find((m) => m.id === e.settings.micId)?.name ?? "Microphone"}
       cameraStream={cameraStream}
-      onClose={() => navigate("main")}
+      onRenamed={setPinnedPath}
+      onClose={() => {
+        setPinnedPath(undefined);
+        setSession((n) => n + 1);
+        navigate("main");
+      }}
     />
   );
 }
@@ -79,21 +93,29 @@ function TrimEditor({
   settings,
   micName,
   cameraStream,
+  onRenamed,
   onClose,
 }: {
   recording: Recording;
   settings: RecorderSettings;
   micName: string;
   cameraStream: MediaStream | null;
+  /** The file was renamed; its new path. */
+  onRenamed: (path: string) => void;
   onClose: () => void;
 }) {
   const duration = rec.durationSecs;
   const [inT, setInT] = React.useState(0);
   const [outT, setOutT] = React.useState(duration);
-  const pb = usePlayback({ duration, inT, outT });
-  const [zoom, setZoom] = React.useState(1);
   const [volume, setVolume] = React.useState(0.8);
   const [muted, setMuted] = React.useState(false);
+  // In the app `pb.media` is the real <video>; the player clock follows it.
+  const pb = usePlayback({ duration, inT, outT, volume, muted });
+  const [thumbnails, setThumbnails] = React.useState<string[]>();
+  const [peaks, setPeaks] = React.useState<number[]>();
+  const [donePath, setDonePath] = React.useState<string>();
+  const exportingRef = React.useRef(false);
+  const [zoom, setZoom] = React.useState(1);
   const [view, setView] = React.useState<PlayerView>("composite");
   // Prototype-local: which tracks the export keeps (no engine field yet).
   const [kept, setKept] = React.useState<KeptTracks>({ camera: true, system: true, mic: true });
@@ -121,8 +143,98 @@ function TrimEditor({
     [inT, duration],
   );
 
-  // Simulated export: eased 0→100%, faster for passthrough than for re-encode.
+  // The file's measured duration can differ slightly from the first estimate: an untouched
+  // end handle follows it, and no handle may pass it.
+  const lastDuration = React.useRef(duration);
+  React.useEffect(() => {
+    const prev = lastDuration.current;
+    lastDuration.current = duration;
+    setOutT((o) => (o >= prev - 1e-3 || o > duration ? duration : o));
+    setInT((i) => Math.min(i, Math.max(0, duration - MIN_SELECTION)));
+  }, [duration]);
+
+  // Real thumbnails and waveform (app only), cached by the shell.
+  React.useEffect(() => {
+    if (!nativeTrim) return;
+    let live = true;
+    nativeTrim
+      .thumbnails(rec.id)
+      .then((t) => {
+        if (live) setThumbnails(t);
+      })
+      .catch((err: unknown) => reportTrimError("Couldn't load the timeline", err));
+    nativeTrim
+      .waveform(rec.id)
+      .then((p) => {
+        if (live) setPeaks(p);
+      })
+      .catch((err: unknown) => reportTrimError("Couldn't load the waveform", err));
+    return () => {
+      live = false;
+    };
+  }, [rec.id]);
+
+  // Closing the window mid-export cancels it.
+  React.useEffect(
+    () => () => {
+      if (exportingRef.current) void nativeTrim?.cancel(rec.id);
+    },
+    [rec.id],
+  );
+
+  async function startNativeExport(output: ExportOutput) {
+    if (!nativeTrim) return;
+    setConfirmReplace(false);
+    pb.pause();
+    exportingRef.current = true;
+    setPhase({ kind: "exporting", output, progress: 0, secsLeft: 0 });
+    const t0 = performance.now();
+    let finished = false;
+    try {
+      const out = await nativeTrim.export(
+        rec.id,
+        { startSecs: inT, endSecs: outT, mode, output, keep: kept },
+        (progress) => {
+          if (finished) return;
+          const elapsed = (performance.now() - t0) / 1000;
+          const secsLeft = progress > 0.02 ? Math.ceil((elapsed * (1 - progress)) / progress) : 0;
+          setPhase({ kind: "exporting", output, progress, secsLeft });
+        },
+      );
+      finished = true;
+      setDonePath(out.path);
+      setPhase({
+        kind: "done",
+        output,
+        fileName: out.path.slice(out.path.lastIndexOf("/") + 1),
+        detail: `${formatShortClock(out.durationSecs)} · ${formatBytes(out.bytes)} · ${folder}`,
+      });
+    } catch (err: unknown) {
+      finished = true;
+      setPhase({ kind: "idle" });
+      reportTrimError("Trim failed", err);
+    } finally {
+      exportingRef.current = false;
+    }
+  }
+
+  function rename(name: string) {
+    if (!nativeTrim) {
+      engine.renameRecording(rec.id, name);
+      return;
+    }
+    nativeTrim
+      .rename(rec.id, name)
+      .then((r) => onRenamed(r.path))
+      .catch((err: unknown) => reportTrimError("Couldn't rename the recording", err));
+  }
+
+  // Simulated export (browser harness): eased 0→100%, faster for passthrough than for re-encode.
   function startExport(output: ExportOutput) {
+    if (nativeTrim) {
+      void startNativeExport(output);
+      return;
+    }
     setConfirmReplace(false);
     pb.pause();
     const total = mode === "fast" ? 1.4 + keep / 400 : clamp(2.8 + keep / 45, 3, 9);
@@ -149,6 +261,11 @@ function TrimEditor({
     exportRaf.current = requestAnimationFrame(tick);
   }
   function stopExport() {
+    if (nativeTrim) {
+      // The export promise then fails as cancelled and the bar returns to idle.
+      void nativeTrim.cancel(rec.id);
+      return;
+    }
     cancelAnimationFrame(exportRaf.current);
     setPhase({ kind: "idle" });
   }
@@ -190,7 +307,7 @@ function TrimEditor({
       {/* Above the window's drag strip; only the title takes clicks, the rest drags the window. */}
       <header className="pointer-events-none relative z-20 flex h-11 shrink-0 items-center justify-center border-b">
         <div className="pointer-events-auto">
-          <EditableTitle value={rec.name} onCommit={(name) => engine.renameRecording(rec.id, name)} />
+          <EditableTitle value={rec.name} onCommit={rename} />
         </div>
         <p className="absolute right-4 text-[11.5px] text-muted-foreground tabular">
           {rec.width}×{rec.height} · {formatBytes(rec.bytes)} · {formatAgo(rec.createdAt)}
@@ -208,6 +325,8 @@ function TrimEditor({
               cameraStream={cameraStream}
               onToggle={pb.toggle}
               aspect={rec.width / rec.height}
+              src={nativeTrim?.mediaUrl(rec.id)}
+              mediaRef={pb.media}
             />
           </div>
           <aside className={cn("w-[244px] shrink-0 border-l bg-muted/60 transition-opacity", busy && "opacity-50")}>
@@ -343,7 +462,9 @@ function TrimEditor({
               time={pb.time}
               zoom={zoom}
               playing={pb.playing}
-              audioKept={kept.system || kept.mic}
+              audioKept={(kept.system || kept.mic) && (!nativeTrim || rec.audioTracks > 0)}
+              thumbnails={nativeTrim ? (thumbnails ?? []) : undefined}
+              peaks={nativeTrim ? (peaks ?? []) : undefined}
               onSeek={pb.seek}
               onScrub={(active) => active && pb.pause()}
               onInChange={setIn}
@@ -364,7 +485,10 @@ function TrimEditor({
         onCancel={onClose}
         onCancelExport={stopExport}
         onReveal={() => {
-          // Prototype-local: the real app calls the shell to reveal the file in Finder.
+          // The harness has no files to show.
+          if (nativeTrim && donePath !== undefined) {
+            nativeTrim.reveal(donePath).catch((err: unknown) => reportTrimError("Couldn't show the file", err));
+          }
         }}
         onDone={onClose}
       />

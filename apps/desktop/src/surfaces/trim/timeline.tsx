@@ -40,6 +40,8 @@ export function TrimTimeline({
   onScrub,
   onInChange,
   onOutChange,
+  thumbnails,
+  peaks,
 }: {
   recordingId: string;
   duration: number;
@@ -55,6 +57,10 @@ export function TrimTimeline({
   onScrub: (active: boolean) => void;
   onInChange: (t: number) => void;
   onOutChange: (t: number) => void;
+  /** Real frames, evenly spread over the file (the browser harness draws mock screens). */
+  thumbnails?: string[];
+  /** Real audio peaks 0..1, evenly spread over the file (the harness uses a seeded wave). */
+  peaks?: number[];
 }) {
   const scroller = React.useRef<HTMLDivElement>(null);
   const lane = React.useRef<HTMLDivElement>(null);
@@ -162,7 +168,10 @@ export function TrimTimeline({
 
   const frames = Math.round(clamp(12 * zoom, 12, 40));
   // Levels at 4 per second, shown as peak bars at roughly one per 4 px.
-  const levels = React.useMemo(() => seededWave(recordingId, Math.round(duration * 4)), [recordingId, duration]);
+  const levels = React.useMemo(
+    () => peaks ?? seededWave(recordingId, Math.round(duration * 4)),
+    [peaks, recordingId, duration],
+  );
   const bars = React.useMemo(() => bucketLevels(levels, Math.max(60, Math.round(laneW / 4))), [levels, laneW]);
 
   return (
@@ -205,7 +214,11 @@ export function TrimTimeline({
           >
             {Array.from({ length: frames }, (_, i) => (
               <div key={i} className="relative h-full flex-1 border-r border-stage last:border-r-0">
-                <MockScreen variant={sceneAt(i / frames)} className="pointer-events-none" />
+                {thumbnails === undefined ? (
+                  <MockScreen variant={sceneAt(i / frames)} className="pointer-events-none" />
+                ) : (
+                  <FilmFrame src={thumbnails[Math.floor(((i + 0.5) / frames) * thumbnails.length)]} />
+                )}
               </div>
             ))}
           </div>
@@ -354,4 +367,10 @@ function Handle({
 // Fake scene changes so the filmstrip reads like a real walkthrough.
 function sceneAt(p: number): "desktop" | "window" {
   return p < 0.25 || (p > 0.55 && p < 0.7) ? "desktop" : "window";
+}
+
+/** One filmstrip tile from a real thumbnail; empty while thumbnails load. */
+function FilmFrame({ src }: { src: string | undefined }) {
+  if (src === undefined) return null;
+  return <div className="size-full bg-cover bg-center" style={{ backgroundImage: `url("${src}")` }} />;
 }

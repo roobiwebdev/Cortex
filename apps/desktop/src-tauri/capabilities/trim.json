@@ -3,10 +3,5 @@
   "identifier": "trim",
   "description": "Quick trim: only the Trim window may read timeline thumbnails and waveforms, export a trimmed file or cancel an export.",
   "windows": ["trim"],
-  "permissions": [
-    "allow-recording-thumbnails",
-    "allow-recording-waveform",
-    "allow-trim-recording",
-    "allow-cancel-trim"
-  ]
+  "permissions": ["allow-recording-thumbnails", "allow-recording-waveform", "allow-trim-recording", "allow-cancel-trim"]
 }
