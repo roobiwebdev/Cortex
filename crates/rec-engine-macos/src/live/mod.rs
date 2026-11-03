@@ -97,6 +97,26 @@ pub struct OutputStatus {
     pub error: Option<String>,
 }
 
+/// What to tell the user when a stream's connection changes for the worse,
+/// given how it was at the last check: it dropped (and is reconnecting), or
+/// its very first connection failed (and is retrying). Later retries stay
+/// quiet; the stream's state shows them.
+pub fn stream_alert(was_live: bool, was_state: &str, now: &OutputStatus) -> Option<String> {
+    let why = now.error.as_deref().map(|e| format!(": {e}")).unwrap_or_default();
+    if was_live && !now.live && now.state != "stopped" {
+        Some(format!("Stream to {} dropped{why}. Reconnecting…", now.name))
+    } else if !was_live
+        && !was_state.starts_with("retrying")
+        && now.state.starts_with("retrying")
+        && now.duration == 0.0
+        && now.reconnects == 1
+    {
+        Some(format!("Can't reach {}{why}. Retrying…", now.name))
+    } else {
+        None
+    }
+}
+
 #[derive(Default)]
 struct Hub {
     formats: Formats,
@@ -674,6 +694,33 @@ pub fn start_output(url: &str, key: &str) -> Result<Box<dyn Output>> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn stream_alerts_once_per_drop_or_first_failure() {
+        let st = |state: &str, live, reconnects, duration| OutputStatus {
+            name: "rtmp://h".into(),
+            state: state.into(),
+            live,
+            reconnects,
+            duration,
+            error: Some("cannot connect".into()),
+            ..Default::default()
+        };
+        assert_eq!(stream_alert(false, "connecting", &st("live", true, 0, 1.0)), None);
+        assert_eq!(
+            stream_alert(true, "live", &st("reconnecting", false, 1, 9.0)).as_deref(),
+            Some("Stream to rtmp://h dropped: cannot connect. Reconnecting…")
+        );
+        assert_eq!(stream_alert(false, "connecting", &st("retrying in 2s", false, 2, 9.0)), None);
+        assert_eq!(stream_alert(true, "live", &st("stopped", false, 0, 9.0)), None);
+        assert_eq!(
+            stream_alert(false, "", &st("retrying in 1s", false, 1, 0.0)).as_deref(),
+            Some("Can't reach rtmp://h: cannot connect. Retrying…")
+        );
+        // Still retrying, and a later failed attempt: no repeat.
+        assert_eq!(stream_alert(false, "retrying in 1s", &st("retrying in 1s", false, 1, 0.0)), None);
+        assert_eq!(stream_alert(false, "connecting", &st("retrying in 2s", false, 2, 0.0)), None);
+    }
     use crate::util::*;
 
     /// Feed `secs` of 30 fps frames and audio through the hub. Every whole

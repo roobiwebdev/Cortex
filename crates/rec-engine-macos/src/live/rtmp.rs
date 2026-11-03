@@ -580,6 +580,9 @@ struct Shared {
     want_key: bool,
     /// Drop video until the next keyframe (after congestion or reconnect).
     skip_to_key: bool,
+    /// Drop audio too until that keyframe: a new connection starts with the
+    /// keyframe, not with seconds of audio queued while the server was gone.
+    audio_waits_for_key: bool,
 }
 
 pub struct RtmpOutput {
@@ -618,11 +621,13 @@ fn run(u: RtmpUrl, key: String, shared: Arc<(Mutex<Shared>, Condvar)>, stop: Arc
                 let mut s = lock.lock().unwrap();
                 s.error = Some(redact(&e));
                 s.state = format!("retrying in {backoff}s");
+                // Counted with the failure (as WHIP does), so a failed first
+                // attempt reads as one reconnect while it waits.
+                s.reconnects += 1;
                 drop(s);
                 eprintln!("rec: stream {}: {}", u.host, redact(&e));
                 sleep_unless_stopped(&stop, Duration::from_secs(backoff));
                 backoff = (backoff * 2).min(30);
-                lock.lock().unwrap().reconnects += 1;
                 continue;
             }
         };
@@ -636,9 +641,11 @@ fn run(u: RtmpUrl, key: String, shared: Arc<(Mutex<Shared>, Condvar)>, stop: Arc
             s.state = "live".into();
             s.error = None;
             s.live_since.get_or_insert_with(Instant::now);
-            // Start the new connection from a keyframe.
-            s.queue.retain(|t| t.typ == 8);
+            // Start the new connection from a keyframe, with the audio
+            // that goes with it (none of what queued up while away).
+            s.queue.clear();
             s.skip_to_key = true;
+            s.audio_waits_for_key = true;
             s.want_key = true;
         }
         let mut headers_sent = false;
@@ -760,6 +767,7 @@ impl Output for RtmpOutput {
                         return;
                     }
                     s.skip_to_key = false;
+                    s.audio_waits_for_key = false;
                 }
                 let ts = ((v.pts - self.t0.unwrap()) * 1000.0).round().max(0.0) as u32;
                 // Congestion: the queue spans too much time.
@@ -775,7 +783,7 @@ impl Output for RtmpOutput {
             }
             Packet::Audio(a) => {
                 let Some(t0) = self.t0 else { return };
-                if a.codec != AudioCodec::Aac || a.pts < t0 {
+                if a.codec != AudioCodec::Aac || a.pts < t0 || s.audio_waits_for_key {
                     return;
                 }
                 let ts = ((a.pts - t0) * 1000.0).round() as u32;
