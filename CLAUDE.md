@@ -25,6 +25,7 @@ crates/rec-core     Recorder settings schema, engine API and state (platform-neu
 crates/rec-engine-macos   Rec's capture/encode engine (ScreenCaptureKit, AVFoundation, VideoToolbox)
 crates/rec-macos-ui Native window behaviour: panels, levels, capture exclusion
 crates/rec-engine-windows Windows engine (Windows.Graphics.Capture, Media Foundation, WASAPI) and Win32 window helpers
+crates/rec-engine-linux   Linux engine (ScreenCast portal, PipeWire, GStreamer, Secret Service); its planning code builds on every OS
 crates/rec-cli      The rec-rs command-line recorder
 packages/db         Drizzle schema, relations, migrations  (database shape only)
 packages/core       Server building blocks: settings, secrets, email, storage, payments, notify, logger
@@ -162,6 +163,8 @@ cargo test --workspace                      Rust tests (needs rustup on PATH)
 cargo run --release -p rec-engine-macos --example engine_smoke   test-pattern recording + ffprobe check
 scripts/desktop/bump-version.sh <version>   set the desktop version everywhere
 scripts/desktop/release-macos.sh            signed macOS release into dist/desktop/<version>/ (never uploads)
+scripts/desktop/linux-dev.Dockerfile        Linux build/test/bundle container (see docs/engineering/platforms.md, "Linux in Docker")
+cargo run -p rec-engine-linux --example probe   what the Linux engine finds (encoders, devices, portals)
 
 pnpm --filter site dev                      landing page on http://localhost:3010
 pnpm --filter site build                    prerendered build (+ preview on :3010 with `pnpm --filter site preview`)
