@@ -122,7 +122,68 @@ impl Levels {
     }
 }
 
+/// A rectangle in points (macOS screen coordinates: origin top-left, y down).
+#[derive(Clone, Copy, Debug, Default, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(feature = "specta", derive(specta::Type))]
+pub struct Rect {
+    pub x: f64,
+    pub y: f64,
+    pub w: f64,
+    pub h: f64,
+}
+
+impl Rect {
+    pub fn contains(&self, x: f64, y: f64) -> bool {
+        x >= self.x && x < self.x + self.w && y >= self.y && y < self.y + self.h
+    }
+
+    /// The area this rect shares with `o` (0 when they don't overlap).
+    pub fn overlap(&self, o: &Rect) -> f64 {
+        let w = (self.x + self.w).min(o.x + o.w) - self.x.max(o.x);
+        let h = (self.y + self.h).min(o.y + o.h) - self.y.max(o.y);
+        if w > 0.0 && h > 0.0 { w * h } else { 0.0 }
+    }
+
+    /// Every coordinate times `k` (points to pixels with the display scale).
+    pub fn scaled(&self, k: f64) -> Rect {
+        Rect {
+            x: self.x * k,
+            y: self.y * k,
+            w: self.w * k,
+            h: self.h * k,
+        }
+    }
+
+    /// This rect clipped to `0,0,w,h`; None when nothing is left.
+    pub fn clipped_to(&self, w: f64, h: f64) -> Option<Rect> {
+        let x0 = self.x.max(0.0);
+        let y0 = self.y.max(0.0);
+        let x1 = (self.x + self.w).min(w);
+        let y1 = (self.y + self.h).min(h);
+        (x1 > x0 && y1 > y0).then_some(Rect {
+            x: x0,
+            y: y0,
+            w: x1 - x0,
+            h: y1 - y0,
+        })
+    }
+}
+
+/// Which of `displays` (desktop frames in points) holds most of `r`, as an index.
+/// None when `r` is on none of them.
+pub fn display_index_for(r: &Rect, displays: &[Rect]) -> Option<usize> {
+    displays
+        .iter()
+        .enumerate()
+        .map(|(i, d)| (i, d.overlap(r)))
+        .filter(|(_, a)| *a > 0.0)
+        .max_by(|a, b| a.1.total_cmp(&b.1))
+        .map(|(i, _)| i)
+}
+
 /// A display; `id` is the 1-based display number (`CaptureTarget::Display`).
+/// `width` and `height` are pixels; `frame` is its place on the desktop in points
+/// (the main display's top-left is 0,0), so `scale` = pixels per point.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[cfg_attr(feature = "specta", derive(specta::Type))]
 pub struct Display {
@@ -130,16 +191,26 @@ pub struct Display {
     pub name: String,
     pub width: u32,
     pub height: u32,
+    pub frame: Rect,
+    pub scale: f64,
 }
 
+/// An on-screen window. `frame` is in points from the top-left of display
+/// `displayId` (the display holding most of it), as `CaptureTarget::Region` uses.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[cfg_attr(feature = "specta", derive(specta::Type))]
+#[serde(rename_all = "camelCase")]
 pub struct CaptureWindow {
     pub id: u32,
     pub app: String,
     pub title: String,
+    pub bundle_id: String,
+    pub display_id: u32,
+    pub frame: Rect,
 }
 
+/// A running app with on-screen windows. Its icon is fetched on demand by bundle
+/// ID (the shell's `app_icon` command), so state events stay small.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[cfg_attr(feature = "specta", derive(specta::Type))]
 #[serde(rename_all = "camelCase")]
@@ -350,6 +421,65 @@ mod tests {
         let apps = apps_from_windows([("com.a", "A"), ("com.b", "B"), ("com.a", "A"), ("", "x")]);
         assert_eq!(apps.len(), 2);
         assert_eq!((apps[0].bundle_id.as_str(), apps[0].windows), ("com.a", 2));
+    }
+
+    #[test]
+    fn windows_belong_to_the_display_holding_most_of_them() {
+        let main = Rect {
+            x: 0.0,
+            y: 0.0,
+            w: 1512.0,
+            h: 982.0,
+        };
+        let right = Rect {
+            x: 1512.0,
+            y: -200.0,
+            w: 1920.0,
+            h: 1080.0,
+        };
+        let r = |x, y, w, h| Rect { x, y, w, h };
+        assert_eq!(
+            display_index_for(&r(100.0, 100.0, 800.0, 600.0), &[main, right]),
+            Some(0)
+        );
+        assert_eq!(
+            display_index_for(&r(1400.0, 0.0, 800.0, 600.0), &[main, right]),
+            Some(1)
+        );
+        assert_eq!(
+            display_index_for(&r(-900.0, 0.0, 800.0, 600.0), &[main, right]),
+            None
+        );
+    }
+
+    #[test]
+    fn rects_scale_and_clip() {
+        let r = Rect {
+            x: -10.0,
+            y: 20.0,
+            w: 100.0,
+            h: 50.0,
+        };
+        assert_eq!(
+            r.scaled(2.0),
+            Rect {
+                x: -20.0,
+                y: 40.0,
+                w: 200.0,
+                h: 100.0
+            }
+        );
+        assert_eq!(
+            r.clipped_to(60.0, 60.0),
+            Some(Rect {
+                x: 0.0,
+                y: 20.0,
+                w: 60.0,
+                h: 40.0
+            })
+        );
+        assert_eq!(r.clipped_to(5.0, 5.0), None);
+        assert!(r.contains(0.0, 20.0) && !r.contains(90.0, 20.0));
     }
 
     #[test]

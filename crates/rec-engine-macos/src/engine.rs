@@ -112,15 +112,21 @@ pub fn dest_url(d: &cs::StreamDest) -> String {
 /// Our settings as Rec's (`crate::settings::Settings`), so Rec's own
 /// `record_args`, `capture_key`, `pip_spec`, `volumes` and `live_config` apply.
 pub fn rec_settings_for(s: &RecorderSettings, home: &Path) -> Result<Settings, EngineError> {
-    let (display, window) = match &s.target {
-        CaptureTarget::Display { display_id } | CaptureTarget::Region { display_id, .. } => {
-            (*display_id as usize, None)
-        }
-        CaptureTarget::Window { window_id } => (1, Some(*window_id)),
-        CaptureTarget::App { .. } => {
-            return Err(unsupported(
-                "App capture isn't available yet; choose a display, window or region",
-            ));
+    let (display, window, region, app) = match &s.target {
+        CaptureTarget::Display { display_id } => (*display_id as usize, None, None, None),
+        CaptureTarget::Region {
+            display_id,
+            x,
+            y,
+            w,
+            h,
+        } => (*display_id as usize, None, Some([*x, *y, *w, *h]), None),
+        CaptureTarget::Window { window_id } => (1, Some(*window_id), None, None),
+        CaptureTarget::App { bundle_id } => {
+            if bundle_id.trim().is_empty() {
+                return Err(unsupported("Choose an app to record"));
+            }
+            (1, None, None, Some(bundle_id.clone()))
         }
     };
     Ok(Settings {
@@ -186,6 +192,8 @@ pub fn rec_settings_for(s: &RecorderSettings, home: &Path) -> Result<Settings, E
         stream_cbr: s.stream_cbr,
         stream_audio_kbps: s.stream_audio_kbps,
         window,
+        region,
+        app,
     })
 }
 
@@ -198,9 +206,6 @@ pub fn record_args_for(
     test_pattern: bool,
 ) -> Vec<String> {
     let mut a = rec.record_args(output);
-    if let CaptureTarget::Region { x, y, w, h, .. } = &s.target {
-        a.extend(["--region".into(), format!("{x},{y},{w},{h}")]);
-    }
     if let Some(ms) = s.system_offset_ms {
         a.extend(["--system-audio-offset-ms".into(), format!("{ms}")]);
     }
@@ -312,33 +317,42 @@ fn now_ms() -> f64 {
 
 /// Every capture source (blocking: ScreenCaptureKit lists displays and windows).
 pub fn list_devices() -> Devices {
-    let displays = screen::displays()
-        .map(|ds| {
-            ds.iter()
-                .enumerate()
-                .map(|(i, d)| Display {
-                    id: i as u32 + 1,
-                    name: format!("Display {}", i + 1),
-                    width: d.pixels.0 as u32,
-                    height: d.pixels.1 as u32,
-                })
-                .collect()
-        })
-        .unwrap_or_default();
-    let ws: Vec<screen::WindowInfo> = screen::windows()
-        .unwrap_or_default()
-        .into_iter()
-        .filter(|w| !w.title.is_empty())
-        .collect();
-    let apps = rec_core::state::apps_from_windows(
-        ws.iter().map(|w| (w.bundle_id.as_str(), w.app.as_str())),
-    );
-    let windows = ws
+    let infos = screen::displays().unwrap_or_default();
+    let displays = infos
         .iter()
-        .map(|w| CaptureWindow {
-            id: w.id,
-            app: w.app.clone(),
-            title: w.title.clone(),
+        .enumerate()
+        .map(|(i, d)| Display {
+            id: i as u32 + 1,
+            name: format!("Display {}", i + 1),
+            width: d.pixels.0 as u32,
+            height: d.pixels.1 as u32,
+            frame: d.frame,
+            scale: d.scale(),
+        })
+        .collect();
+    let all = screen::windows().unwrap_or_default();
+    let apps = rec_core::state::apps_from_windows(
+        all.iter().map(|w| (w.bundle_id.as_str(), w.app.as_str())),
+    );
+    let windows = all
+        .iter()
+        .filter(|w| !w.title.is_empty())
+        .map(|w| {
+            // Points from the top-left of the display holding most of the window.
+            let i = screen::display_index_of(&w.frame, &infos).unwrap_or(0);
+            let origin = infos.get(i).map_or((0.0, 0.0), |d| (d.frame.x, d.frame.y));
+            CaptureWindow {
+                id: w.id,
+                app: w.app.clone(),
+                title: w.title.clone(),
+                bundle_id: w.bundle_id.clone(),
+                display_id: i as u32 + 1,
+                frame: rec_core::state::Rect {
+                    x: w.frame.x - origin.0,
+                    y: w.frame.y - origin.1,
+                    ..w.frame
+                },
+            }
         })
         .collect();
     let dev = |d: camera::Device| InputDevice {
@@ -431,7 +445,7 @@ impl Inner {
 
     fn rec(&self) -> Result<&Settings, EngineError> {
         self.rec.as_ref().ok_or_else(|| {
-            unsupported("App capture isn't available yet; choose a display, window or region")
+            unsupported("Choose what to record: a display, window, app or area")
         })
     }
 
@@ -446,7 +460,7 @@ impl Inner {
         if !self.opts.test_pattern {
             // A display that was unplugged falls back to the main one.
             let count = screen::displays().map(|d| d.len()).unwrap_or(0);
-            if count > 0 && rec.window.is_none() && rec.display > count {
+            if count > 0 && rec.window.is_none() && rec.app.is_none() && rec.display > count {
                 warning = Some(format!(
                     "Display {} not connected; using display 1",
                     rec.display
@@ -1393,7 +1407,11 @@ impl RecorderEngine for MacEngine {
 
     fn devices(&self) -> Devices {
         let d = list_devices();
-        self.core.run(|i, _| i.state.set_devices(d.clone()));
+        // Every window sees the fresh list (the region picker asks when it opens).
+        self.core.run(|i, ev| {
+            i.state.set_devices(d.clone());
+            ev.push(EngineEvent::DeviceChanged(d.clone()));
+        });
         d
     }
 
@@ -1649,17 +1667,40 @@ mod tests {
     }
 
     #[test]
-    fn app_capture_is_reported_unsupported() {
-        let s = RecorderSettings {
+    fn app_and_region_targets_map_to_recs_cli_and_restart_the_preview() {
+        let app = RecorderSettings {
             target: CaptureTarget::App {
                 bundle_id: "com.apple.Safari".into(),
             },
             ..Default::default()
         };
+        let a = args(&app, false);
+        assert!(has(&a, ["--app", "com.apple.Safari"]), "{a:?}");
+        assert!(!a.iter().any(|x| x == "--window" || x == "--region"));
+        let empty = RecorderSettings {
+            target: CaptureTarget::App {
+                bundle_id: " ".into(),
+            },
+            ..Default::default()
+        };
         assert!(matches!(
-            rec_settings_for(&s, Path::new("/")),
+            rec_settings_for(&empty, Path::new("/")),
             Err(EngineError::Unsupported { .. })
         ));
+        // A new area or app needs a new capture session (the preview follows it).
+        let region = |x| RecorderSettings {
+            target: CaptureTarget::Region {
+                display_id: 1,
+                x,
+                y: 0.0,
+                w: 100.0,
+                h: 100.0,
+            },
+            ..Default::default()
+        };
+        let k = |s: &RecorderSettings| rec_settings_for(s, Path::new("/")).unwrap().capture_key();
+        assert_ne!(k(&region(0.0)), k(&region(5.0)));
+        assert_ne!(k(&region(0.0)), k(&app));
     }
 
     #[test]

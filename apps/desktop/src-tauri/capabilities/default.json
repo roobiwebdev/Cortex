@@ -17,6 +17,7 @@
     "allow-update-settings",
     "allow-get-settings",
     "allow-devices",
+    "allow-app-icon",
     "allow-request-permission",
     "allow-check-permissions",
     "allow-relaunch",

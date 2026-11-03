@@ -25,6 +25,11 @@ pub struct RecordArgs {
     /// Record a single window: window ID or app/title substring (`rec devices`).
     #[arg(long, value_name = "WINDOW")]
     pub(crate) window: Option<String>,
+    /// Record every window of one app, including windows it opens later: its
+    /// bundle ID or a name substring. Records the display that holds the app's
+    /// frontmost window (else --display), with only that app on it.
+    #[arg(long, value_name = "APP", conflicts_with_all = ["window", "region"])]
+    pub(crate) app: Option<String>,
     /// Output size: 720p, 1080p, 1440p, 4k, native, or WIDTHxHEIGHT. The
     /// frame keeps the display's (or window's) aspect ratio and fits inside
     /// this size (1080p of a 16:10 display is 1728x1080), so there are never
@@ -369,24 +374,43 @@ pub fn prepare(a: RecordArgs) -> Result<(record::Options, Option<screen::Target>
         if a.display == 0 || a.display > displays.len() {
             bail!("display {} not found: displays are numbered 1..={} (see `rec-rs devices`)", a.display, displays.len());
         }
-        let d = displays.swap_remove(a.display - 1);
-        let scale = d.pixels.0 as f64 / d.points.0.max(1) as f64;
-        if let Some(sel) = &a.window {
+        if let Some(sel) = &a.app {
+            let app = screen::find_app(sel)?;
+            // The display holding the app's frontmost window.
+            let i = app
+                .windows
+                .first()
+                .and_then(|w| screen::display_index_of(&w.frame, &displays))
+                .unwrap_or(a.display - 1);
+            let d = displays.swap_remove(i);
+            let native = d.pixels;
+            (Some(screen::Target::App(d, app)), native)
+        } else if let Some(sel) = &a.window {
             let w = screen::find_window(sel)?;
+            // Pixels at the scale of the display the window is on.
+            let scale = screen::display_index_of(&w.frame, &displays)
+                .map_or(displays[a.display - 1].scale(), |i| displays[i].scale());
             let native = ((w.size.0 * scale) as usize, (w.size.1 * scale) as usize);
             (Some(screen::Target::Window(w)), native)
         } else if let Some(r) = &a.region {
+            let d = displays.swap_remove(a.display - 1);
+            let scale = d.scale();
             let v: Vec<f64> = r.split(',').map(|x| x.trim().parse::<f64>()).collect::<Result<_, _>>()?;
-            if v.len() != 4 || v[2] <= 0.0 || v[3] <= 0.0 {
+            if v.len() != 4 || v.iter().any(|x| !x.is_finite()) || v[2] <= 0.0 || v[3] <= 0.0 {
                 bail!("--region must be X,Y,WIDTH,HEIGHT (points)");
             }
+            // Only the part on the display can be recorded.
+            let r = rec_core::state::Rect { x: v[0], y: v[1], w: v[2], h: v[3] }
+                .clipped_to(d.points.0 as f64, d.points.1 as f64)
+                .ok_or_else(|| anyhow::anyhow!("--region {r} is outside display {} ({}x{} points)", a.display, d.points.0, d.points.1))?;
             let rect = objc2_core_foundation::CGRect::new(
-                objc2_core_foundation::CGPoint::new(v[0], v[1]),
-                objc2_core_foundation::CGSize::new(v[2], v[3]),
+                objc2_core_foundation::CGPoint::new(r.x, r.y),
+                objc2_core_foundation::CGSize::new(r.w, r.h),
             );
-            let native = ((v[2] * scale) as usize, (v[3] * scale) as usize);
+            let native = ((r.w * scale).round() as usize, (r.h * scale).round() as usize);
             (Some(screen::Target::Display(d, Some(rect))), native)
         } else {
+            let d = displays.swap_remove(a.display - 1);
             let native = d.pixels;
             (Some(screen::Target::Display(d, None)), native)
         }

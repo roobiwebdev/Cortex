@@ -326,6 +326,28 @@ async fn devices(shell: Shared<'_>) -> Result<Devices, EngineError> {
     blocking(&shell, |s| Ok(s.devices())).await
 }
 
+/// A running app's icon (small PNG `data:` URL) for the app pickers; None when it has
+/// none. Icons stay out of the engine state so its events stay small.
+#[tauri::command]
+#[specta::specta]
+async fn app_icon(bundle_id: String) -> Result<Option<String>, EngineError> {
+    if !valid_bundle_id(&bundle_id) {
+        return Err(EngineError::failed("Not a bundle identifier"));
+    }
+    tauri::async_runtime::spawn_blocking(move || rec_engine::screen::app_icon(&bundle_id))
+        .await
+        .map_err(|e| EngineError::failed(format!("The recorder stopped responding: {e}")))
+}
+
+/// Reverse-DNS style: letters, digits, `.`, `-` and `_`, at most 255 bytes.
+fn valid_bundle_id(id: &str) -> bool {
+    !id.is_empty()
+        && id.len() <= 255
+        && id
+            .bytes()
+            .all(|b| b.is_ascii_alphanumeric() || matches!(b, b'.' | b'-' | b'_'))
+}
+
 /// Show the system prompt; resolves when answered (or after 60 s).
 #[tauri::command]
 #[specta::specta]
@@ -442,6 +464,7 @@ pub fn builder() -> tauri_specta::Builder<tauri::Wry> {
             update_settings,
             get_settings,
             devices,
+            app_icon,
             request_permission,
             check_permissions,
             relaunch,
@@ -478,6 +501,15 @@ pub fn builder() -> tauri_specta::Builder<tauri::Wry> {
 #[cfg(test)]
 mod tests {
     use specta_typescript::Typescript;
+
+    #[test]
+    fn bundle_ids_are_checked_before_lookup() {
+        assert!(super::valid_bundle_id("com.apple.finder"));
+        assert!(super::valid_bundle_id("com.mitchellh.ghostty-2_beta"));
+        assert!(!super::valid_bundle_id(""));
+        assert!(!super::valid_bundle_id("../etc/passwd"));
+        assert!(!super::valid_bundle_id(&"a".repeat(256)));
+    }
 
     /// Regenerates `src/ipc/bindings.ts`. Run via `pnpm --filter desktop ipc:bindings`.
     #[test]

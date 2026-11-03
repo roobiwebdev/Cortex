@@ -24,7 +24,20 @@ pub struct DisplayInfo {
     pub id: u32,
     pub points: (i64, i64),
     pub pixels: (usize, usize),
+    /// Place on the desktop in points (the main display's top-left is 0,0).
+    pub frame: rec_core::state::Rect,
     pub display: Retained<SCDisplay>,
+}
+
+impl DisplayInfo {
+    /// Pixels per point (2 on Retina).
+    pub fn scale(&self) -> f64 {
+        self.pixels.0 as f64 / self.points.0.max(1) as f64
+    }
+}
+
+fn rect(r: objc2_core_foundation::CGRect) -> rec_core::state::Rect {
+    rec_core::state::Rect { x: r.origin.x, y: r.origin.y, w: r.size.width, h: r.size.height }
 }
 
 fn shareable_content() -> Result<Retained<SCShareableContent>> {
@@ -68,7 +81,8 @@ pub fn displays() -> Result<Vec<DisplayInfo>> {
             CGDisplayMode::pixel_width(mode.as_deref()),
             CGDisplayMode::pixel_height(mode.as_deref()),
         );
-        out.push(DisplayInfo { id, points: unsafe { (d.width() as i64, d.height() as i64) }, pixels, display: d });
+        let frame = rect(unsafe { d.frame() });
+        out.push(DisplayInfo { id, points: unsafe { (d.width() as i64, d.height() as i64) }, pixels, frame, display: d });
     }
     Ok(out)
 }
@@ -81,12 +95,22 @@ pub struct WindowInfo {
     pub title: String,
     /// Size in points.
     pub size: (f64, f64),
+    /// Place on the desktop in points (as `DisplayInfo::frame`).
+    pub frame: rec_core::state::Rect,
+    /// The owning process (0 if unknown).
+    pub pid: i32,
     pub window: Retained<SCWindow>,
 }
 
-/// On-screen, normal-layer windows that have a title or an owning app.
+/// On-screen, normal-layer windows that have a title or an owning app, front
+/// to back (ScreenCaptureKit's order). This process's own windows are left
+/// out: they are never recorded.
 pub fn windows() -> Result<Vec<WindowInfo>> {
-    let content = shareable_content()?;
+    windows_in(&*shareable_content()?)
+}
+
+fn windows_in(content: &SCShareableContent) -> Result<Vec<WindowInfo>> {
+    let me = std::process::id() as i32;
     let mut out = vec![];
     for w in unsafe { content.windows() }.iter() {
         unsafe {
@@ -94,6 +118,10 @@ pub fn windows() -> Result<Vec<WindowInfo>> {
                 continue;
             }
             let owner = w.owningApplication();
+            let pid = owner.as_ref().map(|a| a.processID()).unwrap_or(0);
+            if pid == me {
+                continue;
+            }
             let app = owner.as_ref().map(|a| a.applicationName().to_string()).unwrap_or_default();
             let bundle_id = owner.as_ref().map(|a| a.bundleIdentifier().to_string()).unwrap_or_default();
             let title = w.title().map(|t| t.to_string()).unwrap_or_default();
@@ -101,7 +129,7 @@ pub fn windows() -> Result<Vec<WindowInfo>> {
             if (app.is_empty() && title.is_empty()) || f.size.width < 40.0 || f.size.height < 40.0 {
                 continue;
             }
-            out.push(WindowInfo { id: w.windowID(), app, bundle_id, title, size: (f.size.width, f.size.height), window: w });
+            out.push(WindowInfo { id: w.windowID(), app, bundle_id, title, size: (f.size.width, f.size.height), frame: rect(f), pid, window: w });
         }
     }
     Ok(out)
@@ -124,10 +152,78 @@ pub fn find_window(sel: &str) -> Result<WindowInfo> {
         .ok_or_else(|| anyhow!("no on-screen window matches {sel:?} (see `rec-rs devices`)"))
 }
 
+/// A running app to record, and where its windows are.
+pub struct AppInfo {
+    pub name: String,
+    pub bundle_id: String,
+    pub app: Retained<SCRunningApplication>,
+    /// The app's on-screen windows, front to back (may be empty).
+    pub windows: Vec<WindowInfo>,
+}
+
+/// Find a running app by bundle ID (exact, any case) or by a case-insensitive
+/// substring of its name. Prefers an app with on-screen windows. Never this
+/// process: our own windows are never recorded.
+pub fn find_app(sel: &str) -> Result<AppInfo> {
+    let content = shareable_content()?;
+    let me = std::process::id() as i32;
+    let lower = sel.trim().to_lowercase();
+    let wins = windows_in(&*content)?;
+    let mut best: Option<AppInfo> = None;
+    for a in unsafe { content.applications() }.iter() {
+        let (pid, name, bundle_id) = unsafe {
+            (a.processID(), a.applicationName().to_string(), a.bundleIdentifier().to_string())
+        };
+        let hit = bundle_id.to_lowercase() == lower || (!name.is_empty() && name.to_lowercase().contains(&lower));
+        if !hit {
+            continue;
+        }
+        if pid == me {
+            bail!("{name} is this app; its own windows are never recorded");
+        }
+        let windows: Vec<WindowInfo> = wins.iter().filter(|w| w.pid == pid).map(WindowInfo::clone_ref).collect();
+        let exact = bundle_id.to_lowercase() == lower;
+        let better = match &best {
+            None => true,
+            Some(b) => {
+                let b_exact = b.bundle_id.to_lowercase() == lower;
+                (exact, !windows.is_empty()) > (b_exact, !b.windows.is_empty())
+            }
+        };
+        if better {
+            best = Some(AppInfo { name, bundle_id, app: a, windows });
+        }
+    }
+    best.ok_or_else(|| anyhow!("no running app matches {sel:?} (see `rec-rs devices`)"))
+}
+
+impl WindowInfo {
+    fn clone_ref(&self) -> WindowInfo {
+        WindowInfo {
+            id: self.id,
+            app: self.app.clone(),
+            bundle_id: self.bundle_id.clone(),
+            title: self.title.clone(),
+            size: self.size,
+            frame: self.frame,
+            pid: self.pid,
+            window: self.window.clone(),
+        }
+    }
+}
+
+/// Index into `displays` of the display holding most of `frame` (desktop points).
+pub fn display_index_of(frame: &rec_core::state::Rect, displays: &[DisplayInfo]) -> Option<usize> {
+    let frames: Vec<_> = displays.iter().map(|d| d.frame).collect();
+    rec_core::state::display_index_for(frame, &frames)
+}
+
 pub enum Target {
     /// A display, optionally cropped to a region (points, top-left origin).
     Display(DisplayInfo, Option<objc2_core_foundation::CGRect>),
     Window(WindowInfo),
+    /// Every window of one app on this display, including windows it opens later.
+    App(DisplayInfo, AppInfo),
 }
 
 impl Target {
@@ -139,6 +235,7 @@ impl Target {
                 d.id, r.size.width, r.size.height, r.origin.x, r.origin.y
             ),
             Target::Window(w) => format!("window \"{} {}\" ({})", w.app, w.title, w.id),
+            Target::App(d, a) => format!("app {} ({}) on display {}", a.name, a.bundle_id, d.id),
         }
     }
 }
@@ -348,6 +445,14 @@ impl ScreenCapture {
                 Target::Window(w) => {
                     SCContentFilter::initWithDesktopIndependentWindow(SCContentFilter::alloc(), &w.window)
                 }
+                // Only the named app is included, so our own windows stay out
+                // (`find_app` refuses this process).
+                Target::App(d, a) => SCContentFilter::initWithDisplay_includingApplications_exceptingWindows(
+                    SCContentFilter::alloc(),
+                    &d.display,
+                    &NSArray::from_retained_slice(std::slice::from_ref(&a.app)),
+                    &NSArray::new(),
+                ),
             };
             conf.setWidth(cfg.width);
             conf.setHeight(cfg.height);
@@ -421,5 +526,57 @@ fn wait_err(f: impl FnOnce(&block2::DynBlock<dyn Fn(*mut NSError)>)) -> Result<(
         Ok(Ok(())) => Ok(()),
         Ok(Err(e)) => bail!("{e}"),
         Err(_) => bail!("timed out"),
+    }
+}
+
+/// Icons already made, by bundle ID (None = the app had no readable icon).
+static ICONS: std::sync::Mutex<Option<std::collections::HashMap<String, Option<String>>>> = std::sync::Mutex::new(None);
+
+/// A running app's icon as a 64 px PNG `data:` URL, cached per bundle ID.
+/// None when no running app has this bundle ID or its icon can't be read.
+pub fn app_icon(bundle_id: &str) -> Option<String> {
+    if let Some(hit) = ICONS.lock().ok()?.get_or_insert_default().get(bundle_id) {
+        return hit.clone();
+    }
+    let icon = read_app_icon(bundle_id);
+    // A running app's icon doesn't change; one that isn't running yet may start later.
+    if icon.is_some() {
+        ICONS.lock().ok()?.get_or_insert_default().insert(bundle_id.into(), icon.clone());
+    }
+    icon
+}
+
+fn read_app_icon(bundle_id: &str) -> Option<String> {
+    use objc2_app_kit::{NSBitmapImageFileType, NSBitmapImageRep, NSRunningApplication};
+    let apps = NSRunningApplication::runningApplicationsWithBundleIdentifier(&NSString::from_str(bundle_id));
+    let image = apps.firstObject()?.icon()?;
+    let mut rect = objc2_foundation::NSRect::new(objc2_foundation::NSPoint::new(0.0, 0.0), objc2_foundation::NSSize::new(64.0, 64.0));
+    // SAFETY: `rect` is a valid, writable NSRect for the call; no context or hints are passed.
+    let cg = unsafe { image.CGImageForProposedRect_context_hints(&mut rect, None, None) }?;
+    let rep = NSBitmapImageRep::initWithCGImage(NSBitmapImageRep::alloc(), &cg);
+    // SAFETY: an empty properties dictionary is valid for the PNG encoder.
+    let png = unsafe { rep.representationUsingType_properties(NSBitmapImageFileType::PNG, &NSDictionary::new()) }?;
+    Some(format!("data:image/png;base64,{}", base64(&png.to_vec())))
+}
+
+fn base64(bytes: &[u8]) -> String {
+    const A: &[u8; 64] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+    let mut out = String::with_capacity(bytes.len().div_ceil(3) * 4);
+    for c in bytes.chunks(3) {
+        let n = (c[0] as u32) << 16 | (*c.get(1).unwrap_or(&0) as u32) << 8 | *c.get(2).unwrap_or(&0) as u32;
+        for (i, shift) in [18, 12, 6, 0].into_iter().enumerate() {
+            out.push(if i <= c.len() { A[(n >> shift) as usize & 63] as char } else { '=' });
+        }
+    }
+    out
+}
+
+#[cfg(test)]
+mod icon_tests {
+    #[test]
+    fn base64_matches_rfc4648() {
+        for (raw, enc) in [("", ""), ("f", "Zg=="), ("fo", "Zm8="), ("foo", "Zm9v"), ("foob", "Zm9vYg=="), ("fooba", "Zm9vYmE="), ("foobar", "Zm9vYmFy")] {
+            assert_eq!(super::base64(raw.as_bytes()), enc);
+        }
     }
 }
