@@ -6,6 +6,7 @@ mod ipc;
 mod preview;
 mod quit;
 pub mod shell;
+mod trim;
 mod windows;
 
 use std::sync::Arc;
@@ -161,6 +162,8 @@ pub fn run() {
 
     let app = tauri::Builder::default()
         .invoke_handler(ipc.invoke_handler())
+        // The Trim window plays recordings from here (see `trim::media_protocol`).
+        .register_asynchronous_uri_scheme_protocol("cortex-media", trim::media_protocol)
         // Window state read from engine threads comes from this cache (see `ipc::VisibleWindows`).
         .on_window_event(|w, _| ipc::window_changed(w.app_handle()))
         .setup(move |app| {
@@ -185,7 +188,9 @@ pub fn run() {
             let floating = floating::Floating::new();
             let to_webviews = ipc::emitter(app.handle().clone());
             let to_windows = floating::observer(app.handle().clone(), floating.clone());
+            let to_library = trim::observer(app.handle().clone());
             let fan_out = move |o: Outbound| {
+                to_library(&o);
                 to_windows(&o);
                 to_webviews(o);
             };
@@ -212,6 +217,12 @@ pub fn run() {
             } else {
                 Arc::new(fan_out)
             };
+            // ~/Library/Caches/dev.roobi.cortex (timeline thumbnails and waveforms).
+            let cache_dir = match &debug.data_dir {
+                Some(d) => d.join("Caches"),
+                None => app.path().app_cache_dir()?,
+            };
+            app.manage(Arc::new(trim::Library::new(cache_dir, emit.clone())));
             let shell = Shell::open(opts, settings_path, emit.clone());
             if let Some(message) = &shell.load_error {
                 eprintln!("cortex: {message}");
@@ -225,6 +236,7 @@ pub fn run() {
             let settings = shell.settings();
             let shell = Arc::new(shell);
             app.manage(shell.clone());
+            trim::rescan_later(app.handle());
             windows::setup(app)?;
             let live = match preview::LivePreview::attach(app, shell.clone(), debug.preview_stats) {
                 Ok(p) => Some(p),

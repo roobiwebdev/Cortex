@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-trim-recording"
+description = "Enables the trim_recording command without any pre-configured scope."
+commands.allow = ["trim_recording"]
+
+[[permission]]
+identifier = "deny-trim-recording"
+description = "Denies the trim_recording command without any pre-configured scope."
+commands.deny = ["trim_recording"]

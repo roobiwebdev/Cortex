@@ -33,6 +33,12 @@ const COMMANDS: &[&str] = &[
     "window_ready",
     "push_toast",
     "open_window",
+    "list_recordings",
+    "rename_recording",
+    "recording_thumbnails",
+    "recording_waveform",
+    "trim_recording",
+    "cancel_trim",
 ];
 
 fn main() {

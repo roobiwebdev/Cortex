@@ -18,7 +18,7 @@
         "script-src": "'self'",
         "style-src": "'self'",
         "img-src": "'self' data: blob:",
-        "media-src": "'self' blob: mediastream:",
+        "media-src": "'self' blob: mediastream: cortex-media:",
         "font-src": "'self' data:",
         "connect-src": "ipc: http://ipc.localhost",
         "object-src": "'none'",
