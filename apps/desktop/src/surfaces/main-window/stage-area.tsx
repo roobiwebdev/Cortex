@@ -6,6 +6,7 @@ import { cn } from "@starter/ui/lib/utils";
 
 import { FreeDisk } from "../../components/progress-text";
 import { PreviewStage } from "../../components/preview-stage";
+import { hasNativePreview } from "../../lib/native-preview";
 import { engine, useEngine } from "../../lib/engine";
 import type { Codec, EngineState, Resolution } from "../../lib/types";
 import { formatSize, recordedOutput, sameOutput, sourcePixels } from "../../lib/output-size";
@@ -52,6 +53,8 @@ export function StageArea({
   const needsScreen = s.scene !== "cam";
   const denied = needsScreen && e.permissions.screen !== "granted";
   const aspect = targetAspect(e);
+  // In the app, an engine without a native preview gets a placeholder, not the mock desktop.
+  const inApp = hasNativePreview();
 
   return (
     <div className="flex min-h-0 flex-1 flex-col gap-2.5 px-4 pt-3">
@@ -71,8 +74,9 @@ export function StageArea({
                 <PermissionAsk permission="camera" state={e.permissions.camera} />
               )
             }
+            nativePreview={e.capabilities.preview === "native"}
           >
-            <MockScreen />
+            {inApp ? <NoPreview /> : <MockScreen />}
           </PreviewStage>
         )}
 
@@ -171,7 +175,7 @@ function ChipRow({ e, navigate }: { e: EngineState; navigate: (id: SurfaceId) =>
           {format}
         </button>
       </Tip>
-      {s.scene !== "screen" && s.cameraTrack && (
+      {s.scene !== "screen" && s.cameraTrack && e.capabilities.cameraTrack && (
         <span className={chip}>
           <SquareUser aria-hidden />
           Camera track
@@ -187,6 +191,19 @@ function ChipRow({ e, navigate }: { e: EngineState; navigate: (id: SurfaceId) =>
         <HardDrive aria-hidden />
         <FreeDisk /> free
       </span>
+    </div>
+  );
+}
+
+/** The stage when this computer's engine shows no live picture (Windows, for now). */
+function NoPreview() {
+  return (
+    <div className="grid size-full place-items-center bg-stage p-6 text-center">
+      <div className="flex max-w-xs flex-col items-center gap-2 text-[12.5px] text-muted-foreground">
+        <MonitorX aria-hidden className="size-6" />
+        <p className="text-foreground">No live preview on this computer yet</p>
+        <p>Recordings still capture what you picked. The camera overlay shows where it will go.</p>
+      </div>
     </div>
   );
 }

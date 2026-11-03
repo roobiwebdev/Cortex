@@ -73,22 +73,24 @@ export function CameraSection({ cameraStream }: { cameraStream: MediaStream | nu
         >
           <Switch id="set-mirror" checked={s.mirror} onCheckedChange={(mirror) => engine.update({ mirror })} />
         </SettingsRow>
-        <SettingsRow
-          label="Save camera as separate track"
-          badge="new"
-          htmlFor="set-camtrack"
-          hint={
-            s.container === "mov"
-              ? "Adds a clean second video track inside the .mov, so you can re-frame it later."
-              : "MP4 can't hold it: Cortex saves a side file next to the recording."
-          }
-        >
-          <Switch
-            id="set-camtrack"
-            checked={s.cameraTrack}
-            onCheckedChange={(cameraTrack) => engine.update({ cameraTrack })}
-          />
-        </SettingsRow>
+        {e.capabilities.cameraTrack && (
+          <SettingsRow
+            label="Save camera as separate track"
+            badge="new"
+            htmlFor="set-camtrack"
+            hint={
+              s.container === "mov"
+                ? "Adds a clean second video track inside the .mov, so you can re-frame it later."
+                : "MP4 can't hold it: Cortex saves a side file next to the recording."
+            }
+          >
+            <Switch
+              id="set-camtrack"
+              checked={s.cameraTrack}
+              onCheckedChange={(cameraTrack) => engine.update({ cameraTrack })}
+            />
+          </SettingsRow>
+        )}
       </SettingsGroup>
 
       <SettingsGroup
