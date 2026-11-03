@@ -5,6 +5,7 @@
     "lib": ["DOM", "DOM.Iterable", "ESNext"],
     "jsx": "react-jsx",
     "noEmit": true,
+    "allowImportingTsExtensions": true,
     "types": ["vite/client"]
   },
   "include": ["src/**/*.ts", "src/**/*.tsx", "vite.config.ts"]

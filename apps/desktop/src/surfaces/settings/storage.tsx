@@ -5,9 +5,9 @@ import { Button } from "@starter/ui/components/button";
 
 import { formatBytes } from "../../lib/format";
 import { useEngine } from "../../lib/engine";
+import { recordedOutput } from "../../lib/output-size";
 import { NamingRow, OutputFolderRow } from "./files";
 import { ChoiceSelect, SettingsGroup, SettingsPage, SettingsRow } from "./parts";
-import { autoBitrate } from "./recording";
 
 /** Rough size of a 1 TB-class internal disk, for the usage bar. */
 const DISK_BYTES = 494_000_000_000;
@@ -22,8 +22,9 @@ export function StorageSection() {
   const [revealed, setRevealed] = React.useState(false);
 
   const used = e.recordings.reduce((n, r) => n + r.bytes, 0);
-  const mbps = s.bitrateMbps ?? autoBitrate(s.resolution, s.fps);
-  const hoursLeft = e.freeDiskBytes / ((mbps * 1_000_000) / 8) / 3600;
+  // The bitrate the next recording uses; 20 Mb/s while the source size is unknown.
+  const bps = recordedOutput(e)?.bitsPerSecond ?? (s.bitrateMbps ?? 20) * 1_000_000;
+  const hoursLeft = e.freeDiskBytes / (bps / 8) / 3600;
   const usedPct = Math.min(100, ((DISK_BYTES - e.freeDiskBytes) / DISK_BYTES) * 100);
   const cortexPct = Math.max(0.6, (used / DISK_BYTES) * 100);
 
@@ -60,7 +61,7 @@ export function StorageSection() {
         </div>
         <SettingsRow
           label="Recording time left"
-          hint={`At ${mbps} Mb/s (current Recording settings). Cortex warns you below 5 GB.`}
+          hint={`At ${Math.round(bps / 1_000_000)} Mb/s (current Recording settings). Cortex warns you below 5 GB.`}
         >
           <span className="tabular text-[13px] font-medium">
             ≈ {hoursLeft >= 10 ? Math.round(hoursLeft) : hoursLeft.toFixed(1)} h

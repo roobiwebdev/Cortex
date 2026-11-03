@@ -4,30 +4,38 @@ import { Segmented } from "@starter/ui/components/segmented";
 import { Switch } from "@starter/ui/components/switch";
 
 import { engine, useEngine } from "../../lib/engine";
+import { autoBitrate, formatSize, outputSize, recordedOutput, RESOLUTIONS, sameOutput } from "../../lib/output-size";
 import type { Codec, Container, Fps, Resolution } from "../../lib/types";
 import { OutputFolderRow, NamingRow } from "./files";
 import { ChoiceSelect, NumberField, SettingsGroup, SettingsPage, SettingsRow } from "./parts";
 
-const RESOLUTIONS: ReadonlyArray<{ value: Resolution | "custom"; label: string; detail?: string }> = [
-  { value: "720p", label: "720p" },
-  { value: "1080p", label: "1080p" },
-  { value: "1440p", label: "1440p" },
-  { value: "4k", label: "4K" },
-  { value: "native", label: "Native", detail: "display size" },
-  { value: "custom", label: "Custom…" },
-];
+const RES_LABEL: Record<Resolution, string> = {
+  "720p": "720p",
+  "1080p": "1080p",
+  "1440p": "1440p",
+  "4k": "4K",
+  native: "Native (exact pixels)",
+};
 const FPS: readonly Fps[] = [24, 30, 60];
-const LONG_EDGE: Record<Resolution, number> = { "720p": 1280, "1080p": 1920, "1440p": 2560, "4k": 3840, native: 3456 };
 
-/** Estimated automatic bitrate (Mb/s), shown so "Auto" is not a black box. */
-export function autoBitrate(res: Resolution, fps: number) {
-  const px = LONG_EDGE[res] * Math.round((LONG_EDGE[res] * 9) / 16);
-  return Math.round((px * fps * 0.1) / 1_000_000);
-}
+/** Mb/s for display, from bits per second. */
+const toMbps = (bps: number) => Math.round(bps / 1_000_000);
 
 /** Recording: frame size, rate, codec, container, bitrate, cursor/clicks, countdown, output. Matrix SET-K01..06, K27/28, FLG-05/07/08/09/26/27. */
 export function RecordingSection() {
   const s = useEngine().settings;
+  const out = useEngine(recordedOutput, sameOutput);
+  const source = out?.source;
+  // Each choice shows the frame it records for the current target ("4K  3840×2482").
+  const resolutions = [
+    ...RESOLUTIONS.map((value) => ({
+      value,
+      label: RES_LABEL[value],
+      detail: source ? formatSize(outputSize(value, source)) : undefined,
+    })),
+    { value: "custom" as const, label: "Custom…" },
+  ];
+  const autoMbps = out ? toMbps(autoBitrate(out.codec, out.size, s.fps)) : null;
   // prototype-local: custom W×H is not in RecorderSettings yet (Resolution needs a { w, h } variant).
   const [custom, setCustom] = React.useState<{ on: boolean; w: number; h: number }>({ on: false, w: 1600, h: 1000 });
   const proRes = s.codec === "prores";
@@ -35,7 +43,10 @@ export function RecordingSection() {
   return (
     <SettingsPage title="Recording" subtitle="Frame size, smoothness and file format for new recordings.">
       <SettingsGroup title="Video">
-        <SettingsRow label="Resolution" hint="Scaled to fit inside this size. Cortex never upscales past your display.">
+        <SettingsRow
+          label="Resolution"
+          hint="4K is 3840 pixels on the long side, in your screen's shape. 720p to 1440p only shrink. Native keeps every pixel."
+        >
           <ChoiceSelect<Resolution | "custom">
             aria-label="Resolution"
             value={custom.on ? "custom" : s.resolution}
@@ -44,7 +55,7 @@ export function RecordingSection() {
               setCustom((c) => ({ ...c, on: false }));
               engine.update({ resolution: v });
             }}
-            options={RESOLUTIONS}
+            options={resolutions}
           />
         </SettingsRow>
         {custom.on && (
@@ -135,7 +146,9 @@ export function RecordingSection() {
           label="Bitrate"
           hint={
             s.bitrateMbps === null
-              ? `Automatic, about ${autoBitrate(s.resolution, s.fps)} Mb/s at these settings.`
+              ? autoMbps === null
+                ? "Automatic: scales with the frame size, frame rate and codec."
+                : `Automatic, about ${autoMbps} Mb/s at these settings.`
               : `About ${((s.bitrateMbps * 3600) / 8 / 1000).toFixed(1)} GB per hour.`
           }
         >
@@ -153,9 +166,7 @@ export function RecordingSection() {
           <Segmented<"auto" | "manual">
             aria-label="Bitrate mode"
             value={s.bitrateMbps === null ? "auto" : "manual"}
-            onValueChange={(m) =>
-              engine.update({ bitrateMbps: m === "auto" ? null : autoBitrate(s.resolution, s.fps) })
-            }
+            onValueChange={(m) => engine.update({ bitrateMbps: m === "auto" ? null : (autoMbps ?? 20) })}
             options={[
               { value: "auto", label: "Auto" },
               { value: "manual", label: "Manual" },
