@@ -13,6 +13,10 @@ Licensed under the MIT License or the Apache License, Version 2.0, at your optio
 Used in crates/rec-core, crates/rec-engine-macos and crates/rec-cli. The licence
 texts are in each crate's LICENSE-MIT and LICENSE-APACHE files.
 
+apps/site is a fork of Rec's website (the site/ folder of the same repository,
+rec-rs site (c) 2026 Michael Shimeles), under the same licence. Its licence texts
+are in apps/site/LICENSE-MIT and apps/site/LICENSE-APACHE.
+
 --------------------------------------------------------------------------------
 
 apple-cryptokit-rs 0.2.1

@@ -20,6 +20,7 @@ apps/web            Next.js 16 app (pages, layouts, route handlers, server actio
 apps/native         Expo app (talks to the same tRPC API)
 apps/docs           Fumadocs documentation site
 apps/desktop        Tauri 2 macOS recorder: React surfaces in src/, Rust shell in src-tauri/
+apps/site           SvelteKit landing page for the recorder, forked from Rec's site (keeps its own style; see docs/engineering/site.md)
 crates/rec-core     Recorder settings schema, engine API and state (platform-neutral, no Apple code)
 crates/rec-engine-macos   Rec's capture/encode engine (ScreenCaptureKit, AVFoundation, VideoToolbox)
 crates/rec-macos-ui Native window behaviour: panels, levels, capture exclusion
@@ -157,6 +158,11 @@ pnpm --filter desktop tauri build --debug   debug .app (sign with APPLE_SIGNING_
 pnpm --filter desktop ipc:bindings          regenerate apps/desktop/src/ipc/bindings.ts
 cargo test --workspace                      Rust tests (needs rustup on PATH)
 cargo run --release -p rec-engine-macos --example engine_smoke   test-pattern recording + ffprobe check
+
+pnpm --filter site dev                      landing page on http://localhost:3010
+pnpm --filter site build                    prerendered build (+ preview on :3010 with `pnpm --filter site preview`)
+pnpm --filter site check                    svelte-check
+pnpm --filter site og                       regenerate the share image (needs Google Chrome)
 ```
 
 To study how a feature works in an existing app or binary before building our own version, use the `reverse-engineer-anything` skill with the `rea` MCP server. Rebuild the behavior in this codebase following the rules above; never copy third-party code.
