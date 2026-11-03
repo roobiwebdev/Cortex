@@ -115,6 +115,10 @@ pub struct Options {
     pub streams: Vec<(String, String)>,
     /// Camera only, no screen capture: the camera's frames drive the clock.
     pub no_screen: bool,
+    /// Also record the raw camera (see `CameraTrack`).
+    pub camera_track: crate::writer::CameraTrack,
+    /// Tallest camera capture format (720 or 1080).
+    pub camera_height: usize,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, clap::ValueEnum)]
@@ -215,7 +219,31 @@ impl Session {
         let spec = VideoSpec { width: w, height: h, fps: o.fps, codec: o.codec, bitrate: o.bitrate, pixel_format };
         let compositor = o.webcam.as_ref().map(|_| Compositor::new(w, h, o.pip.clone()));
         let path = write.then_some(o.output.as_path());
-        let mut sink = Sink::new(path, &spec, o.system_audio, o.mic.is_some(), o.audio_layout, o.volumes, compositor, o.scene, preview)?;
+        // The camera track is opened at the size the camera will deliver:
+        // the running camera's when it is taken over, else the planned one.
+        let cam_track = match (&o.webcam, path) {
+            (Some(sel), Some(p)) if o.camera_track != crate::writer::CameraTrack::Off => {
+                let size = cam
+                    .as_ref()
+                    .filter(|c| Self::can_reuse(c, sel.as_deref(), o.camera_height))
+                    .map(|c| c.size)
+                    .or_else(|| Camera::planned_size(sel.as_deref(), o.camera_height));
+                size.and_then(|s| crate::writer::CamTrackSpec::for_output(o.camera_track, p, s))
+            }
+            _ => None,
+        };
+        let mut sink = Sink::new(
+            path,
+            &spec,
+            o.system_audio,
+            o.mic.is_some(),
+            o.audio_layout,
+            o.volumes,
+            compositor,
+            o.scene,
+            preview,
+            cam_track.as_ref(),
+        )?;
         if capture_size(o) != (w, h)
             && let Some(sc) = crate::scale::FrameScaler::new(w, h)
         {
@@ -265,6 +293,9 @@ impl Session {
                 }
                 if write {
                     let _ = std::fs::remove_file(&o.output);
+                    if let Some(sc) = cam_track.as_ref().and_then(|c| c.sidecar.as_ref()) {
+                        let _ = std::fs::remove_file(sc);
+                    }
                 }
                 return Err(e);
             }
@@ -306,13 +337,20 @@ impl Session {
         let (w, h) = o.size;
         let mut cam = cam;
         if let Some(sel) = &o.webcam {
-            let reuse = cam.take_if(|c| Camera::resolve(sel.as_deref()).is_ok_and(|id| id == c.id));
+            let reuse = cam.take_if(|c| Self::can_reuse(c, sel.as_deref(), o.camera_height));
             let c = match reuse {
                 Some(c) => {
                     c.retarget(self.shared.clone());
                     c
                 }
-                None => Camera::start(sel.as_deref(), self.shared.clone())?,
+                None => {
+                    // Release the old one first: some cameras won't open a
+                    // second session at another format.
+                    if let Some(old) = cam.take() {
+                        old.stop();
+                    }
+                    Camera::start(sel.as_deref(), o.camera_height, self.shared.clone())?
+                }
             };
             // Start the file once the camera shows a picture and has had
             // time to settle its exposure, so it doesn't open on black or
@@ -360,6 +398,12 @@ impl Session {
             (None, None) => bail!("internal: no capture target"),
         }
         Ok(())
+    }
+
+    /// A running camera can be taken over when it is the device `sel`
+    /// names, started for the same resolution.
+    fn can_reuse(c: &Camera, sel: Option<&str>, max_height: usize) -> bool {
+        c.max_height == max_height && Camera::resolve(sel).is_ok_and(|id| id == c.id)
     }
 
     fn stop_sources(&mut self) -> Option<anyhow::Error> {

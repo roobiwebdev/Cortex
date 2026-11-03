@@ -96,6 +96,14 @@ pub struct RecordArgs {
     /// Do not mirror the webcam.
     #[arg(long)]
     pub(crate) no_mirror: bool,
+    /// Also record the raw (unmirrored) camera: `file` = a second video
+    /// track in the .mov (a `<name>.camera.mov` sidecar for .mp4),
+    /// `sidecar` = always the separate file.
+    #[arg(long, value_enum, default_value_t = writer::CameraTrack::Off)]
+    pub(crate) camera_track: writer::CameraTrack,
+    /// Camera capture resolution (the best camera format up to this height).
+    #[arg(long, default_value = "1080p", value_parser = ["720p", "1080p"])]
+    pub(crate) camera_resolution: String,
     /// Hide the mouse cursor.
     #[arg(long)]
     pub(crate) no_cursor: bool,
@@ -338,6 +346,8 @@ pub fn prepare(a: RecordArgs) -> Result<(record::Options, Option<screen::Target>
         volumes: [a.system_gain, a.mic_gain].map(|db| mixer::Volume { db, muted: false }),
         mic_backend: if a.test_pattern || no_screen { record::MicBackend::Avcapture } else { a.mic_backend },
         no_screen,
+        camera_track: a.camera_track,
+        camera_height: if a.camera_resolution == "720p" { 720 } else { 1080 },
         scene,
         system_offset_ms: a.system_audio_offset_ms,
         mic_offset_ms: a.mic_offset_ms,
