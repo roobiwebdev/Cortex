@@ -1017,7 +1017,9 @@ dependencies = [
 name = "cortex-desktop"
 version = "0.1.0"
 dependencies = [
+ "glib 0.18.5",
  "rec-core",
+ "rec-engine-linux",
  "rec-engine-macos",
  "rec-engine-windows",
  "rec-macos-ui",
