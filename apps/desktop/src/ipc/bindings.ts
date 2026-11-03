@@ -28,6 +28,11 @@ export const commands = {
 	getSettings: () => __TAURI_INVOKE<RecorderSettings_Serialize>("get_settings"),
 	/**  Every capture source the engine can see right now. */
 	devices: () => typedError<Devices, EngineError>(__TAURI_INVOKE("devices")),
+	/**
+	 *  A running app's icon (small PNG `data:` URL) for the app pickers; None when it has
+	 *  none. Icons stay out of the engine state so its events stay small.
+	 */
+	appIcon: (bundleId: string) => typedError<string | null, EngineError>(__TAURI_INVOKE("app_icon", { bundleId })),
 	/**  Show the system prompt; resolves when answered (or after 60 s). */
 	requestPermission: (permission: Permission) => typedError<PermissionState, EngineError>(__TAURI_INVOKE("request_permission", { permission })),
 	/**
@@ -118,6 +123,10 @@ export type AudioTracks = "both" | "mix" | "stems";
 
 export type CameraResolution = "720p" | "1080p";
 
+/**
+ *  A running app with on-screen windows. Its icon is fetched on demand by bundle
+ *  ID (the shell's `app_icon` command), so state events stay small.
+ */
 export type CaptureApp = {
 	bundleId: string,
 	name: string,
@@ -125,14 +134,27 @@ export type CaptureApp = {
 };
 
 /**  What is being captured. `displayId` is the 1-based display number (`rec devices`). */
-export type CaptureTarget = { kind: "display"; displayId: number } | { kind: "window"; windowId: number } | { kind: "app"; bundleId: string } | 
-/**  Points from the display's top-left corner. */
+export type CaptureTarget = { kind: "display"; displayId: number } | { kind: "window"; windowId: number } | 
+/**  Every window of one app (new ones too), on the display holding its frontmost window. */
+{ kind: "app"; bundleId: string } | 
+/**
+ *  Part of a display, in points (not pixels) from the display's top-left
+ *  corner, like ScreenCaptureKit's `sourceRect` and `rec-rs --region`.
+ *  Pixels = points × the display's `scale` (`state::Display`).
+ */
 { kind: "region"; displayId: number; x: number; y: number; w: number; h: number };
 
+/**
+ *  An on-screen window. `frame` is in points from the top-left of display
+ *  `displayId` (the display holding most of it), as `CaptureTarget::Region` uses.
+ */
 export type CaptureWindow = {
 	id: number,
 	app: string,
 	title: string,
+	bundleId: string,
+	displayId: number,
+	frame: Rect,
 };
 
 /**  `Auto`: H.264 up to 1080p, HEVC above (Rec's rule). */
@@ -149,12 +171,18 @@ export type Devices = {
 	mics: InputDevice[],
 };
 
-/**  A display; `id` is the 1-based display number (`CaptureTarget::Display`). */
+/**
+ *  A display; `id` is the 1-based display number (`CaptureTarget::Display`).
+ *  `width` and `height` are pixels; `frame` is its place on the desktop in points
+ *  (the main display's top-left is 0,0), so `scale` = pixels per point.
+ */
 export type Display = {
 	id: number,
 	name: string,
 	width: number,
 	height: number,
+	frame: Rect,
+	scale: number,
 };
 
 export type EngineError = 
@@ -318,6 +346,10 @@ export type RecorderSettings_Deserialize = {
 	/**  None = automatic. */
 	bitrateMbps?: number | null,
 	target?: CaptureTarget,
+	/**  Keep the last area per display, so the region picker reopens on it. */
+	rememberRegion?: boolean,
+	/**  Filled in by `validate` from a `Region` target while `remember_region` is on. */
+	lastRegions?: RegionMemory[],
 	scene?: Scene,
 	/**  Camera unique ID; None = system default. */
 	cameraId?: string | null,
@@ -385,6 +417,10 @@ export type RecorderSettings_Serialize = {
 	/**  None = automatic. */
 	bitrateMbps: number | null,
 	target: CaptureTarget,
+	/**  Keep the last area per display, so the region picker reopens on it. */
+	rememberRegion: boolean,
+	/**  Filled in by `validate` from a `Region` target while `remember_region` is on. */
+	lastRegions: RegionMemory[],
 	scene: Scene,
 	/**  Camera unique ID; None = system default. */
 	cameraId: string | null,
@@ -460,6 +496,23 @@ export type Recording = {
 
 /**  A recording was written. */
 export type RecordingFinishedEvent = Recording;
+
+/**  A rectangle in points (macOS screen coordinates: origin top-left, y down). */
+export type Rect = {
+	x: number,
+	y: number,
+	w: number,
+	h: number,
+};
+
+/**  The last area chosen on one display, in points (as `CaptureTarget::Region`). */
+export type RegionMemory = {
+	displayId: number,
+	x: number,
+	y: number,
+	w: number,
+	h: number,
+};
 
 /**  The replay buffer was saved to `path`. */
 export type ReplaySavedEvent = {

@@ -83,11 +83,14 @@ pub enum CaptureTarget {
         #[serde(rename = "windowId")]
         window_id: u32,
     },
+    /// Every window of one app (new ones too), on the display holding its frontmost window.
     App {
         #[serde(rename = "bundleId")]
         bundle_id: String,
     },
-    /// Points from the display's top-left corner.
+    /// Part of a display, in points (not pixels) from the display's top-left
+    /// corner, like ScreenCaptureKit's `sourceRect` and `rec-rs --region`.
+    /// Pixels = points × the display's `scale` (`state::Display`).
     Region {
         #[serde(rename = "displayId")]
         display_id: u32,
@@ -103,6 +106,21 @@ impl Default for CaptureTarget {
         CaptureTarget::Display { display_id: 1 }
     }
 }
+
+/// The last area chosen on one display, in points (as `CaptureTarget::Region`).
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(feature = "specta", derive(specta::Type))]
+#[serde(rename_all = "camelCase")]
+pub struct RegionMemory {
+    pub display_id: u32,
+    pub x: f64,
+    pub y: f64,
+    pub w: f64,
+    pub h: f64,
+}
+
+/// At most this many displays keep a remembered area.
+pub const REGION_MEMORY_MAX: usize = 8;
 
 /// Overlay placement: snapped to a corner, or free (centre as 0..1 of the frame).
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
@@ -149,6 +167,10 @@ pub struct RecorderSettings {
     /// None = automatic.
     pub bitrate_mbps: Option<f64>,
     pub target: CaptureTarget,
+    /// Keep the last area per display, so the region picker reopens on it.
+    pub remember_region: bool,
+    /// Filled in by `validate` from a `Region` target while `remember_region` is on.
+    pub last_regions: Vec<RegionMemory>,
     pub scene: Scene,
     /// Camera unique ID; None = system default.
     pub camera_id: Option<String>,
@@ -222,6 +244,8 @@ impl Default for RecorderSettings {
             fps: 60,
             bitrate_mbps: None,
             target: CaptureTarget::default(),
+            remember_region: true,
+            last_regions: vec![],
             scene: Scene::ScreenCam,
             camera_id: None,
             camera_track: true,
@@ -360,6 +384,7 @@ impl RecorderSettings {
                 f.push("target");
             }
         }
+        self.remember_last_region(f);
         clamp_f32(&mut self.system_gain_db, GAIN_DB_RANGE, "systemGainDb", f);
         clamp_f32(&mut self.mic_gain_db, GAIN_DB_RANGE, "micGainDb", f);
         if let Some(o) = &mut self.system_offset_ms {
@@ -438,6 +463,48 @@ impl RecorderSettings {
     }
 
     /// The output folder with a leading `~` replaced by `home`.
+    /// Keep `last_regions` sane, and record a `Region` target as its display's
+    /// last area (most recent first). Clears the list when remembering is off.
+    fn remember_last_region(&mut self, f: &mut Vec<&'static str>) {
+        if !self.remember_region {
+            if !self.last_regions.is_empty() {
+                self.last_regions.clear();
+            }
+            return;
+        }
+        let before = self.last_regions.len();
+        self.last_regions.retain(|r| {
+            r.display_id > 0
+                && [r.x, r.y, r.w, r.h].iter().all(|v| v.is_finite())
+                && r.w > 0.0
+                && r.h > 0.0
+        });
+        if self.last_regions.len() != before {
+            f.push("lastRegions");
+        }
+        if let CaptureTarget::Region {
+            display_id,
+            x,
+            y,
+            w,
+            h,
+        } = self.target
+        {
+            self.last_regions.retain(|r| r.display_id != display_id);
+            self.last_regions.insert(
+                0,
+                RegionMemory {
+                    display_id,
+                    x,
+                    y,
+                    w,
+                    h,
+                },
+            );
+        }
+        self.last_regions.truncate(REGION_MEMORY_MAX);
+    }
+
     pub fn output_dir_in(&self, home: &std::path::Path) -> std::path::PathBuf {
         match self.output_dir.strip_prefix('~') {
             Some(rest) => home.join(rest.trim_start_matches('/')),
@@ -515,7 +582,7 @@ mod tests {
         assert_eq!(v["micBackend"], "sck");
         assert_eq!(
             v.as_object().unwrap().len(),
-            50,
+            52,
             "one key per types.ts field"
         );
     }
@@ -619,6 +686,40 @@ mod tests {
         s.replay_secs = 900;
         s.validate();
         assert_eq!((s.pip_size, s.replay_secs), (0.1, 300));
+    }
+
+    #[test]
+    fn region_targets_are_remembered_per_display() {
+        let region = |display_id, x| CaptureTarget::Region {
+            display_id,
+            x,
+            y: 10.0,
+            w: 640.0,
+            h: 360.0,
+        };
+        let mut s = RecorderSettings {
+            target: region(1, 0.0),
+            ..Default::default()
+        };
+        assert!(s.validate().is_empty(), "remembering is not a repair");
+        s.target = region(2, 5.0);
+        s.validate();
+        s.target = region(1, 20.0);
+        s.validate();
+        let got: Vec<(u32, f64)> = s.last_regions.iter().map(|r| (r.display_id, r.x)).collect();
+        assert_eq!(got, vec![(1, 20.0), (2, 5.0)]);
+        // A bad entry from disk is dropped; turning remembering off forgets all.
+        s.last_regions.push(RegionMemory {
+            display_id: 3,
+            x: 0.0,
+            y: 0.0,
+            w: -1.0,
+            h: 1.0,
+        });
+        assert_eq!(s.validate(), vec!["lastRegions"]);
+        s.remember_region = false;
+        s.validate();
+        assert!(s.last_regions.is_empty());
     }
 
     #[test]

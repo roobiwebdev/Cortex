@@ -94,6 +94,13 @@ pub struct Settings {
     /// window IDs change between launches.
     #[serde(skip)]
     pub window: Option<u32>,
+    /// Part of the display to record: X, Y, W, H in points (`--region`).
+    /// Set by the Cortex GUI; Rec's app has no setting for it.
+    #[serde(skip)]
+    pub region: Option<[f64; 4]>,
+    /// App to record, by bundle ID (`--app`). Set by the Cortex GUI.
+    #[serde(skip)]
+    pub app: Option<String>,
 }
 
 impl Default for Settings {
@@ -139,6 +146,8 @@ impl Default for Settings {
             stream_cbr: true,
             stream_audio_kbps: 192,
             window: None,
+            region: None,
+            app: None,
         }
     }
 }
@@ -331,6 +340,10 @@ impl Settings {
         a.extend(["--display".into(), self.display.to_string()]);
         if let Some(w) = self.window {
             a.extend(["--window".into(), w.to_string()]);
+        } else if let Some(app) = &self.app {
+            a.extend(["--app".into(), app.clone()]);
+        } else if let Some([x, y, w, h]) = self.region {
+            a.extend(["--region".into(), format!("{x},{y},{w},{h}")]);
         }
         if let Some(c) = self.codec {
             a.extend(["--codec".into(), value(c)]);

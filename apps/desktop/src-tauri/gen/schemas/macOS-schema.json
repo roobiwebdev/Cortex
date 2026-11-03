@@ -177,6 +177,12 @@
       "description": "Permission identifier",
       "oneOf": [
         {
+          "description": "Enables the app_icon command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-app-icon",
+          "markdownDescription": "Enables the app_icon command without any pre-configured scope."
+        },
+        {
           "description": "Enables the cancel_countdown command without any pre-configured scope.",
           "type": "string",
           "const": "allow-cancel-countdown",
@@ -355,6 +361,12 @@
           "type": "string",
           "const": "allow-window-ready",
           "markdownDescription": "Enables the window_ready command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the app_icon command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-app-icon",
+          "markdownDescription": "Denies the app_icon command without any pre-configured scope."
         },
         {
           "description": "Denies the cancel_countdown command without any pre-configured scope.",

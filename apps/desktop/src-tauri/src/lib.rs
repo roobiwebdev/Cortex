@@ -33,6 +33,9 @@ use crate::shell::{Outbound, Shell};
 ///   and wait 5 s after a debug recording so its toast can be captured.
 /// - `CORTEX_DEBUG_OPEN=menubar|region|settings|onboarding|trim`: open that window 2 s after
 ///   launch (debug builds), to check windows that are built on demand.
+/// - `CORTEX_DEBUG_TARGET`: what to capture, written to the settings at launch. Only with
+///   `CORTEX_DEBUG_DATA_DIR`, so the user's settings are never touched. One of
+///   `display:N`, `window:ID|substring`, `app:BUNDLE_ID`, `region:N,X,Y,W,H` (points).
 ///
 /// Used by `scripts/desktop/perf-compare.sh`.
 #[derive(Default)]
@@ -47,6 +50,7 @@ struct DebugRun {
     capturable: bool,
     #[cfg_attr(not(debug_assertions), allow(dead_code))]
     open: Option<String>,
+    target: Option<String>,
 }
 
 impl DebugRun {
@@ -76,7 +80,56 @@ impl DebugRun {
             front: var("CORTEX_DEBUG_FRONT").is_some_and(|v| v == "1"),
             capturable: var("CORTEX_DEBUG_CAPTURABLE").is_some_and(|v| v == "1"),
             open: var("CORTEX_DEBUG_OPEN"),
+            target: var("CORTEX_DEBUG_TARGET"),
         }
+    }
+}
+
+/// `CORTEX_DEBUG_TARGET` as a capture target. A window is an ID or the largest window
+/// whose "app title" contains the text (any case).
+fn debug_target(
+    spec: &str,
+    windows: &[rec_core::state::CaptureWindow],
+) -> Option<rec_core::settings::CaptureTarget> {
+    use rec_core::settings::CaptureTarget;
+    let (kind, rest) = spec.split_once(':')?;
+    match kind {
+        "display" => Some(CaptureTarget::Display {
+            display_id: rest.parse().ok()?,
+        }),
+        "app" => Some(CaptureTarget::App {
+            bundle_id: rest.into(),
+        }),
+        "window" => {
+            let lower = rest.to_lowercase();
+            let id = rest.parse::<u32>().ok().or_else(|| {
+                windows
+                    .iter()
+                    .filter(|w| {
+                        format!("{} {}", w.app, w.title)
+                            .to_lowercase()
+                            .contains(&lower)
+                    })
+                    .max_by(|a, b| (a.frame.w * a.frame.h).total_cmp(&(b.frame.w * b.frame.h)))
+                    .map(|w| w.id)
+            })?;
+            Some(CaptureTarget::Window { window_id: id })
+        }
+        "region" => {
+            let v: Vec<f64> = rest
+                .split(',')
+                .map(|x| x.trim().parse().ok())
+                .collect::<Option<_>>()?;
+            let [d, x, y, w, h] = v[..] else { return None };
+            Some(CaptureTarget::Region {
+                display_id: d as u32,
+                x,
+                y,
+                w,
+                h,
+            })
+        }
+        _ => None,
     }
 }
 
@@ -95,6 +148,65 @@ fn debug_open(app: &tauri::AppHandle, what: &str) {
     };
     if let Err(e) = r {
         eprintln!("cortex: CORTEX_DEBUG_OPEN={what} failed: {e}");
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use rec_core::settings::CaptureTarget;
+    use rec_core::state::{CaptureWindow, Rect};
+
+    #[test]
+    fn debug_targets_parse() {
+        let w = |id, app: &str, w| CaptureWindow {
+            id,
+            app: app.into(),
+            title: "t".into(),
+            bundle_id: String::new(),
+            display_id: 1,
+            frame: Rect {
+                x: 0.0,
+                y: 0.0,
+                w,
+                h: 100.0,
+            },
+        };
+        let ws = [
+            w(5, "Finder", 100.0),
+            w(6, "Finder", 300.0),
+            w(7, "Safari", 900.0),
+        ];
+        let t = |s| super::debug_target(s, &ws);
+        assert_eq!(
+            t("window:finder"),
+            Some(CaptureTarget::Window { window_id: 6 })
+        );
+        assert_eq!(
+            t("window:42"),
+            Some(CaptureTarget::Window { window_id: 42 })
+        );
+        assert_eq!(
+            t("display:2"),
+            Some(CaptureTarget::Display { display_id: 2 })
+        );
+        assert_eq!(
+            t("region:1,10,20,640,360"),
+            Some(CaptureTarget::Region {
+                display_id: 1,
+                x: 10.0,
+                y: 20.0,
+                w: 640.0,
+                h: 360.0
+            })
+        );
+        assert_eq!(
+            t("app:com.apple.finder"),
+            Some(CaptureTarget::App {
+                bundle_id: "com.apple.finder".into()
+            })
+        );
+        assert_eq!(t("region:1,2"), None);
+        assert_eq!(t("nope"), None);
     }
 }
 
@@ -160,6 +272,23 @@ pub fn run() {
                 Arc::new(fan_out)
             };
             let shell = Shell::open(opts, settings_path, emit.clone());
+            // Only into a scratch settings folder: never the user's own settings.
+            if let (Some(spec), Some(_)) = (&debug.target, &debug.data_dir) {
+                let devices = shell.devices();
+                match debug_target(spec, &devices.windows) {
+                    Some(target) => {
+                        let s = rec_core::RecorderSettings {
+                            target,
+                            ..shell.settings()
+                        };
+                        match shell.update_settings(s) {
+                            Ok(s) => eprintln!("cortex: debug target {:?}", s.target),
+                            Err(e) => eprintln!("cortex: debug target refused: {e}"),
+                        }
+                    }
+                    None => eprintln!("cortex: CORTEX_DEBUG_TARGET={spec} not understood"),
+                }
+            }
             if let Some(message) = &shell.load_error {
                 eprintln!("cortex: {message}");
                 emit(Outbound::Error {

@@ -15,6 +15,7 @@ const COMMANDS: &[&str] = &[
     "update_settings",
     "get_settings",
     "devices",
+    "app_icon",
     "request_permission",
     "check_permissions",
     "relaunch",
