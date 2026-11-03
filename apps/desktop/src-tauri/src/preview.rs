@@ -203,7 +203,11 @@ mod tests {
             (false, true, false),
             (false, false, false),
         ] {
-            assert_eq!(should_preview(hole, visible), on, "hole={hole} visible={visible}");
+            assert_eq!(
+                should_preview(hole, visible),
+                on,
+                "hole={hole} visible={visible}"
+            );
         }
     }
 }
