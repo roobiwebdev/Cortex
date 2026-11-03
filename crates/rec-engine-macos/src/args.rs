@@ -199,8 +199,7 @@ fn even(x: f64) -> usize {
 
 /// Output size for `s` (a preset or WxH) and a source of `native` pixels.
 /// Presets follow `rec_core::output::output_size` (4K is 3840 on the long
-/// side, upscaling if needed, within 3840x2160's pixels for H.264; the others
-/// only shrink). WxH is a bounding box:
+/// side, upscaling if needed, except with H.264; the others only shrink). WxH is a bounding box:
 /// the source's aspect ratio fitted inside it, never larger than the source.
 /// Even dimensions, and a frame with the source's shape fills edge to edge:
 /// no letterbox or pillarbox bars, nothing cropped.
@@ -547,8 +546,8 @@ mod tests {
         assert_eq!(parse_size("1440p", (1201, 801), None).unwrap(), (1200, 800));
         assert_eq!(parse_size("1600x1000", (1201, 801), None).unwrap(), (1200, 800));
         assert_eq!(parse_size("4k", (1201, 801), None).unwrap(), (3840, 2560));
-        // H.264 4K stays within 3840x2160's pixels.
-        assert_eq!(parse_size("4k", native, Some(Codec::H264)).unwrap(), (3582, 2314));
+        // H.264 4K fits inside 3840x2160 and never upscales.
+        assert_eq!(parse_size("4k", native, Some(Codec::H264)).unwrap(), (3342, 2160));
         // Portrait: the preset names the width.
         assert_eq!(parse_size("1080p", (2160, 3840), None).unwrap(), (1080, 1920));
         for (sz, n) in [("1080p", (3456, 2234)), ("720p", (4112, 2658)), ("4k", (5120, 2880)), ("1440p", (3144, 1588))] {

@@ -16,11 +16,6 @@ use crate::settings::{Codec, Resolution};
 /// The long side of a "4K" frame.
 pub const UHD_WIDTH: u32 = 3840;
 
-/// The most pixels an H.264 "4K" frame gets: 3840×2160, H.264 level 5.2. Apple's
-/// hardware H.264 encoder drops about 9% of frames at 3840×2482 60 fps (level 6.0);
-/// HEVC keeps up.
-pub const H264_MAX_PIXELS: u64 = 3840 * 2160;
-
 /// Frames larger than this many pixels (1440p) count as 4K-class for the bitrate.
 pub const UHD_CLASS_MIN_PIXELS: u64 = 2560 * 1440;
 
@@ -68,33 +63,29 @@ fn even(x: f64) -> u32 {
 /// - `R4k`: the long side is 3840, up or down. A landscape source is 3840 wide
 ///   (3456×2234 → 3840×2482, 5120×2880 → 3840×2160, 3840×2160 unchanged); a portrait
 ///   one is 3840 tall. The same as fitting inside 3840×3840 with upscaling allowed.
-///   With H.264 the frame also stays within 3840×2160's pixel count
-///   (`H264_MAX_PIXELS`): 3456×2234 → 3582×2314. Auto picks HEVC for these sizes.
+///   With the H.264 codec, 4K keeps the earlier rule: fitted inside 3840×2160, never
+///   upscaled (3456×2234 → 3342×2160). Apple's hardware H.264 encoder dropped 5 to 9%
+///   of frames at 60 fps with 3582×2314 and 3840×2482 on an M-series MacBook Pro, and
+///   none at 3456×2234 or below; HEVC kept every frame at 3840×2482. Auto picks HEVC.
 pub fn output_size(res: Resolution, source: (u32, u32), codec: Codec) -> (u32, u32) {
     // The capture's own size is the source rounded down to even.
     let (nw, nh) = ((source.0 & !1).max(2), (source.1 & !1).max(2));
     let (fw, fh) = (nw as f64, nh as f64);
     let k = match res {
         Resolution::Native => return (nw, nh),
-        Resolution::R4k => UHD_WIDTH as f64 / fw.max(fh),
-        Resolution::R720p | Resolution::R1080p | Resolution::R1440p => {
+        Resolution::R4k if codec != Codec::H264 => UHD_WIDTH as f64 / fw.max(fh),
+        _ => {
             let (bw, bh) = match res {
                 Resolution::R720p => (1280.0, 720.0),
                 Resolution::R1080p => (1920.0, 1080.0),
-                _ => (2560.0, 1440.0),
+                Resolution::R1440p => (2560.0, 1440.0),
+                _ => (3840.0, 2160.0),
             };
             let (bw, bh) = if nh > nw { (bh, bw) } else { (bw, bh) };
             (bw / fw).min(bh / fh).min(1.0)
         }
     };
-    let (w, h) = (even(fw * k), even(fh * k));
-    if res == Resolution::R4k && codec == Codec::H264 && w as u64 * h as u64 > H264_MAX_PIXELS {
-        // Largest frame of the source's shape under the cap: round down, not to nearest.
-        let k = (H264_MAX_PIXELS as f64 / (fw * fh)).sqrt();
-        let down = |x: f64| (((x / 2.0).floor() as u32) * 2).max(2);
-        return (down(fw * k), down(fh * k));
-    }
-    (w, h)
+    (even(fw * k), even(fh * k))
 }
 
 #[cfg(test)]
@@ -185,10 +176,10 @@ mod tests {
         // Odd sources: even output (1001×601 → 1000×600 → ×3.84).
         assert_eq!(output_size(R4k, (1001, 601), Codec::Hevc), (3840, 2304));
         assert_eq!(output_size(R4k, (1235, 777), Codec::Hevc), (3840, 2414));
-        // H.264 stays within 3840×2160's pixels, same shape.
-        assert_eq!(output_size(R4k, (3456, 2234), Codec::H264), (3582, 2314));
+        // H.264: fitted inside 3840×2160, never upscaled (the encoder's real-time limit).
+        assert_eq!(output_size(R4k, (3456, 2234), Codec::H264), (3342, 2160));
         assert_eq!(output_size(R4k, (5120, 2880), Codec::H264), (3840, 2160));
-        assert_eq!(output_size(R4k, (1920, 1080), Codec::H264), (3840, 2160));
+        assert_eq!(output_size(R4k, (1920, 1080), Codec::H264), (1920, 1080));
         // Auto and ProRes get the full frame.
         assert_eq!(output_size(R4k, (3456, 2234), Codec::Auto), (3840, 2482));
         assert_eq!(output_size(R4k, (3456, 2234), Codec::Prores), (3840, 2482));
