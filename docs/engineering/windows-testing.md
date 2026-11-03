@@ -103,6 +103,12 @@ Do each item. After each recording, open the file and check it plays. `ffprobe` 
 - [ ] **Cursor**: with Settings › Recording › cursor off, the pointer is missing from the file; with it on, the pointer is there.
 - [ ] **Capture border**: on Windows 11 there should be no yellow border around the captured display or window. On Windows 10 it shows; that is expected.
 
+**Floating windows**
+
+- [ ] During a recording with another app in front, the HUD stays on top. Its Pause and Stop buttons work when clicked, and the other app keeps the keyboard focus.
+- [ ] The region picker takes Enter (confirm) and Esc (cancel).
+- [ ] The countdown can't be clicked: clicks go to the window under it.
+
 **Cortex stays out of the recording**
 
 - [ ] Record a display while the main window, the HUD and a toast are visible on it. None of them may appear in the file.

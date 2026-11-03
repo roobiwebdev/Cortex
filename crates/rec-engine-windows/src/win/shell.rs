@@ -57,13 +57,18 @@ pub fn exclude_own_windows() -> usize {
         .count()
 }
 
-/// A panel that never takes focus, has no taskbar button, and stays above other windows.
-pub fn make_floating(raw: isize) -> Result<(), String> {
+/// A panel with no taskbar button that stays above other windows. `no_activate`: it never
+/// takes focus either (HUD, toasts, countdown); panels that take typing (the region
+/// picker's Enter and Esc, the menu bar panel) leave it off.
+pub fn make_floating(raw: isize, no_activate: bool) -> Result<(), String> {
     let h = hwnd(raw);
     // SAFETY: style reads and writes on one of this process's windows.
     unsafe {
         let ex = WINDOW_EX_STYLE(GetWindowLongW(h, GWL_EXSTYLE) as u32);
-        let want = ex | WS_EX_NOACTIVATE | WS_EX_TOOLWINDOW;
+        let mut want = ex | WS_EX_TOOLWINDOW;
+        if no_activate {
+            want |= WS_EX_NOACTIVATE;
+        }
         if want != ex {
             SetWindowLongW(h, GWL_EXSTYLE, want.0 as i32);
         }
