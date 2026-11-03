@@ -39,6 +39,17 @@ pub enum Codec {
     Prores,
 }
 
+impl Codec {
+    /// The same codec in rec-core's settings enum (its bitrate rules).
+    pub fn as_core(self) -> rec_core::settings::Codec {
+        match self {
+            Codec::H264 => rec_core::settings::Codec::H264,
+            Codec::Hevc => rec_core::settings::Codec::Hevc,
+            Codec::Prores => rec_core::settings::Codec::Prores,
+        }
+    }
+}
+
 #[derive(Clone, Debug)]
 pub struct VideoSpec {
     pub width: usize,
@@ -1208,11 +1219,7 @@ fn open_output(
 /// size, with a bitrate for ~30 real frames a second of camera content
 /// (repeated frames on a 60 fps grid cost almost nothing).
 fn camera_video_spec(v: &VideoSpec, c: &CamTrackSpec) -> VideoSpec {
-    let bpp = match v.codec {
-        Codec::H264 => 0.16,
-        Codec::Hevc => 0.10,
-        Codec::Prores => 0.0,
-    };
+    let bpp = rec_core::output::bits_per_pixel(v.codec.as_core(), (c.width as u32, c.height as u32));
     let bitrate = ((c.width * c.height) as f64 * 30.0 * bpp) as u64;
     VideoSpec {
         width: c.width,
