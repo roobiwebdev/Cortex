@@ -272,23 +272,6 @@ pub fn run() {
                 Arc::new(fan_out)
             };
             let shell = Shell::open(opts, settings_path, emit.clone());
-            // Only into a scratch settings folder: never the user's own settings.
-            if let (Some(spec), Some(_)) = (&debug.target, &debug.data_dir) {
-                let devices = shell.devices();
-                match debug_target(spec, &devices.windows) {
-                    Some(target) => {
-                        let s = rec_core::RecorderSettings {
-                            target,
-                            ..shell.settings()
-                        };
-                        match shell.update_settings(s) {
-                            Ok(s) => eprintln!("cortex: debug target {:?}", s.target),
-                            Err(e) => eprintln!("cortex: debug target refused: {e}"),
-                        }
-                    }
-                    None => eprintln!("cortex: CORTEX_DEBUG_TARGET={spec} not understood"),
-                }
-            }
             if let Some(message) = &shell.load_error {
                 eprintln!("cortex: {message}");
                 emit(Outbound::Error {
@@ -354,6 +337,25 @@ pub fn run() {
             // Debug builds only: release builds keep every floating window out of captures.
             let capturable = debug.capturable && cfg!(debug_assertions);
             floating::init(app, floating, &settings, capturable);
+            // After the floating windows are set up: a settings change already drives them.
+            // Only into a scratch settings folder: never the user's own settings.
+            if let (Some(spec), Some(_)) = (&debug.target, &debug.data_dir) {
+                let shell = app.state::<Arc<Shell>>();
+                let devices = shell.devices();
+                match debug_target(spec, &devices.windows) {
+                    Some(target) => {
+                        let s = rec_core::RecorderSettings {
+                            target,
+                            ..shell.settings()
+                        };
+                        match shell.update_settings(s) {
+                            Ok(s) => eprintln!("cortex: debug target {:?}", s.target),
+                            Err(e) => eprintln!("cortex: debug target refused: {e}"),
+                        }
+                    }
+                    None => eprintln!("cortex: CORTEX_DEBUG_TARGET={spec} not understood"),
+                }
+            }
             // On the main thread, so this runs now: levels reach the main window at once.
             ipc::refresh_visible(app.handle());
             quit::watch_signals(app.handle());
