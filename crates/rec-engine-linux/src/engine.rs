@@ -321,7 +321,13 @@ impl Inner {
                         id: name.clone(),
                         name,
                         path: m.file.display().to_string(),
-                        duration_secs: stats.video_frames as f64 / f64::from(m.fps.max(1)),
+                        // The timeline's length (pauses cut): frames dropped under load leave
+                        // gaps in the file but do not shorten it.
+                        duration_secs: if stats.recorded_secs > 0.0 {
+                            stats.recorded_secs
+                        } else {
+                            stats.video_frames as f64 / f64::from(m.fps.max(1))
+                        },
                         bytes: std::fs::metadata(&m.file).map(|x| x.len()).unwrap_or(0),
                         created_at: m.created_ms,
                         width: m.size.0,
@@ -351,6 +357,11 @@ impl Inner {
         };
         if let Some(a) = &self.recording {
             p.elapsed_secs = a.sess.recorded_secs();
+            // Frames the timeline should have minus frames that reached the encoder; half a
+            // second of slack covers the pipeline's latency.
+            let expected = (p.elapsed_secs * f64::from(a.meta.fps)) as u64;
+            p.dropped_frames =
+                expected.saturating_sub(a.sess.video_frames() + u64::from(a.meta.fps / 2));
             p.bytes_written = std::fs::metadata(&a.meta.file)
                 .map(|m| m.len())
                 .unwrap_or(0);
