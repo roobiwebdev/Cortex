@@ -79,6 +79,17 @@ impl Permissions {
     }
 }
 
+/// A fresh look at the privacy grants, for the onboarding chips (polled about once a second).
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "specta", derive(specta::Type))]
+#[serde(rename_all = "camelCase")]
+pub struct PermissionReport {
+    pub permissions: Permissions,
+    /// Screen Recording is granted, but macOS applies it to this process only after a
+    /// relaunch (a new process sees the grant, this one does not).
+    pub screen_needs_relaunch: bool,
+}
+
 /// Linear levels 0..1 (1 = full scale); peaks hold and decay.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Serialize, Deserialize)]
 #[cfg_attr(feature = "specta", derive(specta::Type))]
