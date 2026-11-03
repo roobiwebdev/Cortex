@@ -1,0 +1,91 @@
+# Windows checks for the desktop recorder (crates/rec-engine-windows, apps/desktop).
+# See docs/engineering/platforms.md.
+#
+# Hosted Windows runners have a GPU-less VM: Windows.Graphics.Capture, the hardware
+# encoders and audio devices may be missing, so this job proves the build, the unit tests,
+# clippy and the installers. Real capture is checked on a Windows PC with the test script
+# in docs/engineering/platforms.md.
+name: Desktop (Windows)
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "crates/rec-core/**"
+      - "crates/rec-engine-windows/**"
+      - "apps/desktop/**"
+      - "packages/ui/**"
+      - "Cargo.toml"
+      - "Cargo.lock"
+      - "rust-toolchain.toml"
+      - ".github/workflows/desktop-windows.yml"
+  pull_request:
+    paths:
+      - "crates/rec-core/**"
+      - "crates/rec-engine-windows/**"
+      - "apps/desktop/**"
+      - "packages/ui/**"
+      - "Cargo.toml"
+      - "Cargo.lock"
+      - "rust-toolchain.toml"
+      - ".github/workflows/desktop-windows.yml"
+
+concurrency:
+  group: desktop-windows-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  windows:
+    runs-on: windows-latest
+    timeout-minutes: 60
+    defaults:
+      run:
+        shell: pwsh
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+
+      # rust-toolchain.toml pins the channel; rustup adds the host target
+      # (x86_64-pc-windows-msvc) on its own.
+      - name: Install Rust toolchain
+        run: |
+          rustup toolchain install
+          rustc --version
+          cargo --version
+
+      - uses: Swatinem/rust-cache@v2
+
+      # rec-engine-macos and rec-cli are macOS-only workspace members, so every cargo
+      # command names the crates that build on Windows.
+      - name: cargo fmt
+        run: cargo fmt --check -p rec-core -p rec-engine-windows -p cortex-desktop
+
+      - name: cargo clippy
+        run: cargo clippy --locked --no-deps -p rec-core -p rec-engine-windows -p cortex-desktop --all-targets -- -D warnings
+
+      - name: cargo test
+        run: cargo test --locked -p rec-core -p rec-engine-windows -p cortex-desktop
+
+      - run: pnpm install --frozen-lockfile
+
+      - run: pnpm --filter desktop check-types
+
+      - run: pnpm --filter desktop test
+
+      # NSIS and MSI from tauri.windows.conf.json. Unsigned: no certificate is configured.
+      - name: Installers
+        run: pnpm --filter desktop tauri build --bundles nsis,msi
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: cortex-windows-installers
+          path: |
+            target/release/bundle/nsis/*.exe
+            target/release/bundle/msi/*.msi
+          if-no-files-found: error
+          retention-days: 7
