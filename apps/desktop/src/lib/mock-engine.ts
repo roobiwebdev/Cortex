@@ -217,6 +217,8 @@ let state: EngineState = {
     liveStreaming: true,
     replayBuffer: true,
     quickTrim: true,
+    movContainer: true,
+    cameraTrack: true,
   },
 };
 
