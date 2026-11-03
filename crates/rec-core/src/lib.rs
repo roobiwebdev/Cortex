@@ -5,6 +5,7 @@
 
 pub mod api;
 pub mod settings;
+pub mod sources;
 pub mod state;
 pub mod store;
 
