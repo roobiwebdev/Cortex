@@ -67,7 +67,25 @@ NSWindow (main) ─ contentView ─┬─ PreviewView (AVSampleBufferDisplayLaye
 
 ### Perf and self-test hooks
 
-The shell reads these at launch (never set in normal use): `CORTEX_DEBUG_DATA_DIR` (settings folder), `CORTEX_DEBUG_TEST_PATTERN=1` (record Rec's test pattern, no Screen Recording grant needed), `CORTEX_DEBUG_RECORD_SECS=N` (record N s after launch, print the path, quit), `CORTEX_DEBUG_HIDE_MAIN=1`, `CORTEX_DEBUG_FRONT=1` (keep the main window on top and on every Space, full-screen ones included, so the preview keeps running; a Space switch or Mission Control by someone at the Mac otherwise stops it, which is what cut short idle perf runs), `CORTEX_DEBUG_PREVIEW_STATS=1` (print the preview frame rate) and, in debug builds, `CORTEX_DEBUG_OPEN=menubar|region|settings|onboarding|trim` (open that window 2 s after launch). `scripts/desktop/perf-compare.sh` uses them to compare CPU, memory and frame counts with Rec.app's `rec-rs record --test-pattern`, and marks an idle preview-on run invalid when any 5 s preview window drops under 29 fps.
+The shell reads these at launch (never set in normal use): `CORTEX_DEBUG_DATA_DIR` (settings folder), `CORTEX_DEBUG_TEST_PATTERN=1` (record Rec's test pattern, no Screen Recording grant needed), `CORTEX_DEBUG_RECORD_SECS=N` (record N s after launch, print the path, quit), `CORTEX_DEBUG_HIDE_MAIN=1`, `CORTEX_DEBUG_FRONT=1` (keep the main window on top and on every Space, full-screen ones included, so the preview keeps running; a Space switch or Mission Control by someone at the Mac otherwise stops it, which is what cut short idle perf runs), `CORTEX_DEBUG_PREVIEW_STATS=1` (print the preview frame rate) `CORTEX_DEBUG_TARGET=display:N|window:ID-or-text|app:BUNDLE_ID|region:N,X,Y,W,H` (what to capture, in points; applied only together with `CORTEX_DEBUG_DATA_DIR`, so the user's settings are never changed) and, in debug builds, `CORTEX_DEBUG_OPEN=menubar|region|settings|onboarding|trim` (open that window 2 s after launch). `scripts/desktop/perf-compare.sh` uses them to compare CPU, memory and frame counts with Rec.app's `rec-rs record --test-pattern`, and marks an idle preview-on run invalid when any 5 s preview window drops under 29 fps.
+
+## Capture targets
+
+`rec_core::settings::CaptureTarget` says what is recorded. The engine turns it into Rec's `record` arguments (`engine::rec_settings_for`), so the GUI and the `rec-rs` CLI share one path, and the target is part of the capture key: a new area or app restarts the preview on it.
+
+| Target    | ScreenCaptureKit filter                                                                                  | CLI                     |
+| --------- | -------------------------------------------------------------------------------------------------------- | ----------------------- |
+| `display` | `initWithDisplay:excludingApplications:` (our app)                                                       | `--display N`           |
+| `region`  | the display filter plus `sourceRect`                                                                     | `--region X,Y,W,H`      |
+| `window`  | `initWithDesktopIndependentWindow:`                                                                      | `--window ID\|text`     |
+| `app`     | `initWithDisplay:includingApplications:[app]` on the display holding the app's frontmost window          | `--app BUNDLE_ID\|name` |
+
+- **Units.** A region is in **points** from its display's top-left, as `sourceRect` takes it. `Display.width/height` are pixels, `Display.frame` is the display's place on the desktop in points, and `Display.scale` is pixels per point. `CaptureWindow.frame` is in points from the top-left of `CaptureWindow.displayId`. The region picker and the Area tab show pixels (points × scale), which is what gets recorded, and convert back to points when they save (`toPixels` / `toPoints` in `region-picker/geometry.ts`).
+- **Output size.** The source's pixels (region × scale, the window at its display's scale, the whole display for an app) are fitted inside the Resolution setting, never upscaled (`args::parse_size`). A region is clipped to its display.
+- **Our windows never appear.** Display and region capture exclude our app; app capture includes only the chosen app, and `screen::find_app` refuses this process; the window list (`screen::windows`) leaves our windows out, so they can't be picked as a window either.
+- **App capture** records every window of the app on that display, including windows it opens later. The rest of the frame is black.
+- **Icons.** `app_icon(bundleId)` returns a 64 px PNG `data:` URL (cached by bundle ID); `useAppIcon` in `lib/app-icons.ts` loads it. Icons stay out of the engine state so state events stay small.
+- **Region picker.** The overlay covers the whole display under the cursor (sized in that display's points) and finds its display from its own screen position. Each time it is shown it re-lists windows, starts from the saved area on that display or the last one remembered for it (`settings.lastRegions`, kept by `validate` while `rememberRegion` is on), and snaps to real window frames. Clicking a window in Area mode sets the area to the window's frame; Window mode records the window itself. Enter or the button saves the target and closes the overlay; Esc cancels.
 
 ## Single sources of truth
 
