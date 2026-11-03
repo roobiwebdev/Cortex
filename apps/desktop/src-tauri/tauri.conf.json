@@ -192,5 +192,12 @@
       "entitlements": "./Entitlements.plist",
       "infoPlist": "./Info.plist"
     }
+  },
+  "plugins": {
+    "updater": {
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDkzQjVCQjZBQ0JGMzdEQzUKUldURmZmUExhcnUxazhzdThad1dSalF6eVgxTVFud1FwbnZhMUVidG9SbFIxeEd0OWFRSGJDOWQK",
+      "endpoints": ["https://cortex.example/updates/latest.json"],
+      "requireSignedVersion": true
+    }
   }
 }

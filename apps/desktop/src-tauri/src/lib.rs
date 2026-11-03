@@ -11,6 +11,7 @@ mod quit;
 pub mod shell;
 mod tour;
 mod trim;
+mod updater;
 mod windows;
 
 use std::sync::Arc;
@@ -43,6 +44,8 @@ use crate::shell::{Outbound, Shell};
 ///   `display:N`, `window:ID|substring`, `app:BUNDLE_ID`, `region:N,X,Y,W,H` (points).
 /// - `CORTEX_DEBUG_LIVE_URL` (+ `_KEY`, `_SECS`): Go live to a local test server through the
 ///   IPC commands, then quit (debug builds; see `debug_live.rs`).
+/// - `CORTEX_DEBUG_UPDATE_URL` (+ `CORTEX_DEBUG_UPDATE_INSTALL=1`): check a local update feed
+///   at launch, and install what it finds (loopback URLs only; see `updater.rs`).
 ///
 /// Used by `scripts/desktop/perf-compare.sh`.
 #[derive(Default)]
@@ -167,6 +170,8 @@ pub fn run() {
     let ipc = ipc::builder();
 
     let app = tauri::Builder::default()
+        // Used from Rust only (`updater.rs`); no window is granted an updater permission.
+        .plugin(tauri_plugin_updater::Builder::new().build())
         .invoke_handler(ipc.invoke_handler())
         // The default app menu plus "Help › Show the Tour".
         .menu(tour::app_menu)
@@ -309,6 +314,7 @@ pub fn run() {
                 let h = handle.clone();
                 let _ = handle.run_on_main_thread(move || tour::open_on_first_run(&h, completed));
             }
+            updater::setup(app, &data_dir);
             // After the floating windows are set up: a settings change already drives them.
             // Only into a scratch settings folder: never the user's own settings.
             if let (Some(spec), Some(_)) = (&debug.target, &debug.data_dir) {
@@ -356,6 +362,8 @@ pub fn run() {
                 shell.shutdown();
             }
             floating::shutdown(app);
+            // After an installed update: open the new version.
+            updater::relaunch_after_exit(app);
         }
         // Clicking the Dock icon brings the main window back after it was closed.
         #[cfg(target_os = "macos")]

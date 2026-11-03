@@ -110,6 +110,15 @@ export const commands = {
 	trimRecording: (id: string, request: TrimRequest) => typedError<Recording, EngineError>(__TAURI_INVOKE("trim_recording", { id, request })),
 	/**  Stop a running export of `id` (no-op if none runs). */
 	cancelTrim: (id: string) => __TAURI_INVOKE<void>("cancel_trim", { id }),
+	/**  The version, the last check and any update found or downloading. */
+	updateStatus: () => __TAURI_INVOKE<UpdateStatus_Serialize>("update_status"),
+	/**  Check the update feed now. Progress and the result also arrive as `updater://status`. */
+	checkForUpdates: () => typedError<UpdateStatus_Serialize, EngineError>(__TAURI_INVOKE("check_for_updates")),
+	/**
+	 *  Download, verify and install the announced update, then relaunch. Refused while
+	 *  recording, counting down, saving or live.
+	 */
+	installUpdate: () => typedError<UpdateStatus_Serialize, EngineError>(__TAURI_INVOKE("install_update")),
 };
 
 /** Events */
@@ -123,6 +132,7 @@ export const events = {
 	settingsChanged: makeEvent<SettingsChangedEvent_Serialize, SettingsChangedEvent_Deserialize>("settings://changed"),
 	tourHotkeyPressed: makeEvent<HotkeyPressedEvent, HotkeyPressedEvent>("tour://hotkey-pressed"),
 	trimProgress: makeEvent<TrimProgressEvent, TrimProgressEvent>("trim://progress"),
+	updaterStatus: makeEvent<UpdateStatusEvent_Serialize, UpdateStatusEvent_Deserialize>("updater://status"),
 };
 
 /* Types */
@@ -212,6 +222,20 @@ export type Display = {
 	height: number,
 	frame: Rect,
 	scale: number,
+};
+
+export type DownloadProgress = DownloadProgress_Serialize | DownloadProgress_Deserialize;
+
+export type DownloadProgress_Deserialize = {
+	downloaded: number,
+	/**  None when the server sends no length. */
+	total?: number | null,
+};
+
+export type DownloadProgress_Serialize = {
+	downloaded: number,
+	/**  None when the server sends no length. */
+	total: number | null,
 };
 
 export type EngineError = 
@@ -754,6 +778,73 @@ export type UiToast_Serialize = {
 	title: string,
 	detail: string,
 	recordingId?: string,
+};
+
+/**  An update the feed announced. */
+export type UpdateInfo = UpdateInfo_Serialize | UpdateInfo_Deserialize;
+
+/**  An update the feed announced. */
+export type UpdateInfo_Deserialize = {
+	version: string,
+	notes?: string | null,
+	/**  `pub_date` from the feed (RFC 3339), as given. */
+	date?: string | null,
+};
+
+/**  An update the feed announced. */
+export type UpdateInfo_Serialize = {
+	version: string,
+	notes: string | null,
+	/**  `pub_date` from the feed (RFC 3339), as given. */
+	date: string | null,
+};
+
+/**  What the Settings Updates group and the menu bar show. */
+export type UpdateStatus = UpdateStatus_Serialize | UpdateStatus_Deserialize;
+
+/**  The update status changed (check, progress, ready, installing). */
+export type UpdateStatusEvent = UpdateStatusEvent_Serialize | UpdateStatusEvent_Deserialize;
+
+/**  The update status changed (check, progress, ready, installing). */
+export type UpdateStatusEvent_Deserialize = UpdateStatus_Deserialize;
+
+/**  The update status changed (check, progress, ready, installing). */
+export type UpdateStatusEvent_Serialize = UpdateStatus_Serialize;
+
+/**  What the Settings Updates group and the menu bar show. */
+export type UpdateStatus_Deserialize = {
+	currentVersion: string,
+	/**  Unix time in ms of the last check that reached the feed. */
+	lastChecked?: number | null,
+	checking: boolean,
+	/**  A newer version the last check found. */
+	available?: UpdateInfo_Deserialize | null,
+	/**  Set while the bundle downloads. */
+	download?: DownloadProgress_Deserialize | null,
+	/**  Downloaded and verified; `install_update` installs it once nothing is recording. */
+	ready: boolean,
+	/**  Installing; Cortex relaunches next. */
+	installing: boolean,
+	/**  Why the last check, download or install failed. Cleared when the next one starts. */
+	error?: string | null,
+};
+
+/**  What the Settings Updates group and the menu bar show. */
+export type UpdateStatus_Serialize = {
+	currentVersion: string,
+	/**  Unix time in ms of the last check that reached the feed. */
+	lastChecked: number | null,
+	checking: boolean,
+	/**  A newer version the last check found. */
+	available: UpdateInfo_Serialize | null,
+	/**  Set while the bundle downloads. */
+	download: DownloadProgress_Serialize | null,
+	/**  Downloaded and verified; `install_update` installs it once nothing is recording. */
+	ready: boolean,
+	/**  Installing; Cortex relaunches next. */
+	installing: boolean,
+	/**  Why the last check, download or install failed. Cleared when the next one starts. */
+	error: string | null,
 };
 
 /* Tauri Specta runtime */
