@@ -806,6 +806,7 @@ version = "0.1.0"
 dependencies = [
  "rec-core",
  "rec-engine-macos",
+ "rec-engine-windows",
  "rec-macos-ui",
  "serde",
  "serde_json",
@@ -4314,6 +4315,14 @@ dependencies = [
  "serde_json",
  "str0m",
  "ureq",
+]
+
+[[package]]
+name = "rec-engine-windows"
+version = "0.1.0"
+dependencies = [
+ "rec-core",
+ "windows",
 ]
 
 [[package]]
