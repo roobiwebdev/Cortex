@@ -199,11 +199,12 @@ fn even(x: f64) -> usize {
 
 /// Output size for `s` (a preset or WxH) and a source of `native` pixels.
 /// Presets follow `rec_core::output::output_size` (4K is 3840 on the long
-/// side, upscaling if needed; the others only shrink). WxH is a bounding box:
+/// side, upscaling if needed, within 3840x2160's pixels for H.264; the others
+/// only shrink). WxH is a bounding box:
 /// the source's aspect ratio fitted inside it, never larger than the source.
 /// Even dimensions, and a frame with the source's shape fills edge to edge:
 /// no letterbox or pillarbox bars, nothing cropped.
-fn parse_size(s: &str, native: (usize, usize)) -> Result<(usize, usize)> {
+fn parse_size(s: &str, native: (usize, usize), codec: Option<Codec>) -> Result<(usize, usize)> {
     use rec_core::settings::Resolution;
     let lower = s.to_lowercase();
     let preset = match lower.as_str() {
@@ -211,7 +212,8 @@ fn parse_size(s: &str, native: (usize, usize)) -> Result<(usize, usize)> {
         other => Resolution::parse(other),
     };
     if let Some(res) = preset {
-        let (w, h) = rec_core::output::output_size(res, (native.0 as u32, native.1 as u32));
+        let codec = codec.map_or(rec_core::settings::Codec::Auto, Codec::as_core);
+        let (w, h) = rec_core::output::output_size(res, (native.0 as u32, native.1 as u32), codec);
         return Ok((w as usize, h as usize));
     }
     // The capture's own size is the native size rounded down to even.
@@ -414,7 +416,7 @@ pub fn prepare(a: RecordArgs) -> Result<(record::Options, Option<screen::Target>
             (Some(screen::Target::Display(d, None)), native)
         }
     };
-    let (w, h) = parse_size(&a.resolution, native)?;
+    let (w, h) = parse_size(&a.resolution, native, a.codec)?;
     // Auto codec and the automatic bitrate (more bits per pixel for 4K-class
     // frames) come from rec_core::output, which the UI mirrors.
     let size = (w as u32, h as u32);
@@ -533,26 +535,28 @@ mod tests {
     fn sizes() {
         // Every size keeps the source's aspect ratio (no bars), even sizes.
         let native = (3456, 2234);
-        assert_eq!(parse_size("1080p", native).unwrap(), (1670, 1080));
+        assert_eq!(parse_size("1080p", native, None).unwrap(), (1670, 1080));
         // 4K is 3840 wide at the source's shape (rec_core::output).
-        assert_eq!(parse_size("4K", native).unwrap(), (3840, 2482));
-        assert_eq!(parse_size("uhd", (5120, 2880)).unwrap(), (3840, 2160));
-        assert_eq!(parse_size("native", native).unwrap(), native);
-        assert_eq!(parse_size("1280x720", native).unwrap(), (1114, 720));
-        assert_eq!(parse_size("1080p", (2880, 1800)).unwrap(), (1728, 1080));
-        assert_eq!(parse_size("1080p", (3840, 2160)).unwrap(), (1920, 1080));
+        assert_eq!(parse_size("4K", native, None).unwrap(), (3840, 2482));
+        assert_eq!(parse_size("uhd", (5120, 2880), None).unwrap(), (3840, 2160));
+        assert_eq!(parse_size("native", native, None).unwrap(), native);
+        assert_eq!(parse_size("1280x720", native, None).unwrap(), (1114, 720));
+        assert_eq!(parse_size("1080p", (2880, 1800), None).unwrap(), (1728, 1080));
+        assert_eq!(parse_size("1080p", (3840, 2160), None).unwrap(), (1920, 1080));
         // Only 4K upscales; odd sources round down to even, like the capture.
-        assert_eq!(parse_size("1440p", (1201, 801)).unwrap(), (1200, 800));
-        assert_eq!(parse_size("1600x1000", (1201, 801)).unwrap(), (1200, 800));
-        assert_eq!(parse_size("4k", (1201, 801)).unwrap(), (3840, 2560));
+        assert_eq!(parse_size("1440p", (1201, 801), None).unwrap(), (1200, 800));
+        assert_eq!(parse_size("1600x1000", (1201, 801), None).unwrap(), (1200, 800));
+        assert_eq!(parse_size("4k", (1201, 801), None).unwrap(), (3840, 2560));
+        // H.264 4K stays within 3840x2160's pixels.
+        assert_eq!(parse_size("4k", native, Some(Codec::H264)).unwrap(), (3582, 2314));
         // Portrait: the preset names the width.
-        assert_eq!(parse_size("1080p", (2160, 3840)).unwrap(), (1080, 1920));
+        assert_eq!(parse_size("1080p", (2160, 3840), None).unwrap(), (1080, 1920));
         for (sz, n) in [("1080p", (3456, 2234)), ("720p", (4112, 2658)), ("4k", (5120, 2880)), ("1440p", (3144, 1588))] {
-            let (w, h) = parse_size(sz, n).unwrap();
+            let (w, h) = parse_size(sz, n, None).unwrap();
             assert!(w % 2 == 0 && h % 2 == 0);
             assert!(compose::same_aspect(n.0 as f64, n.1 as f64, w as f64, h as f64), "{sz} {n:?} -> {w}x{h}");
         }
-        assert!(parse_size("huge", native).is_err());
+        assert!(parse_size("huge", native, None).is_err());
     }
 
     #[test]

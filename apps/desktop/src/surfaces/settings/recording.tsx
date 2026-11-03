@@ -31,7 +31,7 @@ export function RecordingSection() {
     ...RESOLUTIONS.map((value) => ({
       value,
       label: RES_LABEL[value],
-      detail: source ? formatSize(outputSize(value, source)) : undefined,
+      detail: source ? formatSize(outputSize(value, source, s.codec)) : undefined,
     })),
     { value: "custom" as const, label: "Custom…" },
   ];

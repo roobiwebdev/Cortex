@@ -8,6 +8,8 @@ export interface PixelSize {
 
 /** The long side of a "4K" frame (rec-core `UHD_WIDTH`). */
 const UHD_WIDTH = 3840;
+/** H.264 "4K" stays within 3840×2160's pixels (rec-core `H264_MAX_PIXELS`). */
+const H264_MAX_PIXELS = 3840 * 2160;
 /** Frames above this many pixels (1440p) get the 4K-class bitrate (rec-core `UHD_CLASS_MIN_PIXELS`). */
 const UHD_CLASS_MIN_PIXELS = 2560 * 1440;
 const BOX: Record<"720p" | "1080p" | "1440p", PixelSize> = {
@@ -29,9 +31,10 @@ const downEven = (x: number) => Math.max(2, Math.floor(x / 2) * 2);
  *        `crates/rec-core/tests/fixtures/output-sizes.json` (`pnpm --filter desktop test`).
  *        4K is 3840 on the long side (upscaling allowed); 720p/1080p/1440p fit inside their
  *        box (swapped for portrait) and never upscale; Native is the source rounded down to even.
+ *        H.264 4K stays within 3840×2160's pixels (the hardware encoder's real-time limit).
  * WHERE: Settings → Recording, the main window's format chip, the mock engine's estimates.
  */
-export function outputSize(res: Resolution, source: PixelSize): PixelSize {
+export function outputSize(res: Resolution, source: PixelSize, codec: Codec): PixelSize {
   const nw = downEven(source.w);
   const nh = downEven(source.h);
   if (res === "native") return { w: nw, h: nh };
@@ -43,7 +46,15 @@ export function outputSize(res: Resolution, source: PixelSize): PixelSize {
     const [bw, bh] = nh > nw ? [box.h, box.w] : [box.w, box.h];
     k = Math.min(bw / nw, bh / nh, 1);
   }
-  return { w: even(nw * k), h: even(nh * k) };
+  const w = even(nw * k);
+  const h = even(nh * k);
+  if (res === "4k" && codec === "h264" && w * h > H264_MAX_PIXELS) {
+    // Largest frame of the source's shape under the cap: round down, not to nearest.
+    const kc = Math.sqrt(H264_MAX_PIXELS / (nw * nh));
+    const down = (x: number) => Math.max(2, Math.floor(x / 2) * 2);
+    return { w: down(nw * kc), h: down(nh * kc) };
+  }
+  return { w, h };
 }
 
 /**
@@ -136,7 +147,7 @@ export function recordedOutput(e: Pick<EngineState, "settings" | "displays" | "w
   const s = e.settings;
   const source = sourcePixels(s.target, e);
   if (!source) return null;
-  const size = outputSize(s.resolution, source);
+  const size = outputSize(s.resolution, source, s.codec);
   const codec = resolveCodec(s.codec, size);
   const bitsPerSecond = s.bitrateMbps === null ? autoBitrate(codec, size, s.fps) : s.bitrateMbps * 1_000_000;
   return { source, size, codec, bitsPerSecond };

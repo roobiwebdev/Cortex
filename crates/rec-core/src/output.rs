@@ -16,6 +16,11 @@ use crate::settings::{Codec, Resolution};
 /// The long side of a "4K" frame.
 pub const UHD_WIDTH: u32 = 3840;
 
+/// The most pixels an H.264 "4K" frame gets: 3840×2160, H.264 level 5.2. Apple's
+/// hardware H.264 encoder drops about 9% of frames at 3840×2482 60 fps (level 6.0);
+/// HEVC keeps up.
+pub const H264_MAX_PIXELS: u64 = 3840 * 2160;
+
 /// Frames larger than this many pixels (1440p) count as 4K-class for the bitrate.
 pub const UHD_CLASS_MIN_PIXELS: u64 = 2560 * 1440;
 
@@ -54,8 +59,8 @@ fn even(x: f64) -> u32 {
     (((x / 2.0).round() as u32) * 2).max(2)
 }
 
-/// The recorded frame size for `res` and a source of `source` pixels. Always even and
-/// always the source's shape (no bars, nothing cropped).
+/// The recorded frame size for `res`, a source of `source` pixels and the codec
+/// setting. Always even and always the source's shape (no bars, nothing cropped).
 ///
 /// - `Native`: the source's pixels, rounded down to even.
 /// - `R720p`, `R1080p`, `R1440p`: fitted inside 1280×720, 1920×1080 or 2560×1440
@@ -63,7 +68,9 @@ fn even(x: f64) -> u32 {
 /// - `R4k`: the long side is 3840, up or down. A landscape source is 3840 wide
 ///   (3456×2234 → 3840×2482, 5120×2880 → 3840×2160, 3840×2160 unchanged); a portrait
 ///   one is 3840 tall. The same as fitting inside 3840×3840 with upscaling allowed.
-pub fn output_size(res: Resolution, source: (u32, u32)) -> (u32, u32) {
+///   With H.264 the frame also stays within 3840×2160's pixel count
+///   (`H264_MAX_PIXELS`): 3456×2234 → 3582×2314. Auto picks HEVC for these sizes.
+pub fn output_size(res: Resolution, source: (u32, u32), codec: Codec) -> (u32, u32) {
     // The capture's own size is the source rounded down to even.
     let (nw, nh) = ((source.0 & !1).max(2), (source.1 & !1).max(2));
     let (fw, fh) = (nw as f64, nh as f64);
@@ -80,7 +87,14 @@ pub fn output_size(res: Resolution, source: (u32, u32)) -> (u32, u32) {
             (bw / fw).min(bh / fh).min(1.0)
         }
     };
-    (even(fw * k), even(fh * k))
+    let (w, h) = (even(fw * k), even(fh * k));
+    if res == Resolution::R4k && codec == Codec::H264 && w as u64 * h as u64 > H264_MAX_PIXELS {
+        // Largest frame of the source's shape under the cap: round down, not to nearest.
+        let k = (H264_MAX_PIXELS as f64 / (fw * fh)).sqrt();
+        let down = |x: f64| (((x / 2.0).floor() as u32) * 2).max(2);
+        return (down(fw * k), down(fh * k));
+    }
+    (w, h)
 }
 
 #[cfg(test)]
@@ -97,6 +111,8 @@ mod tests {
     #[derive(Deserialize)]
     struct SizeCase {
         resolution: Resolution,
+        #[serde(default)]
+        codec: Codec,
         source: (u32, u32),
         output: (u32, u32),
     }
@@ -124,11 +140,12 @@ mod tests {
         let f = fixture();
         for c in &f.sizes {
             assert_eq!(
-                output_size(c.resolution, c.source),
+                output_size(c.resolution, c.source, c.codec),
                 c.output,
-                "{:?} {:?}",
+                "{:?} {:?} {:?}",
                 c.resolution,
-                c.source
+                c.source,
+                c.codec
             );
         }
         for c in &f.bitrates {
@@ -156,30 +173,37 @@ mod tests {
     fn four_k_is_3840_on_the_long_side() {
         use Resolution::R4k;
         // The 16:10 MacBook Pro display: upscaled to 3840 wide, height follows.
-        assert_eq!(output_size(R4k, (3456, 2234)), (3840, 2482));
+        assert_eq!(output_size(R4k, (3456, 2234), Codec::Hevc), (3840, 2482));
         // A 4K monitor is left alone; a 5K one is fitted to 3840 wide.
-        assert_eq!(output_size(R4k, (3840, 2160)), (3840, 2160));
-        assert_eq!(output_size(R4k, (5120, 2880)), (3840, 2160));
+        assert_eq!(output_size(R4k, (3840, 2160), Codec::Hevc), (3840, 2160));
+        assert_eq!(output_size(R4k, (5120, 2880), Codec::Hevc), (3840, 2160));
         // 1080p doubles.
-        assert_eq!(output_size(R4k, (1920, 1080)), (3840, 2160));
+        assert_eq!(output_size(R4k, (1920, 1080), Codec::Hevc), (3840, 2160));
         // Portrait: 3840 tall.
-        assert_eq!(output_size(R4k, (1080, 1920)), (2160, 3840));
-        assert_eq!(output_size(R4k, (1200, 1601)), (2880, 3840));
+        assert_eq!(output_size(R4k, (1080, 1920), Codec::Hevc), (2160, 3840));
+        assert_eq!(output_size(R4k, (1200, 1601), Codec::Hevc), (2880, 3840));
         // Odd sources: even output (1001×601 → 1000×600 → ×3.84).
-        assert_eq!(output_size(R4k, (1001, 601)), (3840, 2304));
-        assert_eq!(output_size(R4k, (1235, 777)), (3840, 2414));
+        assert_eq!(output_size(R4k, (1001, 601), Codec::Hevc), (3840, 2304));
+        assert_eq!(output_size(R4k, (1235, 777), Codec::Hevc), (3840, 2414));
+        // H.264 stays within 3840×2160's pixels, same shape.
+        assert_eq!(output_size(R4k, (3456, 2234), Codec::H264), (3582, 2314));
+        assert_eq!(output_size(R4k, (5120, 2880), Codec::H264), (3840, 2160));
+        assert_eq!(output_size(R4k, (1920, 1080), Codec::H264), (3840, 2160));
+        // Auto and ProRes get the full frame.
+        assert_eq!(output_size(R4k, (3456, 2234), Codec::Auto), (3840, 2482));
+        assert_eq!(output_size(R4k, (3456, 2234), Codec::Prores), (3840, 2482));
     }
 
     #[test]
     fn other_presets_only_shrink() {
         use Resolution::*;
-        assert_eq!(output_size(R1080p, (3456, 2234)), (1670, 1080));
-        assert_eq!(output_size(R1440p, (3456, 2234)), (2228, 1440));
-        assert_eq!(output_size(R720p, (3456, 2234)), (1114, 720));
+        assert_eq!(output_size(R1080p, (3456, 2234), Codec::Hevc), (1670, 1080));
+        assert_eq!(output_size(R1440p, (3456, 2234), Codec::Hevc), (2228, 1440));
+        assert_eq!(output_size(R720p, (3456, 2234), Codec::Hevc), (1114, 720));
         // Smaller than the box: kept (rounded down to even).
-        assert_eq!(output_size(R1080p, (1281, 721)), (1280, 720));
-        assert_eq!(output_size(R1080p, (1080, 1920)), (1080, 1920));
-        assert_eq!(output_size(Native, (3457, 2235)), (3456, 2234));
+        assert_eq!(output_size(R1080p, (1281, 721), Codec::Hevc), (1280, 720));
+        assert_eq!(output_size(R1080p, (1080, 1920), Codec::Hevc), (1080, 1920));
+        assert_eq!(output_size(Native, (3457, 2235), Codec::Hevc), (3456, 2234));
     }
 
     #[test]
