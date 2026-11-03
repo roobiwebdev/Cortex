@@ -20,6 +20,8 @@ use crate::shell::{Outbound, Shell};
 /// - `CORTEX_DEBUG_TEST_PATTERN=1`: record Rec's test pattern (no Screen Recording grant).
 /// - `CORTEX_DEBUG_RECORD_SECS=N`: start recording 3 s after launch, stop after N recorded
 ///   seconds, print `cortex: recorded <path>` and quit.
+/// - `CORTEX_DEBUG_WITHHOLD=camera,microphone,screen`: treat those grants as never asked,
+///   to exercise the missing-permission paths on a Mac where they are granted.
 /// - `CORTEX_DEBUG_HIDE_MAIN=1`: hide the main window at launch (preview off).
 /// - `CORTEX_DEBUG_PREVIEW_STATS=1`: print the preview frame rate every 5 s (0 fps when it
 ///   stalls) and every preview on/off decision with its reason.
@@ -39,6 +41,7 @@ struct DebugRun {
     test_pattern: bool,
     record_secs: Option<f64>,
     hide_main: bool,
+    withheld: Vec<rec_core::state::Permission>,
     preview_stats: bool,
     front: bool,
     capturable: bool,
@@ -56,6 +59,19 @@ impl DebugRun {
                 .and_then(|v| v.parse::<f64>().ok())
                 .filter(|v| v.is_finite() && *v > 0.0),
             hide_main: var("CORTEX_DEBUG_HIDE_MAIN").is_some_and(|v| v == "1"),
+            withheld: var("CORTEX_DEBUG_WITHHOLD")
+                .map(|v| {
+                    use rec_core::state::Permission;
+                    v.split(',')
+                        .filter_map(|p| match p.trim() {
+                            "screen" => Some(Permission::Screen),
+                            "microphone" | "mic" => Some(Permission::Microphone),
+                            "camera" => Some(Permission::Camera),
+                            _ => None,
+                        })
+                        .collect()
+                })
+                .unwrap_or_default(),
             preview_stats: var("CORTEX_DEBUG_PREVIEW_STATS").is_some_and(|v| v == "1"),
             front: var("CORTEX_DEBUG_FRONT").is_some_and(|v| v == "1"),
             capturable: var("CORTEX_DEBUG_CAPTURABLE").is_some_and(|v| v == "1"),
@@ -108,6 +124,7 @@ pub fn run() {
                 home: app.path().home_dir()?,
                 test_pattern: debug.test_pattern,
                 max_duration_secs: debug.record_secs,
+                withheld: debug.withheld.clone(),
             };
             // Our windows must never show up in a screen recording: fail instead.
             rec_engine::screen::require_self_exclusion(true);
@@ -164,6 +181,26 @@ pub fn run() {
                 }
             };
             app.manage::<ipc::PreviewSlot>(live);
+            if debug.preview_stats {
+                // What the UI's device menus and permission affordances will show.
+                let s = shell.clone();
+                std::thread::spawn(move || {
+                    std::thread::sleep(std::time::Duration::from_secs(3));
+                    let st = s.state();
+                    let names = |d: &[rec_core::state::InputDevice]| {
+                        d.iter()
+                            .map(|x| x.name.as_str())
+                            .collect::<Vec<_>>()
+                            .join(", ")
+                    };
+                    eprintln!(
+                        "cortex: devices: cameras [{}], mics [{}]; permissions {:?}",
+                        names(&st.cameras),
+                        names(&st.mics),
+                        st.permissions
+                    );
+                });
+            }
             if let Some(main) = app.get_webview_window("main") {
                 if debug.hide_main {
                     let _ = main.hide();
