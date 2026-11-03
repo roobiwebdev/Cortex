@@ -1,5 +1,5 @@
 {
-  "_comment": "Cases for rec_core::output (Rust unit test) and apps/desktop/src/lib/output-size.ts (TS test). Both must pass, so the UI shows the size the engine records.",
+  "_comment": "Sizes without a codec use auto. Cases for rec_core::output (Rust unit test) and apps/desktop/src/lib/output-size.ts (TS test). Both must pass, so the UI shows the size the engine records.",
   "sizes": [
     { "resolution": "4k", "source": [3456, 2234], "output": [3840, 2482] },
     { "resolution": "4k", "source": [3840, 2160], "output": [3840, 2160] },
@@ -12,6 +12,12 @@
     { "resolution": "4k", "source": [2000, 2000], "output": [3840, 3840] },
     { "resolution": "4k", "source": [1001, 601], "output": [3840, 2304] },
     { "resolution": "4k", "source": [1235, 777], "output": [3840, 2414] },
+    { "resolution": "4k", "codec": "h264", "source": [3456, 2234], "output": [3582, 2314] },
+    { "resolution": "4k", "codec": "h264", "source": [5120, 2880], "output": [3840, 2160] },
+    { "resolution": "4k", "codec": "h264", "source": [2000, 2000], "output": [2880, 2880] },
+    { "resolution": "4k", "codec": "h264", "source": [1080, 1920], "output": [2160, 3840] },
+    { "resolution": "4k", "codec": "auto", "source": [3456, 2234], "output": [3840, 2482] },
+    { "resolution": "native", "codec": "h264", "source": [3456, 2234], "output": [3456, 2234] },
     { "resolution": "native", "source": [3456, 2234], "output": [3456, 2234] },
     { "resolution": "native", "source": [3457, 2235], "output": [3456, 2234] },
     { "resolution": "1440p", "source": [3456, 2234], "output": [2228, 1440] },

@@ -27,8 +27,8 @@ const expect = (what: string, got: unknown, want: unknown) => {
 
 for (const c of fixture.sizes) {
   expect(
-    `outputSize ${c.resolution} ${String(c.source)}`,
-    outputSize(pick(RESOLUTIONS, c.resolution), size(c.source)),
+    `outputSize ${c.resolution} ${String(c.source)} ${("codec" in c && c.codec) || "auto"}`,
+    outputSize(pick(RESOLUTIONS, c.resolution), size(c.source), pick(CODECS, ("codec" in c && c.codec) || "auto")),
     size(c.output),
   );
 }
