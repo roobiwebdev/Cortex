@@ -9,6 +9,7 @@ import { Switch } from "@starter/ui/components/switch";
 import { cn } from "@starter/ui/lib/utils";
 
 import { engine, useEngine } from "../../lib/engine";
+import { isWhip } from "../../lib/streaming";
 import type { Resolution, StreamDest, StreamService } from "../../lib/types";
 import { ChoiceSelect, Readout, SettingsGroup, SettingsPage, SettingsRow } from "./parts";
 
@@ -33,8 +34,6 @@ const LIVE_SIZE: Record<Resolution, string> = {
   native: "native",
 };
 const AUDIO_KBPS = [96, 128, 160, 192, 256, 320] as const;
-
-const isWhip = (d: StreamDest) => d.service === "custom" && /^https?:\/\//.test(d.url ?? "");
 
 /** Platform preset: the lowest limit across enabled destinations (STR-14). */
 function presetKbps(dests: StreamDest[], res: Resolution) {
@@ -131,7 +130,11 @@ export function LiveSection() {
             dest={d}
             locked={locked}
             onChange={(p) => setDest(i, p)}
-            onRemove={() => engine.update({ streamDests: s.streamDests.filter((_, j) => j !== i) })}
+            onRemove={async () => {
+              // A removed server's key leaves the Keychain with it.
+              if (d.keyStored) await engine.removeStreamKey(d);
+              engine.update({ streamDests: s.streamDests.filter((_, j) => j !== i) });
+            }}
           />
         ))}
       </SettingsGroup>
@@ -287,11 +290,12 @@ function DestRow({
     setEditing(false);
   }
   function saveKey() {
-    if (!draft.trim()) return;
-    // prototype: the key would go straight to Keychain; the UI keeps only "stored: yes".
+    const key = draft.trim();
+    if (!key) return;
+    // Straight to the Keychain; only `keyStored` comes back. A failure shows a toast.
     setDraft("");
     setEditing(false);
-    onChange({ keyStored: true });
+    void engine.setStreamKey(dest, key);
   }
 
   return (
@@ -371,7 +375,7 @@ function DestRow({
               size="xs"
               disabled={locked}
               className="text-muted-foreground"
-              onClick={() => onChange({ keyStored: false })}
+              onClick={() => void engine.removeStreamKey(dest)}
             >
               Remove
             </Button>

@@ -9,6 +9,7 @@ import type {
   PermissionState,
   RecorderSettings,
   Recording,
+  StreamDest,
   Toast,
   ToastKind,
 } from "./types";
@@ -296,6 +297,13 @@ function beginRecording() {
   startClock();
 }
 
+function setKeyStored(dest: StreamDest, keyStored: boolean) {
+  const streamDests = state.settings.streamDests.map((d) =>
+    d.service === dest.service && d.url === dest.url ? { ...d, keyStored } : d,
+  );
+  set({ settings: { ...state.settings, streamDests } });
+}
+
 export const engine = {
   start() {
     if (state.status !== "idle") return;
@@ -375,6 +383,15 @@ export const engine = {
     if (kind === "warning") pushToast(errorToast("Less than 5 GB left on Macintosh HD", true));
     else if (kind === "replay") pushToast(replayToast("~/Movies/Cortex/replay.mp4", 60));
     else if (SAMPLE_RECORDINGS[0]) pushToast(savedToast(SAMPLE_RECORDINGS[0]));
+  },
+  /** The real engine stores the key in the Keychain; the mock only flips `keyStored`. */
+  setStreamKey(dest: StreamDest, _key: string): Promise<boolean> {
+    setKeyStored(dest, true);
+    return Promise.resolve(true);
+  },
+  removeStreamKey(dest: StreamDest): Promise<void> {
+    setKeyStored(dest, false);
+    return Promise.resolve();
   },
   update(patch: Partial<RecorderSettings>) {
     set({ settings: { ...state.settings, ...patch } });

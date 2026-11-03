@@ -18,6 +18,7 @@ import type {
   PermissionState,
   RecorderSettings,
   Recording,
+  StreamDest,
   Toast,
 } from "./types";
 
@@ -197,6 +198,16 @@ const tauriEngine: typeof mock.engine = {
   },
   toggleLive() {
     void run(current().live ? commands.stopLive() : commands.goLive());
+  },
+  /** Save a destination's key in the Keychain. The key never comes back; settings say `keyStored`. */
+  async setStreamKey(dest: StreamDest, key: string): Promise<boolean> {
+    const stored = await run(commands.setStreamKey(dest, key));
+    if (stored) setSettings(stored);
+    return stored !== undefined;
+  },
+  async removeStreamKey(dest: StreamDest): Promise<void> {
+    const stored = await run(commands.removeStreamKey(dest));
+    if (stored) setSettings(stored);
   },
   dismissToast(id: string) {
     toasts = toasts.filter((t) => t.id !== id);
