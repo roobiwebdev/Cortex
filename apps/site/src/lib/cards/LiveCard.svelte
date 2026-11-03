@@ -11,13 +11,21 @@
 	let t = $derived(clock.t);
 	let saved = $derived(t >= SAVE + 60 && t < SAVE + NOTICE);
 	let bitrate = $derived((6 + Math.sin(Math.floor(t / 500) * 2.1) * 0.12).toFixed(1));
+
+	/** Go live's destinations (rec-core StreamService). Keys stay in the Keychain. */
+	const DESTS = [
+		{ name: 'YouTube', note: 'Key stored in Keychain', on: true },
+		{ name: 'Twitch', note: 'Key stored in Keychain', on: true },
+		{ name: 'Kick', note: 'No stream key yet', on: false },
+		{ name: 'Custom', note: 'RTMP, RTMPS or WHIP URL', on: false }
+	];
 </script>
 
 <div class="card-visual app" {@attach clock.observe}>
 	<Fit width={506} height={304}>
 		<div class="toolbar">
 			<span class="pill">LIVE</span>
-			{#if saved}<span class="notice">Replay saved: replay-2026-10-20-094530.mp4</span>{/if}
+			{#if saved}<span class="notice">Replay saved: replay-2026-11-03-094530.mp4</span>{/if}
 		</div>
 
 		<div class="columns">
@@ -37,9 +45,9 @@
 					</div>
 					<i class="divider"></i>
 					<div class="save">
-						<span class={['button', { pressed: t >= SAVE && t < SAVE + 150 }]}>Save Replay</span>
+						<span class={['button', { pressed: t >= SAVE && t < SAVE + 150 }]}>Save replay <kbd>⇧⌘S</kbd></span>
 					</div>
-					<span class="small">60 s · 45 MB in memory</span>
+					<span class="small">15 s to 5 min, kept in memory</span>
 				</div>
 			</section>
 
@@ -48,18 +56,18 @@
 					<svg width="14" height="14" viewBox="0 0 14 14" aria-hidden="true">
 						<path d="M7 6.2v.1M4.8 4.2a3 3 0 0 0 0 4.2M9.2 4.2a3 3 0 0 1 0 4.2M3.1 2.6a5.3 5.3 0 0 0 0 7.6M10.9 2.6a5.3 5.3 0 0 1 0 7.6" />
 					</svg>
-					STREAM
+					GO LIVE
 				</div>
 				<div class="group">
-					<div class="combo off">
-						<span>Custom (RTMP or WHIP URL)</span>
-						<svg width="8" height="10" viewBox="0 0 8 10" aria-hidden="true"><path d="M1 3.4 4 1.2l3 2.2M1 6.6l3 2.2 3-2.2" /></svg>
-					</div>
-					<div class="field off">rtmps://live.example.com/app</div>
-					<div class="row"><span>Stream key</span><span class="small">In Keychain</span></div>
+					{#each DESTS as d (d.name)}
+						<div class="row dest">
+							<div><span>{d.name}</span><span class="small">{d.note}</span></div>
+							<span class={['switch', { off: !d.on }]}><i></i></span>
+						</div>
+					{/each}
 					<i class="divider"></i>
-					<span class="stop">Stop Stream</span>
-					<span class="small live">{format(42_000 + t)}&nbsp;&nbsp;{bitrate} Mb/s&nbsp;&nbsp;0 dropped</span>
+					<span class="stop">Stop streaming</span>
+					<span class="small live">{format(42_000 + t)}&nbsp;&nbsp;2 destinations&nbsp;&nbsp;{bitrate} Mb/s</span>
 				</div>
 			</section>
 		</div>
@@ -75,13 +83,13 @@
 	}
 
 	:global(:root:not([data-theme='light'])) .card-visual {
-		background: #202022;
+		background: #1a1c20;
 	}
 
 	.toolbar {
 		position: absolute;
 		left: 22px;
-		top: 40px;
+		top: 20px;
 		display: flex;
 		align-items: center;
 		gap: 10px;
@@ -105,7 +113,7 @@
 	.columns {
 		position: absolute;
 		left: 22px;
-		top: 70px;
+		top: 48px;
 		display: grid;
 		grid-template-columns: 1fr 1fr;
 		gap: 16px;
@@ -164,6 +172,14 @@
 		background: var(--accent);
 	}
 
+	.switch.off {
+		background: var(--switch-off);
+	}
+
+	.switch.off i {
+		left: 2px;
+	}
+
 	.switch i {
 		position: absolute;
 		top: 2px;
@@ -208,8 +224,10 @@
 		height: 14px;
 		margin-left: -7px;
 		border-radius: 50%;
-		background: #ececee;
-		box-shadow: 0 1px 2px rgba(0, 0, 0, 0.4);
+		background: #2a2e33;
+		box-shadow:
+			inset 0 0 0 1px rgba(255, 255, 255, 0.14),
+			0 1px 2px rgba(0, 0, 0, 0.4);
 	}
 
 	:global(:root[data-theme='light']) .track b {
@@ -232,6 +250,26 @@
 
 	.save {
 		display: flex;
+	}
+
+	.button kbd {
+		margin-left: 6px;
+		color: var(--secondary);
+		font: 11px var(--sans);
+	}
+
+	.dest {
+		height: 30px;
+	}
+
+	.dest div {
+		display: flex;
+		flex-direction: column;
+	}
+
+	.dest .small {
+		font-size: 10px;
+		line-height: 12px;
 	}
 
 	.button {
@@ -263,34 +301,6 @@
 		color: var(--text);
 		font-variant-numeric: tabular-nums;
 		white-space: nowrap;
-	}
-
-	.combo,
-	.field {
-		display: flex;
-		align-items: center;
-		justify-content: space-between;
-		gap: 6px;
-		height: 24px;
-		padding: 0 8px;
-		border-radius: 6px;
-		background: var(--control);
-		box-shadow: inset 0 0 0 1px var(--control-edge);
-		white-space: nowrap;
-	}
-
-	.combo span {
-		overflow: hidden;
-		text-overflow: ellipsis;
-	}
-
-	.combo svg {
-		stroke: var(--chevrons);
-	}
-
-	.field {
-		overflow: hidden;
-		font-size: 12px;
 	}
 
 	.off {

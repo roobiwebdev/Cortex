@@ -1,13 +1,13 @@
 <script lang="ts">
 	import { loop } from '#lib/motion.svelte.js';
-	import Tracks from '#lib/rec/Tracks.svelte';
+	import Tracks from '#lib/mock/Tracks.svelte';
 	import Fit from './Fit.svelte';
 
 	const clock = loop(9000, 5580);
 </script>
 
 <div class="card-visual" {@attach clock.observe}>
-	<Fit width={506} height={395}>
+	<Fit width={506} height={430}>
 		<div class="head">
 			<svg width="34" height="42" viewBox="0 0 34 42" aria-hidden="true">
 				<path d="M4 1h18l11 11v25a4 4 0 0 1-4 4H4a4 4 0 0 1-4-4V5a4 4 0 0 1 4-4z" class="doc" />
@@ -15,16 +15,16 @@
 				<path d="M13 19.5v10l8.5-5z" class="play" />
 			</svg>
 			<div>
-				<b>rec-2026-10-20-094112.mov</b>
-				<span>03:12 · 3840 × 2160 · 60 fps · 4 tracks</span>
+				<b>rec-2026-11-03-094112.mov</b>
+				<span>03:12 · 3840 × 2482 · 60 fps · 5 tracks</span>
 			</div>
 		</div>
 		<div class="tracks">
-			<Tracks ruler={['0:00', '0:48', '1:36', '2:24', '3:12']} playhead={clock.t / 9000} />
+			<Tracks camera ruler={['0:00', '0:48', '1:36', '2:24', '3:12']} playhead={clock.t / 9000} />
 		</div>
 		<div class="chips">
 			<span>.mov or .mp4</span>
-			<span>H.264 · HEVC · ProRes 422</span>
+			<span>H.264 · HEVC · ProRes</span>
 			<span>Constant frame rate</span>
 		</div>
 	</Fit>
@@ -32,7 +32,7 @@
 
 <style>
 	.card-visual {
-		background: radial-gradient(ellipse 70% 60% at 50% 0%, rgba(140, 150, 255, 0.09), transparent);
+		background: radial-gradient(ellipse 70% 60% at 50% 0%, hsl(188 60% 55% / 0.09), transparent);
 	}
 
 	.head {
@@ -91,13 +91,13 @@
 	.tracks {
 		position: absolute;
 		left: 26px;
-		top: 98px;
+		top: 92px;
 	}
 
 	.chips {
 		position: absolute;
 		left: 28px;
-		top: 342px;
+		top: 384px;
 		display: flex;
 		gap: 8px;
 		font-size: 12px;

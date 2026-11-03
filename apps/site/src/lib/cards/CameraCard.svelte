@@ -1,27 +1,29 @@
 <script lang="ts">
 	import { along, easeInOut, easeOut, lerp, span } from '#lib/ease.js';
 	import { loop } from '#lib/motion.svelte.js';
-	import Cursor from '#lib/rec/Cursor.svelte';
-	import Person from '#lib/rec/Person.svelte';
-	import ShapeIcon, { SHAPES, type Shape } from '#lib/rec/ShapeIcon.svelte';
+	import Cursor from '#lib/mock/Cursor.svelte';
+	import Person from '#lib/mock/Person.svelte';
+	import ShapeIcon, { SHAPES, type Shape } from '#lib/mock/ShapeIcon.svelte';
 	import Fit from './Fit.svelte';
 
 	/** The preview inside the mini window, in card coordinates. */
 	const PREVIEW = { x: 63, y: 43, w: 380, h: 238 };
 	const MARGIN = 8;
 	const SIZE: Record<Shape, { w: number; h: number; r: number }> = {
+		rounded: { w: 78, h: 44, r: 10 },
 		circle: { w: 78, h: 78, r: 39 },
-		squircle: { w: 78, h: 78, r: 27 },
-		square: { w: 78, h: 78, r: 23 },
+		square: { w: 78, h: 78, r: 3 },
 		pill: { w: 78, h: 44, r: 22 },
-		rounded: { w: 78, h: 44, r: 13 }
+		squircle: { w: 78, h: 78, r: 24 },
+		rect: { w: 78, h: 44, r: 2 }
 	};
+	/** Cortex starts on the squircle; the loop tries four other shapes and comes back. */
 	const PICKS: { at: number; shape: Shape }[] = [
-		{ at: 0, shape: 'circle' },
-		{ at: 3000, shape: 'squircle' },
+		{ at: 0, shape: 'squircle' },
+		{ at: 3000, shape: 'circle' },
 		{ at: 4000, shape: 'pill' },
-		{ at: 7200, shape: 'rounded' },
-		{ at: 8100, shape: 'circle' }
+		{ at: 7200, shape: 'rect' },
+		{ at: 8100, shape: 'squircle' }
 	];
 	const DRAGS = [
 		{ grab: 900, drop: 2300, to: 'left' },
@@ -33,18 +35,18 @@
 		{ t: 900, x: 396, y: 234 },
 		{ t: 2200, x: 120, y: 226 },
 		{ t: 2400, x: 120, y: 226 },
-		{ t: 2900, x: 369, y: 343 },
-		{ t: 3100, x: 369, y: 343 },
-		{ t: 3800, x: 311, y: 343 },
-		{ t: 4100, x: 311, y: 343 },
+		{ t: 2900, x: 166, y: 343 },
+		{ t: 3100, x: 166, y: 343 },
+		{ t: 3800, x: 282, y: 343 },
+		{ t: 4100, x: 282, y: 343 },
 		{ t: 4800, x: 110, y: 251 },
 		{ t: 5100, x: 110, y: 251 },
 		{ t: 6400, x: 386, y: 246 },
 		{ t: 6600, x: 386, y: 246 },
-		{ t: 7100, x: 195, y: 343 },
-		{ t: 7300, x: 195, y: 343 },
-		{ t: 7900, x: 137, y: 343 },
-		{ t: 8200, x: 137, y: 343 },
+		{ t: 7100, x: 398, y: 343 },
+		{ t: 7300, x: 398, y: 343 },
+		{ t: 7900, x: 340, y: 343 },
+		{ t: 8200, x: 340, y: 343 },
 		{ t: 9300, x: 440, y: 300 },
 		{ t: 10_000, x: 440, y: 300 }
 	];
@@ -89,7 +91,8 @@
 </script>
 
 <div class="card-visual" {@attach clock.observe}>
-	<Fit width={506} height={395}>
+	<Fit width={506} height={430}>
+		<div class="shift">
 		<div class="window app">
 			<div class="preview">
 				<i class="kicker"></i>
@@ -120,12 +123,22 @@
 			{/each}
 		</div>
 		<Cursor x={cursor.x} y={cursor.y} kind={dragging ? 'grabbing' : hovering ? 'grab' : 'arrow'} pressed={clicking} />
+		</div>
 	</Fit>
 </div>
 
 <style>
 	.card-visual {
-		background: radial-gradient(ellipse 70% 60% at 50% 0%, rgba(140, 150, 255, 0.09), transparent);
+		background: radial-gradient(ellipse 70% 60% at 50% 0%, hsl(188 60% 55% / 0.09), transparent);
+	}
+
+	/* Centres the 395 pt tall scene in the row's 430 pt cards. */
+	.shift {
+		position: absolute;
+		top: 17px;
+		left: 0;
+		width: 506px;
+		height: 395px;
 	}
 
 	.window {
@@ -206,7 +219,6 @@
 	.pip {
 		position: absolute;
 		overflow: hidden;
-		border: 2px solid #fff;
 		box-shadow: 0 8px 20px rgba(0, 0, 0, 0.3);
 	}
 
@@ -224,12 +236,12 @@
 	}
 
 	.ghost {
-		box-shadow: 0 0 0 1px rgba(0, 122, 255, 0.7);
+		box-shadow: 0 0 0 1px hsl(188 58% 58% / 0.8);
 	}
 
 	.picker {
 		position: absolute;
-		left: 103px;
+		left: 74px;
 		top: 318px;
 		display: flex;
 		gap: 6px;
@@ -261,12 +273,12 @@
 	}
 
 	.picker .on {
-		background: rgba(0, 122, 255, 0.18);
+		background: var(--accent-tint);
 		box-shadow: inset 0 0 0 1.5px var(--accent);
-		color: #2d8cff;
+		color: var(--accent-text);
 	}
 
 	.picker .pressed {
-		background: rgba(0, 122, 255, 0.32);
+		filter: brightness(1.2);
 	}
 </style>
