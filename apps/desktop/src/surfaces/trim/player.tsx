@@ -17,7 +17,9 @@ const MARGIN = 0.03;
  *        burned-in camera bubble, or the separate raw camera track on its own.
  * WHY:   Users need to see both what players show (composite, NEW-CT-02) and what the
  *        extra camera track holds (raw, unmirrored, NEW-CT-01) before deciding to keep it.
- * WHERE: TrimWindow. In the real app the screen slot becomes a <video> (NEW-TR-02).
+ *        In the real app `src` is the recording itself (camera already burned in), played by
+ *        a <video> the parent drives through `mediaRef` (NEW-TR-02).
+ * WHERE: TrimWindow.
  */
 export function TrimPlayer({
   settings,
@@ -26,6 +28,8 @@ export function TrimPlayer({
   cameraStream,
   onToggle,
   aspect,
+  src,
+  mediaRef,
 }: {
   settings: RecorderSettings;
   view: PlayerView;
@@ -34,6 +38,9 @@ export function TrimPlayer({
   onToggle: () => void;
   /** width / height of the recording */
   aspect: number;
+  /** The recording's URL; without it the player shows the mock screen and bubble. */
+  src?: string;
+  mediaRef?: React.Ref<HTMLVideoElement>;
 }) {
   const outer = React.useRef<HTMLDivElement>(null);
   const [box, setBox] = React.useState({ w: 0, h: 0 });
@@ -65,7 +72,9 @@ export function TrimPlayer({
         className="group relative overflow-hidden rounded-[6px] outline-none focus-visible:ring-3 focus-visible:ring-ring/50"
         style={{ width: box.w, height: box.h }}
       >
-        {view === "composite" ? (
+        {view === "composite" && src !== undefined ? (
+          <video ref={mediaRef} src={src} preload="auto" playsInline className="size-full bg-stage object-contain" />
+        ) : view === "composite" ? (
           <>
             <MockScreen />
             {box.w > 0 && (

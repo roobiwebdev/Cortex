@@ -17,6 +17,7 @@ import type {
   PermissionReport,
   PermissionState,
   RecorderSettings,
+  Recording,
   Toast,
 } from "./types";
 
@@ -41,6 +42,8 @@ const ownsToasts = inTauri && getCurrentWindow().label === TOASTS_WINDOW;
 
 let snapshot: EngineSnapshot | undefined;
 let settings: RecorderSettings | undefined;
+/** Every recording in the output folder (`list_recordings`); replaces the engine's per-run list once loaded. */
+let library: Recording[] | undefined;
 let toasts: Toast[] = [];
 let composed: EngineState | undefined;
 /** A state event arrived while the page was hidden and has not been rendered yet. */
@@ -50,7 +53,7 @@ const listeners = new Set<() => void>();
 function changed() {
   if (snapshot && settings) {
     const { levels: _levels, ...rest } = snapshot;
-    composed = { ...rest, settings, toasts };
+    composed = { ...rest, recordings: library ?? rest.recordings, settings, toasts };
   } else composed = undefined;
   for (const l of listeners) l();
 }
@@ -228,13 +231,8 @@ const tauriEngine: typeof mock.engine = {
     return (await run(commands.requestPermission(p))) ?? current().permissions[p];
   },
   renameRecording(id: string, name: string) {
-    // UI-only until the recordings library lands: the file keeps its name.
-    if (!snapshot) return;
-    snapshot = {
-      ...snapshot,
-      recordings: snapshot.recordings.map((r) => (r.id === id ? { ...r, name } : r)),
-    };
-    changed();
+    // Renames the file; the new list arrives as `recordings://changed`.
+    void run(commands.renameRecording(id, name));
   },
 };
 
@@ -262,6 +260,7 @@ export async function connectEngine(): Promise<void> {
     // Levels reach only the meters (see `micLevels`); nothing else re-renders per tick.
     events.engineLevels(self).listen((e) => setLevels(e.payload)),
     events.settingsChanged.listen((e) => setSettings(e.payload)),
+    events.recordingsChanged.listen((e) => setLibrary(e.payload)),
     ...(ownsToasts ? listenForToasts() : []),
   ]);
   onPageShown(() => {
@@ -273,6 +272,15 @@ export async function connectEngine(): Promise<void> {
   settings = s;
   snapshot = shareUnchanged(st);
   setLevels(st.levels);
+  changed();
+  // The first scan opens every file in the folder; render without waiting for it.
+  void commands.listRecordings().then((r) => {
+    if (r.status === "ok") setLibrary(r.data);
+  });
+}
+
+function setLibrary(next: Recording[]) {
+  library = next;
   changed();
 }
 
