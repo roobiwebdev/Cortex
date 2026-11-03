@@ -37,6 +37,8 @@ pub struct LivePreview {
     /// Engine preview on/off requests, run in order on one worker thread
     /// (starting a session can block on ScreenCaptureKit).
     engine_tx: Sender<bool>,
+    /// Print every on/off decision and its reason (`CORTEX_DEBUG_PREVIEW_STATS=1`).
+    trace: bool,
 }
 
 impl LivePreview {
@@ -65,7 +67,11 @@ impl LivePreview {
                     while let Ok(next) = rx.try_recv() {
                         on = next;
                     }
-                    if let Err(e) = worker_shell.engine().set_preview_enabled(on) {
+                    let r = worker_shell.engine().set_preview_enabled(on);
+                    if stats {
+                        eprintln!("cortex: preview engine on={on} -> {r:?}");
+                    }
+                    if let Err(e) = r {
                         eprintln!("cortex: preview: {e}");
                     }
                 }
@@ -78,11 +84,12 @@ impl LivePreview {
             shell,
             wanted: Mutex::new(Wanted::default()),
             engine_tx,
+            trace: stats,
         });
         let p = preview.clone();
-        preview
-            .view
-            .on_window_visibility(move |visible| p.update(|w| w.visible = visible));
+        preview.view.on_window_visibility(move |visible| {
+            p.update("occlusion", |w| w.visible = visible);
+        });
         Ok(preview)
     }
 
@@ -102,15 +109,21 @@ impl LivePreview {
 
     /// React mounted (true) or removed (false) the hole.
     pub fn set_enabled(&self, enabled: bool) {
-        self.update(|w| w.hole = enabled);
+        self.update("hole", |w| w.hole = enabled);
     }
 
-    fn update(&self, f: impl FnOnce(&mut Wanted)) {
+    fn update(&self, why: &str, f: impl FnOnce(&mut Wanted)) {
         let Ok(mut w) = self.wanted.lock() else {
             return;
         };
         f(&mut w);
         let on = w.hole && w.visible;
+        if self.trace {
+            eprintln!(
+                "cortex: preview {why}: hole={} visible={} -> on={on} (was {})",
+                w.hole, w.visible, w.on
+            );
+        }
         if on == w.on {
             return;
         }
@@ -126,18 +139,29 @@ impl LivePreview {
     }
 }
 
-/// Wraps a sink to print how many frames a second reach the view, and their size.
+/// Wraps a sink to print how many frames a second reach the view, and their size,
+/// every 5 s. A ticker thread prints, so a stalled preview shows up as 0 fps.
 fn counted(sink: rec_macos_ui::PreviewFn) -> rec_macos_ui::PreviewFn {
-    let window = Mutex::new((std::time::Instant::now(), 0u32));
+    let count = Arc::new(Mutex::new((0u32, 0usize, 0usize)));
+    let c = count.clone();
+    let _ = std::thread::Builder::new()
+        .name("preview-stats".into())
+        .spawn(move || {
+            let mut t = std::time::Instant::now();
+            loop {
+                std::thread::sleep(std::time::Duration::from_secs(5));
+                let Ok(mut g) = c.lock() else { return };
+                let secs = t.elapsed().as_secs_f64();
+                let (n, w, h) = *g;
+                println!("cortex: preview {:.1} fps {w}x{h}", f64::from(n) / secs);
+                g.0 = 0;
+                t = std::time::Instant::now();
+            }
+        });
     Arc::new(move |pb| {
         let (w, h) = rec_macos_ui::frame_size(&pb);
-        if let Ok(mut c) = window.lock() {
-            c.1 += 1;
-            let secs = c.0.elapsed().as_secs_f64();
-            if secs >= 5.0 {
-                println!("cortex: preview {:.1} fps {w}x{h}", f64::from(c.1) / secs);
-                *c = (std::time::Instant::now(), 0);
-            }
+        if let Ok(mut g) = count.lock() {
+            *g = (g.0 + 1, w, h);
         }
         sink(pb)
     })
