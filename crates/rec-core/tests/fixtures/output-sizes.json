@@ -1,0 +1,47 @@
+{
+  "_comment": "Cases for rec_core::output (Rust unit test) and apps/desktop/src/lib/output-size.ts (TS test). Both must pass, so the UI shows the size the engine records.",
+  "sizes": [
+    { "resolution": "4k", "source": [3456, 2234], "output": [3840, 2482] },
+    { "resolution": "4k", "source": [3840, 2160], "output": [3840, 2160] },
+    { "resolution": "4k", "source": [5120, 2880], "output": [3840, 2160] },
+    { "resolution": "4k", "source": [1920, 1080], "output": [3840, 2160] },
+    { "resolution": "4k", "source": [3840, 2400], "output": [3840, 2400] },
+    { "resolution": "4k", "source": [5120, 1440], "output": [3840, 1080] },
+    { "resolution": "4k", "source": [1080, 1920], "output": [2160, 3840] },
+    { "resolution": "4k", "source": [1200, 1601], "output": [2880, 3840] },
+    { "resolution": "4k", "source": [2000, 2000], "output": [3840, 3840] },
+    { "resolution": "4k", "source": [1001, 601], "output": [3840, 2304] },
+    { "resolution": "4k", "source": [1235, 777], "output": [3840, 2414] },
+    { "resolution": "native", "source": [3456, 2234], "output": [3456, 2234] },
+    { "resolution": "native", "source": [3457, 2235], "output": [3456, 2234] },
+    { "resolution": "1440p", "source": [3456, 2234], "output": [2228, 1440] },
+    { "resolution": "1440p", "source": [1920, 1080], "output": [1920, 1080] },
+    { "resolution": "1080p", "source": [3456, 2234], "output": [1670, 1080] },
+    { "resolution": "1080p", "source": [5120, 2880], "output": [1920, 1080] },
+    { "resolution": "1080p", "source": [1080, 1920], "output": [1080, 1920] },
+    { "resolution": "1080p", "source": [1281, 721], "output": [1280, 720] },
+    { "resolution": "720p", "source": [3456, 2234], "output": [1114, 720] },
+    { "resolution": "720p", "source": [900, 1600], "output": [720, 1280] }
+  ],
+  "bitrates": [
+    { "codec": "hevc", "size": [3840, 2482], "fps": 60, "bps": 80059392 },
+    { "codec": "hevc", "size": [3840, 2160], "fps": 60, "bps": 69672960 },
+    { "codec": "h264", "size": [3840, 2160], "fps": 60, "bps": 99532800 },
+    { "codec": "h264", "size": [3840, 2482], "fps": 60, "bps": 114370560 },
+    { "codec": "hevc", "size": [3840, 2482], "fps": 30, "bps": 40029696 },
+    { "codec": "hevc", "size": [3456, 2234], "fps": 60, "bps": 64853913 },
+    { "codec": "h264", "size": [1920, 1080], "fps": 60, "bps": 19906560 },
+    { "codec": "hevc", "size": [2228, 1440], "fps": 60, "bps": 19249920 },
+    { "codec": "h264", "size": [1670, 1080], "fps": 30, "bps": 8657280 },
+    { "codec": "prores", "size": [3840, 2160], "fps": 60, "bps": 1000000 },
+    { "codec": "h264", "size": [320, 180], "fps": 24, "bps": 1000000 }
+  ],
+  "codecs": [
+    { "codec": "auto", "size": [1920, 1080], "resolved": "h264" },
+    { "codec": "auto", "size": [1670, 1080], "resolved": "h264" },
+    { "codec": "auto", "size": [2228, 1440], "resolved": "hevc" },
+    { "codec": "auto", "size": [3840, 2482], "resolved": "hevc" },
+    { "codec": "h264", "size": [3840, 2482], "resolved": "h264" },
+    { "codec": "prores", "size": [1280, 720], "resolved": "prores" }
+  ]
+}

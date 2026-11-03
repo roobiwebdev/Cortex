@@ -185,14 +185,17 @@ pub struct Session {
 /// brightness after 1.5 s, 98% after 2 s).
 const CAMERA_SETTLE_SECS: f64 = 2.0;
 
-/// Size ScreenCaptureKit delivers: the native size when it is larger than
-/// the output (scaled down here with a high-quality filter), else the output
-/// size. `REC_SCALER=sck` keeps ScreenCaptureKit's own scaling.
+/// Size ScreenCaptureKit delivers: the native size whenever the output
+/// differs from it, scaled here with a high-quality filter (down for most
+/// presets, up for 4K on a smaller source), else the output size.
+/// `REC_SCALER=sck` keeps ScreenCaptureKit's own scaling.
 fn capture_size(o: &Options) -> (usize, usize) {
-    let (w, h) = o.size;
-    let (nw, nh) = o.native;
     let sck = std::env::var("REC_SCALER").as_deref() == Ok("sck");
-    if o.test_pattern.is_none() && !sck && nw * nh > w * h { (nw, nh) } else { (w, h) }
+    capture_size_for(o.size, o.native, o.test_pattern.is_none() && !sck)
+}
+
+fn capture_size_for(size: (usize, usize), native: (usize, usize), scale_here: bool) -> (usize, usize) {
+    if scale_here && native.0 * native.1 > 0 && native != size { native } else { size }
 }
 
 impl Session {
@@ -720,4 +723,20 @@ pub fn stop_running() -> Result<()> {
     }
     println!("{file}");
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::capture_size_for;
+
+    #[test]
+    fn capture_is_native_whenever_the_engine_scales() {
+        // Downscale (1080p) and upscale (4K on a 3456x2234 display): the
+        // screen arrives at its own pixels and the Lanczos scaler resizes it.
+        assert_eq!(capture_size_for((1670, 1080), (3456, 2234), true), (3456, 2234));
+        assert_eq!(capture_size_for((3840, 2482), (3456, 2234), true), (3456, 2234));
+        // Native: nothing to scale. Test pattern / REC_SCALER=sck: the output size.
+        assert_eq!(capture_size_for((3456, 2234), (3456, 2234), true), (3456, 2234));
+        assert_eq!(capture_size_for((3840, 2482), (3456, 2234), false), (3840, 2482));
+    }
 }

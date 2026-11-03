@@ -197,30 +197,29 @@ fn even(x: f64) -> usize {
     ((x / 2.0).round() as usize * 2).max(2)
 }
 
-/// Output size for `s` (a preset or WxH, the bounding box) and a source of
-/// `native` pixels: the source's aspect ratio fitted inside the box, never
-/// larger than the source, even dimensions. A frame with the source's shape
-/// fills edge to edge: no letterbox or pillarbox bars, nothing cropped.
+/// Output size for `s` (a preset or WxH) and a source of `native` pixels.
+/// Presets follow `rec_core::output::output_size` (4K is 3840 on the long
+/// side, upscaling if needed; the others only shrink). WxH is a bounding box:
+/// the source's aspect ratio fitted inside it, never larger than the source.
+/// Even dimensions, and a frame with the source's shape fills edge to edge:
+/// no letterbox or pillarbox bars, nothing cropped.
 fn parse_size(s: &str, native: (usize, usize)) -> Result<(usize, usize)> {
+    use rec_core::settings::Resolution;
     let lower = s.to_lowercase();
+    let preset = match lower.as_str() {
+        "2160p" | "uhd" => Some(Resolution::R4k),
+        other => Resolution::parse(other),
+    };
+    if let Some(res) = preset {
+        let (w, h) = rec_core::output::output_size(res, (native.0 as u32, native.1 as u32));
+        return Ok((w as usize, h as usize));
+    }
     // The capture's own size is the native size rounded down to even.
     let (nw, nh) = ((native.0 & !1).max(2) as f64, (native.1 & !1).max(2) as f64);
-    let (bw, bh) = match lower.as_str() {
-        "720p" => (1280.0, 720.0),
-        "1080p" => (1920.0, 1080.0),
-        "1440p" => (2560.0, 1440.0),
-        "4k" | "2160p" | "uhd" => (3840.0, 2160.0),
-        "native" => (nw, nh),
-        _ => {
-            let Some((w, h)) = lower.split_once('x') else {
-                bail!("bad --resolution {s:?}: use 720p/1080p/1440p/4k/native/WxH")
-            };
-            (w.trim().parse::<usize>()? as f64, h.trim().parse::<usize>()? as f64)
-        }
+    let Some((w, h)) = lower.split_once('x') else {
+        bail!("bad --resolution {s:?}: use 720p/1080p/1440p/4k/native/WxH")
     };
-    // Presets name the frame's height for landscape sources and its width
-    // for portrait ones (a 1080p portrait window is 1080 wide).
-    let (bw, bh) = if nh > nw && matches!(lower.as_str(), "720p" | "1080p" | "1440p" | "4k" | "2160p" | "uhd") { (bh, bw) } else { (bw, bh) };
+    let (bw, bh) = (w.trim().parse::<usize>()? as f64, h.trim().parse::<usize>()? as f64);
     let k = (bw / nw).min(bh / nh).min(1.0);
     Ok((even(nw * k), even(nh * k)))
 }
@@ -416,17 +415,18 @@ pub fn prepare(a: RecordArgs) -> Result<(record::Options, Option<screen::Target>
         }
     };
     let (w, h) = parse_size(&a.resolution, native)?;
-    let codec = a.codec.unwrap_or(if w * h > 1920 * 1080 { Codec::Hevc } else { Codec::H264 });
-    // Bits per pixel per frame tuned for screen content (sharp text).
-    let bpp = match codec {
-        Codec::H264 => 0.16,
-        Codec::Hevc => 0.10,
-        Codec::Prores => 0.0, // fixed quality; bitrate unused
-    };
+    // Auto codec and the automatic bitrate (more bits per pixel for 4K-class
+    // frames) come from rec_core::output, which the UI mirrors.
+    let size = (w as u32, h as u32);
+    let codec = a.codec.unwrap_or_else(|| match rec_core::output::resolve_codec(rec_core::settings::Codec::Auto, size) {
+        rec_core::settings::Codec::Hevc => Codec::Hevc,
+        _ => Codec::H264,
+    });
+    // ProRes is fixed quality; its bitrate is unused.
     let bitrate = a
         .bitrate
         .map(|m| (m * 1e6) as u64)
-        .unwrap_or_else(|| ((w * h) as f64 * a.fps as f64 * bpp) as u64)
+        .unwrap_or_else(|| rec_core::output::auto_bitrate(codec.as_core(), size, a.fps))
         .clamp(1_000_000, 400_000_000);
     if codec == Codec::Prores && opts.output.extension().is_some_and(|e| e == "mp4") {
         bail!("ProRes needs a .mov output");
@@ -534,13 +534,17 @@ mod tests {
         // Every size keeps the source's aspect ratio (no bars), even sizes.
         let native = (3456, 2234);
         assert_eq!(parse_size("1080p", native).unwrap(), (1670, 1080));
-        assert_eq!(parse_size("4K", native).unwrap(), (3342, 2160));
+        // 4K is 3840 wide at the source's shape (rec_core::output).
+        assert_eq!(parse_size("4K", native).unwrap(), (3840, 2482));
+        assert_eq!(parse_size("uhd", (5120, 2880)).unwrap(), (3840, 2160));
         assert_eq!(parse_size("native", native).unwrap(), native);
         assert_eq!(parse_size("1280x720", native).unwrap(), (1114, 720));
         assert_eq!(parse_size("1080p", (2880, 1800)).unwrap(), (1728, 1080));
         assert_eq!(parse_size("1080p", (3840, 2160)).unwrap(), (1920, 1080));
-        // Never upscaled; odd sources round down to even, like the capture.
-        assert_eq!(parse_size("4k", (1201, 801)).unwrap(), (1200, 800));
+        // Only 4K upscales; odd sources round down to even, like the capture.
+        assert_eq!(parse_size("1440p", (1201, 801)).unwrap(), (1200, 800));
+        assert_eq!(parse_size("1600x1000", (1201, 801)).unwrap(), (1200, 800));
+        assert_eq!(parse_size("4k", (1201, 801)).unwrap(), (3840, 2560));
         // Portrait: the preset names the width.
         assert_eq!(parse_size("1080p", (2160, 3840)).unwrap(), (1080, 1920));
         for (sz, n) in [("1080p", (3456, 2234)), ("720p", (4112, 2658)), ("4k", (5120, 2880)), ("1440p", (3144, 1588))] {
