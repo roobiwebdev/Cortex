@@ -45,7 +45,7 @@ export function RecordingSection() {
       <SettingsGroup title="Video">
         <SettingsRow
           label="Resolution"
-          hint="4K is 3840 pixels on the long side, in your screen's shape. 720p to 1440p only shrink. Native keeps every pixel."
+          hint="4K is 3840 pixels on the long side, in your screen's shape (H.264 stays inside 3840×2160). 720p to 1440p only shrink. Native keeps every pixel."
         >
           <ChoiceSelect<Resolution | "custom">
             aria-label="Resolution"
