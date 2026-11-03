@@ -172,10 +172,65 @@ export function contains(r: Rect, p: Pt) {
 export interface SnapTarget {
   windowId: number;
   app: string;
+  bundleId: string;
   title: string;
   frame: Rect;
-  /** Corner radius as a fraction of the frame width (matches the mock desktop's drawing). */
+  /** Corner radius as a fraction of the frame width. */
   radius: number;
+}
+
+/** macOS window corner radius in points (Sonoma and later draw about 10 pt). */
+const WINDOW_RADIUS_PT = 10;
+
+/** Points (the engine's unit) to this display's pixels (the picker's unit), rounded. */
+export function toPixels(r: Rect, scale: number): Rect {
+  return {
+    x: Math.round(r.x * scale),
+    y: Math.round(r.y * scale),
+    w: Math.round(r.w * scale),
+    h: Math.round(r.h * scale),
+  };
+}
+
+/** Display pixels back to points for `CaptureTarget::Region` (two decimals: no float noise). */
+export function toPoints(r: Rect, scale: number): Rect {
+  const k = scale > 0 ? scale : 1;
+  const p = (v: number) => Math.round((v / k) * 100) / 100;
+  return { x: p(r.x), y: p(r.y), w: p(r.w), h: p(r.h) };
+}
+
+/**
+ * Snap targets on one display, back to front (`targetAt` takes the last hit). The engine lists
+ * windows front to back with frames in points from their display's top-left.
+ */
+export function snapTargets(
+  windows: ReadonlyArray<{ id: number; app: string; bundleId: string; title: string; displayId: number; frame: Rect }>,
+  displayId: number,
+  scale: number,
+): SnapTarget[] {
+  return windows
+    .filter((w) => w.displayId === displayId)
+    .map((w) => {
+      const frame = toPixels(w.frame, scale);
+      return {
+        windowId: w.id,
+        app: w.app,
+        bundleId: w.bundleId,
+        title: w.title,
+        frame,
+        radius: frame.w > 0 ? (WINDOW_RADIUS_PT * scale) / frame.w : 0,
+      };
+    })
+    .toReversed();
+}
+
+/** The display whose desktop frame (points) holds the point, else the first one. */
+export function displayAt<D extends { frame: Rect }>(displays: readonly D[], p: Pt): D | undefined {
+  return (
+    displays.find(
+      (d) => p.x >= d.frame.x && p.x < d.frame.x + d.frame.w && p.y >= d.frame.y && p.y < d.frame.y + d.frame.h,
+    ) ?? displays[0]
+  );
 }
 
 /** Topmost target under the pointer. `targets` is ordered back to front. */

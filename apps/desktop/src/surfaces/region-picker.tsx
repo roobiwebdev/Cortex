@@ -1,13 +1,17 @@
 import * as React from "react";
 import { AppWindow } from "lucide-react";
 
+import { isTauri } from "@tauri-apps/api/core";
+
 import { engine, useEngine } from "../lib/engine";
 import type { CaptureTarget, Display } from "../lib/types";
+import { onPageShown } from "../lib/visibility";
 import type { SurfaceProps } from "../prototype/surfaces";
 import {
   aspectRatio,
   clamp,
   contains,
+  displayAt,
   fitAspect,
   growRect,
   MIN_SIZE,
@@ -15,7 +19,10 @@ import {
   rectFromDrag,
   resizeRect,
   setRectSize,
+  snapTargets,
   targetAt,
+  toPixels,
+  toPoints,
   type Aspect,
   type Handle,
   type Pt,
@@ -34,19 +41,20 @@ import {
 import { AppList, AreaOptions, DisplayList, WindowGrid } from "./region-picker/pickers";
 import { RegionToolbar, type PickMode } from "./region-picker/toolbar";
 
-// Where the mock desktop draws its windows, as fractions of the display, back to front.
-// Mirrors MockScreen variant="desktop"; the real app gets frames from the SCK window list.
-const ONSCREEN: ReadonlyArray<{ app: string; x: number; y: number; w: number; h: number; radius: number }> = [
-  { app: "Figma", x: 0.09, y: 0.11, w: 0.62, h: 0.74, radius: 0.012 },
-  { app: "Preview", x: 0.74, y: 0.22, w: 0.2, h: 0.34, radius: 0.04 },
-];
+const FALLBACK_DISPLAY: Display = {
+  id: 1,
+  name: "Built-in Retina Display",
+  width: 3456,
+  height: 2234,
+  frame: { x: 0, y: 0, w: 1728, h: 1117 },
+  scale: 2,
+};
+const inTauri = isTauri();
 
-const FALLBACK_DISPLAY: Display = { id: 1, name: "Built-in Retina Display", width: 3456, height: 2234 };
-
-// prototype-local: stands in for a remembered-region preference in core::Settings (NEW-RG-04).
-const pickerMemory = { rememberLastArea: true };
-function storeRemember(v: boolean) {
-  pickerMemory.rememberLastArea = v;
+/** The display this overlay covers: the shell sizes the window to one whole display. */
+function overlayDisplay(displays: readonly Display[]): Display {
+  if (!inTauri) return displays.find((d) => d.id === 1) ?? FALLBACK_DISPLAY;
+  return displayAt(displays, { x: window.screenX + 1, y: window.screenY + 1 }) ?? FALLBACK_DISPLAY;
 }
 
 type Drag =
@@ -69,9 +77,25 @@ function modeFor(t: CaptureTarget): PickMode {
  *        transparent, capture-excluded overlay window per display.
  * WHERE: Opened from the main window's source card; confirm writes `settings.target` and returns to Main.
  */
-export function RegionPicker({ navigate }: SurfaceProps) {
+export function RegionPicker(props: SurfaceProps) {
+  // The window is reused: each time it is shown, start over from the saved target, on the
+  // display it now covers, with a fresh window list.
+  const [opened, setOpened] = React.useState(0);
+  React.useEffect(() => {
+    engine.refreshDevices();
+    return onPageShown(() => {
+      engine.refreshDevices();
+      setOpened((n) => n + 1);
+    });
+  }, []);
+  return <RegionPickerBody key={opened} {...props} />;
+}
+
+function RegionPickerBody({ navigate }: SurfaceProps) {
   const e = useEngine();
-  const display = e.displays.find((d) => d.id === 1) ?? FALLBACK_DISPLAY;
+  const display = overlayDisplay(e.displays);
+  const scale = display.scale > 0 ? display.scale : 1;
+  // The picker works in display pixels (what gets recorded); the target is saved in points.
   const bounds: Size = { w: display.width, h: display.height };
 
   const rootRef = React.useRef<HTMLDivElement>(null);
@@ -89,11 +113,12 @@ export function RegionPicker({ navigate }: SurfaceProps) {
   // Seeded once from the saved target so reopening the picker resumes where it was.
   const [saved] = React.useState(() => e.settings.target);
   const [mode, setMode] = React.useState<PickMode>(() => modeFor(saved));
-  const [rect, setRect] = React.useState<Rect | null>(() =>
-    saved.kind === "region" && pickerMemory.rememberLastArea
-      ? { x: saved.x, y: saved.y, w: saved.w, h: saved.h }
-      : null,
-  );
+  const [rect, setRect] = React.useState<Rect | null>(() => {
+    const s = e.settings;
+    const last = s.rememberRegion ? s.lastRegions.find((r) => r.displayId === display.id) : undefined;
+    const seed = saved.kind === "region" && saved.displayId === display.id ? saved : last;
+    return seed ? toPixels(seed, scale) : null;
+  });
   const [snapId, setSnapId] = React.useState<number | null>(null);
   const [windowId, setWindowId] = React.useState<number | null>(() =>
     saved.kind === "window" ? saved.windowId : null,
@@ -101,23 +126,13 @@ export function RegionPicker({ navigate }: SurfaceProps) {
   const [bundleId, setBundleId] = React.useState<string | null>(() => (saved.kind === "app" ? saved.bundleId : null));
   const [displayId, setDisplayId] = React.useState(() => (saved.kind === "display" ? saved.displayId : display.id));
   const [aspect, setAspect] = React.useState<Aspect>("free");
-  const [remember, setRemember] = React.useState(pickerMemory.rememberLastArea);
+  const [remember, setRemember] = React.useState(e.settings.rememberRegion);
   const [pointer, setPointer] = React.useState<Pt | null>(null);
   const [hover, setHover] = React.useState<SnapTarget | null>(null);
   const [drag, setDrag] = React.useState<Drag | null>(null);
   const spaceRef = React.useRef(false);
 
-  const targets: SnapTarget[] = ONSCREEN.flatMap((o) => {
-    const w = e.windows.find((x) => x.app === o.app);
-    if (!w) return [];
-    const frame = {
-      x: Math.round(o.x * bounds.w),
-      y: Math.round(o.y * bounds.h),
-      w: Math.round(o.w * bounds.w),
-      h: Math.round(o.h * bounds.h),
-    };
-    return [{ windowId: w.id, app: w.app, title: w.title, frame, radius: o.radius }];
-  });
+  const targets: SnapTarget[] = snapTargets(e.windows, display.id, scale);
 
   const sx = box.w / bounds.w;
   const sy = box.h / bounds.h;
@@ -128,7 +143,7 @@ export function RegionPicker({ navigate }: SurfaceProps) {
     return { x: clamp((ev.clientX - b.left) / sx, 0, bounds.w), y: clamp((ev.clientY - b.top) / sy, 0, bounds.h) };
   };
   const ratioFor = (shift: boolean) => (shift ? 1 : aspectRatio(aspect));
-  const appByName = (name: string) => e.apps.find((a) => a.name === name);
+  const appOf = (t: SnapTarget) => e.apps.find((a) => a.bundleId === t.bundleId);
 
   const selectedApp = e.apps.find((a) => a.bundleId === bundleId);
   const selectedWindow = e.windows.find((w) => w.id === windowId);
@@ -148,10 +163,7 @@ export function RegionPicker({ navigate }: SurfaceProps) {
     const t = targetAt(targets, p);
     if (!t) return;
     if (mode === "window") setWindowId(t.windowId);
-    if (mode === "app") {
-      const a = appByName(t.app);
-      if (a) setBundleId(a.bundleId);
-    }
+    if (mode === "app" && t.bundleId) setBundleId(t.bundleId);
   }
 
   function onHandleDown(h: Handle, ev: React.PointerEvent) {
@@ -230,9 +242,10 @@ export function RegionPicker({ navigate }: SurfaceProps) {
   }
 
   function pendingTarget(): CaptureTarget | null {
+    // A window clicked in Area mode is an area with that window's frame (Window mode
+    // records the window itself).
     if (mode === "area") {
-      if (snapId !== null) return { kind: "window", windowId: snapId };
-      return rect && validRect ? { kind: "region", displayId: display.id, ...rect } : null;
+      return rect && validRect ? { kind: "region", displayId: display.id, ...toPoints(rect, scale) } : null;
     }
     if (mode === "window") return windowId === null ? null : { kind: "window", windowId };
     if (mode === "app") return bundleId === null ? null : { kind: "app", bundleId };
@@ -242,8 +255,7 @@ export function RegionPicker({ navigate }: SurfaceProps) {
 
   const confirm = () => {
     if (!target) return;
-    storeRemember(remember);
-    engine.update({ target });
+    engine.update({ target, rememberRegion: remember });
     navigate("main");
   };
   const cancel = () => navigate("main");
@@ -294,7 +306,7 @@ export function RegionPicker({ navigate }: SurfaceProps) {
     mode === "window"
       ? framesOf((t) => t.windowId === windowId)
       : mode === "app"
-        ? framesOf((t) => appByName(t.app)?.bundleId === bundleId)
+        ? framesOf((t) => t.bundleId === bundleId)
         : [];
 
   const holes =
@@ -325,15 +337,13 @@ export function RegionPicker({ navigate }: SurfaceProps) {
       ? "Click to use this window · drag to draw an area"
       : mode === "window"
         ? "Click to record this window"
-        : hover && appByName(hover.app)
+        : hover && appOf(hover)
           ? `Click to record every ${hover.app} window`
           : "This app isn't in the list yet";
 
   const primaryLabel =
     mode === "area"
-      ? snapId !== null
-        ? "Use window"
-        : "Record area"
+      ? "Record area"
       : mode === "window"
         ? "Use window"
         : mode === "app"
@@ -401,6 +411,7 @@ export function RegionPicker({ navigate }: SurfaceProps) {
           rect={toCss(hover.frame)}
           radius={hover.radius * hover.frame.w * sx}
           app={hover.app}
+          bundleId={hover.bundleId}
           title={hover.title}
           hint={hoverHint}
         />
@@ -420,6 +431,7 @@ export function RegionPicker({ navigate }: SurfaceProps) {
                   : undefined
           }
           snappedApp={snapped?.app}
+          snappedBundleId={snapped?.bundleId}
           radius={snapped ? snapped.radius * rect.w * sx : 0}
           adjusting={adjusting}
           editable={!adjusting || drag?.kind !== "move"}
@@ -437,6 +449,7 @@ export function RegionPicker({ navigate }: SurfaceProps) {
             sizeLabel={`${t.frame.w} × ${t.frame.h}`}
             detail={t.title}
             snappedApp={t.app}
+            snappedBundleId={t.bundleId}
             adjusting={false}
             editable={false}
             radius={t.radius * t.frame.w * sx}
@@ -482,8 +495,10 @@ export function RegionPicker({ navigate }: SurfaceProps) {
             windows={e.windows}
             selectedId={windowId}
             onSelect={setWindowId}
-            // prototype-local: the engine has no devices.refresh yet (CAP-12).
-            onRefresh={() => setHover(null)}
+            onRefresh={() => {
+              setHover(null);
+              engine.refreshDevices();
+            }}
           />
         )}
         {mode === "app" && <AppList apps={e.apps} selectedId={bundleId} onSelect={setBundleId} />}

@@ -9,6 +9,8 @@ import { engine } from "../../lib/engine";
 import type { CaptureTarget, EngineState } from "../../lib/types";
 import { MockScreen } from "../../prototype/mock-screen";
 import type { SurfaceId } from "../../prototype/surfaces";
+import { AppIconTile } from "../region-picker/app-icon";
+import { toPixels } from "../region-picker/geometry";
 
 type CaptureTab = "display" | "window" | "app" | "area";
 
@@ -40,6 +42,11 @@ export function CaptureSection({
 }) {
   const target = e.settings.target;
   const [tab, setTab] = React.useState<CaptureTab>(() => tabFor(target));
+  const chooseTab = (t: CaptureTab) => {
+    setTab(t);
+    // Windows come and go: list what is open now.
+    if (t === "window" || t === "app") engine.refreshDevices();
+  };
 
   return (
     <div className={cn("space-y-2.5", locked && "pointer-events-none opacity-55")} aria-disabled={locked || undefined}>
@@ -48,7 +55,7 @@ export function CaptureSection({
         size="sm"
         className="w-full bg-foreground/[0.06]"
         value={tab}
-        onValueChange={setTab}
+        onValueChange={chooseTab}
         options={[
           { value: "display", label: "Display" },
           { value: "window", label: "Window" },
@@ -102,15 +109,12 @@ export function CaptureSection({
               key={a.bundleId}
               selected={target.kind === "app" && target.bundleId === a.bundleId}
               onSelect={() => set({ kind: "app", bundleId: a.bundleId })}
-              leading={
-                <span className="grid size-8 place-items-center rounded-[8px] bg-card text-[13px] font-semibold shadow-ledge text-foreground">
-                  {a.name.slice(0, 1)}
-                </span>
-              }
+              leading={<AppIconTile app={a.name} bundleId={a.bundleId} size={32} />}
               title={a.name}
               detail={`All ${a.windows === 1 ? "1 window" : `${a.windows} windows`}, including new ones`}
             />
           ))}
+          {e.apps.length === 0 && <EmptyNote>No apps with open windows.</EmptyNote>}
         </SourceList>
       )}
 
@@ -119,22 +123,28 @@ export function CaptureSection({
   );
 }
 
+function EmptyNote({ children }: { children: React.ReactNode }) {
+  return <p className="px-2 py-1.5 text-[12px] text-muted-foreground">{children}</p>;
+}
+
 function AreaPanel({ e, navigate }: { e: EngineState; navigate: (id: SurfaceId) => void }) {
   const t = e.settings.target;
   const display = t.kind === "region" ? e.displays.find((d) => d.id === t.displayId) : undefined;
+  // Saved in points; shown in the display's pixels, as the picker and the recording use.
+  const px = t.kind === "region" ? toPixels(t, display?.scale ?? 1) : null;
   return (
     <div className="space-y-2.5 rounded-[10px] border bg-card p-3">
       <div className="flex items-start gap-2.5">
         <span className="grid size-8 shrink-0 place-items-center rounded-[8px] bg-muted text-muted-foreground">
           <SquareDashed className="size-4" />
         </span>
-        {t.kind === "region" ? (
+        {px ? (
           <div className="min-w-0">
             <div className="tabular font-mono text-[12.5px]">
-              {t.w} × {t.h}
+              {px.w} × {px.h}
             </div>
             <div className="truncate text-[11.5px] text-muted-foreground">
-              at {t.x}, {t.y} on {display?.name ?? "a disconnected display"}
+              at {px.x}, {px.y} on {display?.name ?? "a disconnected display"}
             </div>
           </div>
         ) : (

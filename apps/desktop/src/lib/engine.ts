@@ -210,6 +210,10 @@ const tauriEngine: typeof mock.engine = {
       if (stored) setSettings(stored);
     });
   },
+  /** Re-list displays, windows and apps; the new list arrives as an engine state event. */
+  refreshDevices() {
+    void commands.devices().catch(() => undefined);
+  },
   // A failed check reports the last known state instead of toasting once a second.
   async checkPermissions(): Promise<PermissionReport> {
     const r = await commands.checkPermissions().catch(() => undefined);

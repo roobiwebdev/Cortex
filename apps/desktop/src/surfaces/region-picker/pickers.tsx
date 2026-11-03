@@ -162,7 +162,7 @@ export function WindowGrid({
                 <MockScreen variant="window" />
               </div>
               <div className="mt-1.5 flex items-center gap-1.5">
-                <AppIconTile app={w.app} size={18} className="shadow-none" />
+                <AppIconTile app={w.app} bundleId={w.bundleId} size={18} className="shadow-none" />
                 <div className="min-w-0 leading-tight">
                   <div className={cn("truncate text-[12px] font-medium", selected && "text-accent-foreground")}>
                     {w.app}
@@ -202,7 +202,7 @@ export function AppList({
             key={a.bundleId}
             selected={a.bundleId === selectedId}
             onSelect={() => onSelect(a.bundleId)}
-            icon={<AppIconTile app={a.name} size={28} />}
+            icon={<AppIconTile app={a.name} bundleId={a.bundleId} size={28} />}
             title={a.name}
             detail={`${a.windows} ${a.windows === 1 ? "window" : "windows"}`}
           />

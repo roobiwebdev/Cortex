@@ -32,6 +32,8 @@ const DEFAULT_SETTINGS: RecorderSettings = {
   fps: 60,
   bitrateMbps: null,
   target: { kind: "display", displayId: 1 },
+  rememberRegion: true,
+  lastRegions: [],
   scene: "screen-cam",
   cameraId: null,
   cameraTrack: true,
@@ -125,14 +127,51 @@ let state: EngineState = {
   replayBufferedSecs: 0,
   permissions: { screen: "granted", microphone: "granted", camera: "granted" },
   displays: [
-    { id: 1, name: "Built-in Retina Display", width: 3456, height: 2234 },
-    { id: 2, name: "Studio Display", width: 5120, height: 2880 },
+    {
+      id: 1,
+      name: "Built-in Retina Display",
+      width: 3456,
+      height: 2234,
+      frame: { x: 0, y: 0, w: 1728, h: 1117 },
+      scale: 2,
+    },
+    { id: 2, name: "Studio Display", width: 5120, height: 2880, frame: { x: 1728, y: 0, w: 2560, h: 1440 }, scale: 2 },
   ],
+  // Front to back, frames in points from their display's top-left. Preview and Figma sit
+  // where MockScreen variant="desktop" draws them on display 1.
   windows: [
-    { id: 12075, app: "Ghostty", title: "~/Projects/Cortex" },
-    { id: 12013, app: "Preview", title: "Q4 roadmap.pdf" },
-    { id: 1898, app: "Figma", title: "Cortex — Desktop UI" },
-    { id: 2201, app: "Safari", title: "Docs — Getting started" },
+    {
+      id: 12013,
+      app: "Preview",
+      bundleId: "com.apple.Preview",
+      title: "Q4 roadmap.pdf",
+      displayId: 1,
+      frame: { x: 1279, y: 246, w: 346, h: 380 },
+    },
+    {
+      id: 1898,
+      app: "Figma",
+      bundleId: "com.figma.Desktop",
+      title: "Cortex — Desktop UI",
+      displayId: 1,
+      frame: { x: 156, y: 123, w: 1071, h: 827 },
+    },
+    {
+      id: 12075,
+      app: "Ghostty",
+      bundleId: "com.mitchellh.ghostty",
+      title: "~/Projects/Cortex",
+      displayId: 2,
+      frame: { x: 200, y: 160, w: 1200, h: 800 },
+    },
+    {
+      id: 2201,
+      app: "Safari",
+      bundleId: "com.apple.Safari",
+      title: "Docs — Getting started",
+      displayId: 2,
+      frame: { x: 900, y: 300, w: 1400, h: 900 },
+    },
   ],
   apps: [
     { bundleId: "com.mitchellh.ghostty", name: "Ghostty", windows: 2 },
@@ -340,6 +379,8 @@ export const engine = {
   update(patch: Partial<RecorderSettings>) {
     set({ settings: { ...state.settings, ...patch } });
   },
+  /** The harness's device list is fixed. */
+  refreshDevices() {},
   /** The harness's grants; nothing waits for a relaunch here. */
   checkPermissions(): Promise<PermissionReport> {
     return Promise.resolve({ permissions: state.permissions, screenNeedsRelaunch: false });
