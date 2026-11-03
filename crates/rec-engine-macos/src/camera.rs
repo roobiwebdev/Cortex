@@ -125,6 +125,60 @@ pub fn on_device_change(f: impl Fn() + Clone + 'static) {
     }
 }
 
+/// SOURCE OF TRUTH KEYWORDS: FormatInfo, pick_format, camera resolution, 1080p, 720p, activeFormat
+/// WHAT:  One capture format of a camera: its size and best frame rate.
+/// WHY:   The capture format is chosen from the device's own list, so the
+///        choice is a pure function that tests can cover.
+/// WHERE: `Camera::start`, `Camera::planned_size`.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct FormatInfo {
+    pub width: usize,
+    pub height: usize,
+    pub max_fps: f64,
+}
+
+/// SOURCE OF TRUTH KEYWORDS: pick_format, camera format, cameraResolution, 1080p fallback, NEW-CT-03
+/// WHAT:  The format to capture at for a `max_height` (720 or 1080).
+/// WHY:   1080p when the camera has it, falling back to the largest smaller
+///        format, so the camera track is as sharp as the setting allows.
+///        Formats under 24 fps (some 4:3 stills-like modes) are used only
+///        when nothing else fits; ties go to the higher frame rate.
+/// WHERE: `Camera::start`, `Camera::planned_size`.
+pub fn pick_format(formats: &[FormatInfo], max_height: usize) -> Option<usize> {
+    let best = |min_fps: f64| {
+        formats
+            .iter()
+            .enumerate()
+            .filter(|(_, f)| f.height <= max_height && f.max_fps >= min_fps)
+            .max_by(|(_, a), (_, b)| {
+                (a.width * a.height).cmp(&(b.width * b.height)).then(a.max_fps.total_cmp(&b.max_fps))
+            })
+            .map(|(i, _)| i)
+    };
+    best(24.0).or_else(|| best(0.0)).or_else(|| {
+        // Nothing small enough: the smallest format there is.
+        formats.iter().enumerate().min_by_key(|(_, f)| f.width * f.height).map(|(i, _)| i)
+    })
+}
+
+fn format_size(f: &AVCaptureDeviceFormat) -> (usize, usize) {
+    let d = unsafe { objc2_core_media::CMVideoFormatDescriptionGetDimensions(&f.formatDescription()) };
+    (d.width.max(0) as usize, d.height.max(0) as usize)
+}
+
+fn formats_of(dev: &AVCaptureDevice) -> Vec<(Retained<AVCaptureDeviceFormat>, FormatInfo)> {
+    unsafe {
+        dev.formats()
+            .iter()
+            .map(|f| {
+                let (width, height) = format_size(&f);
+                let max_fps = f.videoSupportedFrameRateRanges().iter().map(|r| r.maxFrameRate()).fold(0.0, f64::max);
+                (f, FormatInfo { width, height, max_fps })
+            })
+            .collect()
+    }
+}
+
 pub struct CamIvars {
     /// Where frames go; switched when the camera moves to another session.
     shared: std::sync::Mutex<Arc<Shared>>,
@@ -167,6 +221,10 @@ pub struct Camera {
     pub name: String,
     /// The device's unique ID.
     pub id: String,
+    /// Frame size delivered (the chosen capture format).
+    pub size: (usize, usize),
+    /// The `max_height` it was started with.
+    pub max_height: usize,
     /// When it started: auto-exposure and white balance settle over the
     /// first second or two, so a fresh camera looks dark at first.
     pub started: std::time::Instant,
@@ -211,44 +269,83 @@ impl Camera {
     }
 
     /// `sel`: None = first camera, else unique ID or name substring.
-    pub fn start(sel: Option<&str>, shared: Arc<Shared>) -> Result<Self> {
+    /// `max_height`: the tallest capture format to use (720 or 1080); the
+    /// best format at or below it is chosen (see `pick_format`) and the
+    /// frames are delivered at exactly that size (`Camera::size`).
+    pub fn start(sel: Option<&str>, max_height: usize, shared: Arc<Shared>) -> Result<Self> {
         let dev = Self::device(sel)?;
         unsafe {
             let name = dev.localizedName().to_string();
             let session = AVCaptureSession::new();
             session.beginConfiguration();
-            if session.canSetSessionPreset(AVCaptureSessionPreset1280x720) {
-                session.setSessionPreset(AVCaptureSessionPreset1280x720);
-            } else {
-                session.setSessionPreset(AVCaptureSessionPresetHigh);
-            }
             let input = AVCaptureDeviceInput::deviceInputWithDevice_error(&dev)
                 .map_err(|e| anyhow!("camera {name}: {}", e.localizedDescription()))?;
             if !session.canAddInput(&input) {
                 bail!("cannot use camera {name}");
             }
             session.addInput(&input);
+            // Pick the device format directly (the session presets stop at
+            // 1280x720 on some cameras and never offer 1080p on others). The
+            // lock is held until the session runs, or it may reset the format.
+            let formats = formats_of(&dev);
+            let infos: Vec<FormatInfo> = formats.iter().map(|f| f.1).collect();
+            let chosen = pick_format(&infos, max_height).filter(|_| dev.lockForConfiguration().is_ok());
+            match chosen {
+                Some(i) => dev.setActiveFormat(&formats[i].0),
+                None if session.canSetSessionPreset(AVCaptureSessionPreset1280x720) => {
+                    session.setSessionPreset(AVCaptureSessionPreset1280x720)
+                }
+                None => session.setSessionPreset(AVCaptureSessionPresetHigh),
+            }
+            let size = match chosen {
+                Some(i) => (infos[i].width, infos[i].height),
+                None => format_size(&dev.activeFormat()),
+            };
             let output = AVCaptureVideoDataOutput::new();
-            output.setVideoSettings(Some(&dict(vec![(
-                cf_ns(kCVPixelBufferPixelFormatTypeKey),
-                num_i(PIX_BGRA as i64),
-            )])));
+            // Frames at exactly `size`, whatever the session does, so the
+            // camera track's encoder always gets the size it was opened with.
+            output.setVideoSettings(Some(&dict(vec![
+                (cf_ns(kCVPixelBufferPixelFormatTypeKey), num_i(PIX_BGRA as i64)),
+                (cf_ns(objc2_core_video::kCVPixelBufferWidthKey), num_i(size.0 as i64)),
+                (cf_ns(objc2_core_video::kCVPixelBufferHeightKey), num_i(size.1 as i64)),
+            ])));
             output.setAlwaysDiscardsLateVideoFrames(true);
             let delegate = Self::make_delegate(shared);
             let queue = DispatchQueue::new("rec.camera", None);
             output.setSampleBufferDelegate_queue(Some(ProtocolObject::from_ref(&*delegate)), Some(&queue));
             if !session.canAddOutput(&output) {
+                if chosen.is_some() {
+                    dev.unlockForConfiguration();
+                }
                 bail!("cannot add camera output");
             }
             session.addOutput(&output);
             session.commitConfiguration();
             session.startRunning();
+            if chosen.is_some() {
+                dev.unlockForConfiguration();
+            }
             if !session.isRunning() {
                 bail!("camera {name} failed to start");
             }
+            if std::env::var_os("REC_DEBUG").is_some() {
+                eprintln!("rec: debug: camera {name}: {}x{} (max height {max_height})", size.0, size.1);
+            }
             let id = dev.uniqueID().to_string();
-            Ok(Camera { session, out: delegate, _queue: queue, name, id, started: std::time::Instant::now() })
+            Ok(Camera { session, out: delegate, _queue: queue, name, id, size, max_height, started: std::time::Instant::now() })
         }
+    }
+
+    /// The frame size `start(sel, max_height)` would deliver, without
+    /// opening the camera (None: no such camera).
+    pub fn planned_size(sel: Option<&str>, max_height: usize) -> Option<(usize, usize)> {
+        let dev = Self::device(sel).ok()?;
+        let formats = formats_of(&dev);
+        let infos: Vec<FormatInfo> = formats.iter().map(|f| f.1).collect();
+        Some(match pick_format(&infos, max_height) {
+            Some(i) => (infos[i].width, infos[i].height),
+            None => unsafe { format_size(&dev.activeFormat()) },
+        })
     }
 
     fn make_delegate(shared: Arc<Shared>) -> Retained<CameraOutput> {
@@ -332,6 +429,27 @@ mod tests {
 
     fn dev(id: &str, name: &str) -> Device {
         Device { id: id.into(), name: name.into() }
+    }
+
+    fn fmt(width: usize, height: usize, max_fps: f64) -> FormatInfo {
+        FormatInfo { width, height, max_fps }
+    }
+
+    #[test]
+    fn camera_format_prefers_the_largest_within_the_cap() {
+        // FaceTime HD 1080p-style list.
+        let f = [fmt(640, 480, 30.0), fmt(1280, 720, 30.0), fmt(1920, 1080, 30.0), fmt(1440, 1080, 30.0)];
+        assert_eq!(pick_format(&f, 1080), Some(2));
+        assert_eq!(pick_format(&f, 720), Some(1));
+        // No 1080p: fall back to 720p.
+        assert_eq!(pick_format(&f[..2], 1080), Some(1));
+        // Same size: the faster one; slow formats only as a last resort.
+        let g = [fmt(1920, 1080, 15.0), fmt(1280, 720, 60.0), fmt(1280, 720, 30.0)];
+        assert_eq!(pick_format(&g, 1080), Some(1));
+        assert_eq!(pick_format(&g[..1], 1080), Some(0));
+        // Only bigger formats: the smallest of them.
+        assert_eq!(pick_format(&[fmt(3840, 2160, 30.0), fmt(2560, 1440, 30.0)], 1080), Some(1));
+        assert_eq!(pick_format(&[], 1080), None);
     }
 
     #[test]

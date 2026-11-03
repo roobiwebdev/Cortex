@@ -28,7 +28,7 @@ use rec_core::state::{
 use crate::compose::{Corner, Place, Scene, Shape};
 use crate::record::{self, Session};
 use crate::settings::{Settings, StreamDest as RecDest};
-use crate::writer::{AudioLayout, Codec, PreviewFn, Stats};
+use crate::writer::{self, AudioLayout, Codec, PreviewFn, Stats};
 use crate::{camera, live, screen, tcc};
 use rec_core::sources::{dropped_note, plan_sources};
 
@@ -213,6 +213,11 @@ pub fn record_args_for(
     if test_pattern {
         a.push("--test-pattern".into());
     }
+    // The raw camera: a second track in a .mov, a sidecar for .mp4.
+    if s.camera_track {
+        a.extend(["--camera-track".into(), "file".into()]);
+    }
+    a.extend(["--camera-resolution".into(), s.camera_resolution.as_str().into()]);
     a
 }
 
@@ -363,6 +368,9 @@ struct Meta {
     fps: u32,
     audio_tracks: u32,
     created_ms: f64,
+    /// The camera is a track in `file` (true) or in this sidecar file.
+    camera_in_file: bool,
+    camera_sidecar: Option<PathBuf>,
 }
 
 struct Finishing {
@@ -540,12 +548,18 @@ impl Inner {
             let sess =
                 Session::start_with_camera(&o, t, true, Some(Self::preview_callback(core)), cam)
                     .map_err(engine_error)?;
+            let cam_track = o
+                .webcam
+                .as_ref()
+                .and_then(|_| writer::CamTrackSpec::for_output(o.camera_track, &file, (0, 0)));
             let meta = Meta {
-                file,
                 size: o.size,
                 fps: o.fps,
                 audio_tracks: audio_track_count(&o),
                 created_ms: now_ms(),
+                camera_in_file: cam_track.as_ref().is_some_and(|c| c.sidecar.is_none()),
+                camera_sidecar: cam_track.and_then(|c| c.sidecar),
+                file,
             };
             Ok::<_, EngineError>(Active { sess, meta })
         })();
@@ -603,6 +617,9 @@ impl Inner {
             .unwrap_or_else(|_| Err("the writer crashed".into()));
         if f.discard {
             let _ = std::fs::remove_file(&f.meta.file);
+            if let Some(sc) = &f.meta.camera_sidecar {
+                let _ = std::fs::remove_file(sc);
+            }
         } else {
             match result {
                 Ok(stats) => {
@@ -621,7 +638,8 @@ impl Inner {
                         created_at: m.created_ms,
                         width: m.size.0 as u32,
                         height: m.size.1 as u32,
-                        has_camera_track: false,
+                        // In-file only: an .mp4's camera is in the sidecar.
+                        has_camera_track: m.camera_in_file && stats.cam_track_frames > 0,
                         fps: m.fps,
                         audio_tracks: m.audio_tracks,
                     };

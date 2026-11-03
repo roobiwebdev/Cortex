@@ -50,6 +50,52 @@ pub struct VideoSpec {
     pub pixel_format: u32,
 }
 
+/// SOURCE OF TRUTH KEYWORDS: CameraTrack, camera track, sidecar, camera.mov, --camera-track, NEW-CT-01, NEW-CT-04
+/// WHAT:  Where the raw camera is recorded besides the burned-in overlay.
+/// WHY:   Editors want the camera on its own (re-frame it, restyle it) while
+///        players show the composite. MP4 output always uses the sidecar:
+///        many editors ignore a second video track in an MP4.
+/// WHERE: `rec record --camera-track`, `record::Options`, `Sink::new`.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, clap::ValueEnum, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum CameraTrack {
+    /// Only the burned-in overlay.
+    #[default]
+    Off,
+    /// A second, disabled video track in the .mov (a sidecar for .mp4).
+    File,
+    /// A separate `<name>.camera.mov` next to the recording.
+    Sidecar,
+}
+
+/// The camera track to write: the camera's frame size and where it goes.
+#[derive(Clone, Debug)]
+pub struct CamTrackSpec {
+    pub width: usize,
+    pub height: usize,
+    /// Some = write `<path>` as a separate movie instead of a track in the file.
+    pub sidecar: Option<std::path::PathBuf>,
+}
+
+impl CamTrackSpec {
+    /// Resolve `mode` for an output at `path` and a camera delivering `size`.
+    pub fn for_output(mode: CameraTrack, path: &Path, size: (usize, usize)) -> Option<CamTrackSpec> {
+        let mp4 = matches!(path.extension().and_then(|e| e.to_str()), Some("mp4" | "m4v"));
+        let sidecar = match mode {
+            CameraTrack::Off => return None,
+            CameraTrack::File if !mp4 => None,
+            CameraTrack::File | CameraTrack::Sidecar => Some(sidecar_path(path)),
+        };
+        Some(CamTrackSpec { width: size.0, height: size.1, sidecar })
+    }
+}
+
+/// `<dir>/<stem>.camera.mov` for a recording at `path`.
+pub fn sidecar_path(path: &Path) -> std::path::PathBuf {
+    let stem = path.file_stem().map(|s| s.to_string_lossy().into_owned()).unwrap_or_default();
+    path.with_file_name(format!("{stem}.camera.mov"))
+}
+
 /// Audio track layout when both system audio and mic are recorded.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, clap::ValueEnum, serde::Serialize, serde::Deserialize)]
 #[serde(rename_all = "kebab-case")]
@@ -92,6 +138,10 @@ pub struct Stats {
     pub screen_latency_sum: f64,
     pub cam_latency_max: f64,
     pub cam_latency_sum: f64,
+    /// Frames written to the camera track (or sidecar).
+    pub cam_track_frames: u64,
+    /// Camera track slots skipped (no camera frame yet, or encoder busy).
+    pub cam_track_drops: u64,
 }
 
 /// Pause spans on the real frame grid, in slot indices `[pause, resume)`.
@@ -207,6 +257,15 @@ struct Out {
     sys: Option<Retained<AVAssetWriterInput>>,
     mic: Option<Retained<AVAssetWriterInput>>,
     mix_input: Option<Retained<AVAssetWriterInput>>,
+    cam: Option<CamOut>,
+}
+
+/// The raw camera's encoder input, in the main file or in a sidecar movie.
+struct CamOut {
+    input: Retained<AVAssetWriterInput>,
+    adaptor: Retained<AVAssetWriterInputPixelBufferAdaptor>,
+    /// The sidecar's own writer (None: the track is in the main file).
+    sidecar: Option<Retained<AVAssetWriter>>,
 }
 
 pub struct Sink {
@@ -347,9 +406,10 @@ impl Sink {
         compositor: Option<Compositor>,
         scene: Scene,
         preview: Option<PreviewFn>,
+        cam_track: Option<&CamTrackSpec>,
     ) -> Result<Self> {
         let out = match path {
-            Some(p) => Some(open_output(p, v, system_audio, mic, layout)?),
+            Some(p) => Some(open_output(p, v, system_audio, mic, layout, cam_track)?),
             None => None,
         };
         let own_pool = if out.is_none() && compositor.is_some() {
@@ -516,6 +576,10 @@ impl Sink {
             self.t0 = Some(t0);
             if let Some(o) = &self.out {
                 unsafe { o.writer.startSessionAtSourceTime(CMTime::new(t0, TIMESCALE)) };
+                // The sidecar shares the main file's timeline exactly.
+                if let Some(w) = o.cam.as_ref().and_then(|c| c.sidecar.as_ref()) {
+                    unsafe { w.startSessionAtSourceTime(CMTime::new(t0, TIMESCALE)) };
+                }
                 if o.mix_input.is_some() {
                     let act = self.mix_sources;
                     self.mixer = Some(Mixer::new(t0 as f64 / TIMESCALE as f64, act[0], act[1]));
@@ -938,8 +1002,20 @@ impl Sink {
                         }
                     } else {
                         self.stats.video_drops += 1;
-                        self.check_writer();
                     }
+                    // The raw camera on the same slot and timestamp: same
+                    // start, same pause cuts, same end as the main track.
+                    if let Some(c) = &o.cam {
+                        let ok = self.cam_last.as_ref().is_some_and(|cam| unsafe {
+                            c.input.isReadyForMoreMediaData() && c.adaptor.appendPixelBuffer_withPresentationTime(&cam.0, pts)
+                        });
+                        if ok {
+                            self.stats.cam_track_frames += 1;
+                        } else {
+                            self.stats.cam_track_drops += 1;
+                        }
+                    }
+                    self.check_writer();
                 } else {
                     self.stats.video_frames_out += 1;
                 }
@@ -960,6 +1036,12 @@ impl Sink {
             if o.writer.status() == AVAssetWriterStatus::Failed && self.failed.is_none() {
                 self.failed = Some(err_text(&o.writer));
             }
+            if let Some(w) = o.cam.as_ref().and_then(|c| c.sidecar.as_ref())
+                && w.status() == AVAssetWriterStatus::Failed
+                && self.failed.is_none()
+            {
+                self.failed = Some(format!("camera sidecar: {}", err_text(w)));
+            }
         }
     }
 
@@ -971,7 +1053,11 @@ impl Sink {
             return Ok(self.stats.clone());
         }
         if self.t0.is_none() {
-            unsafe { self.out.as_ref().unwrap().writer.cancelWriting() };
+            let o = self.out.as_ref().unwrap();
+            unsafe { o.writer.cancelWriting() };
+            if let Some(w) = o.cam.as_ref().and_then(|c| c.sidecar.as_ref()) {
+                unsafe { w.cancelWriting() };
+            }
             bail!("no screen frames were captured, nothing written");
         }
         self.preview = None;
@@ -985,22 +1071,47 @@ impl Sink {
             for a in [&o.sys, &o.mic, &o.mix_input].into_iter().flatten() {
                 a.markAsFinished();
             }
-            let (tx, rx) = mpsc::channel();
-            let block = RcBlock::new(move || {
-                let _ = tx.send(());
+            let sidecar = o.cam.as_ref().and_then(|c| {
+                c.input.markAsFinished();
+                c.sidecar.as_ref()
             });
-            o.writer.finishWritingWithCompletionHandler(&block);
-            rx.recv_timeout(Duration::from_secs(60))
-                .context("timed out finalizing movie")?;
+            if let Some(w) = sidecar {
+                w.endSessionAtSourceTime(end_t);
+            }
+            // Finish both movies together; the main file's result decides.
+            let (tx, rx) = mpsc::channel();
+            for w in std::iter::once(&o.writer).chain(sidecar) {
+                let tx = tx.clone();
+                let block = RcBlock::new(move || {
+                    let _ = tx.send(());
+                });
+                w.finishWritingWithCompletionHandler(&block);
+            }
+            for _ in 0..1 + sidecar.is_some() as usize {
+                rx.recv_timeout(Duration::from_secs(60))
+                    .context("timed out finalizing movie")?;
+            }
             if o.writer.status() != AVAssetWriterStatus::Completed {
                 bail!("writing failed: {}", err_text(&o.writer));
+            }
+            if let Some(w) = sidecar
+                && w.status() != AVAssetWriterStatus::Completed
+            {
+                eprintln!("rec: warning: camera sidecar not finished: {}", err_text(w));
             }
         }
         Ok(self.stats.clone())
     }
 }
 
-fn open_output(path: &Path, v: &VideoSpec, system_audio: bool, mic: bool, layout: AudioLayout) -> Result<Out> {
+fn open_output(
+    path: &Path,
+    v: &VideoSpec,
+    system_audio: bool,
+    mic: bool,
+    layout: AudioLayout,
+    cam_track: Option<&CamTrackSpec>,
+) -> Result<Out> {
     if path.exists() {
         bail!("{} already exists", path.display());
     }
@@ -1039,6 +1150,10 @@ fn open_output(path: &Path, v: &VideoSpec, system_audio: bool, mic: bool, layout
             bail!("cannot add video input (unsupported codec/size {}x{}?)", v.width, v.height);
         }
         writer.addInput(&video);
+        let cam = match cam_track {
+            Some(c) => Some(open_camera_track(&writer, &video, v, c)?),
+            None => None,
+        };
 
         let media_audio = AVMediaTypeAudio.unwrap();
         let mk_audio = |ch: i64, br: i64| -> Result<Retained<AVAssetWriterInput>> {
@@ -1079,7 +1194,102 @@ fn open_output(path: &Path, v: &VideoSpec, system_audio: bool, mic: bool, layout
         if !writer.startWriting() {
             bail!("startWriting failed: {}", err_text(&writer));
         }
-        Ok(Out { writer, video, adaptor, sys, mic, mix_input })
+        if let Some(w) = cam.as_ref().and_then(|c| c.sidecar.as_ref())
+            && !w.startWriting()
+        {
+            writer.cancelWriting();
+            bail!("camera sidecar: startWriting failed: {}", err_text(w));
+        }
+        Ok(Out { writer, video, adaptor, sys, mic, mix_input, cam })
+    }
+}
+
+/// The camera track's encoder settings: the main codec at the camera's
+/// size, with a bitrate for ~30 real frames a second of camera content
+/// (repeated frames on a 60 fps grid cost almost nothing).
+fn camera_video_spec(v: &VideoSpec, c: &CamTrackSpec) -> VideoSpec {
+    let bpp = match v.codec {
+        Codec::H264 => 0.16,
+        Codec::Hevc => 0.10,
+        Codec::Prores => 0.0,
+    };
+    let bitrate = ((c.width * c.height) as f64 * 30.0 * bpp) as u64;
+    VideoSpec {
+        width: c.width,
+        height: c.height,
+        fps: v.fps,
+        codec: v.codec,
+        bitrate: bitrate.clamp(2_000_000, 100_000_000),
+        pixel_format: PIX_BGRA,
+    }
+}
+
+/// Add the raw camera input: to `writer` as a second, disabled video track
+/// (alternate group with `main`, so players show the composite), or to its
+/// own fragmented sidecar movie. `startWriting` is left to the caller.
+fn open_camera_track(
+    writer: &AVAssetWriter,
+    main: &AVAssetWriterInput,
+    v: &VideoSpec,
+    c: &CamTrackSpec,
+) -> Result<CamOut> {
+    let cv = camera_video_spec(v, c);
+    unsafe {
+        let sidecar = match &c.sidecar {
+            Some(p) => {
+                if p.exists() {
+                    bail!("{} already exists", p.display());
+                }
+                let abs = std::path::absolute(p)?;
+                let url = NSURL::fileURLWithPath(&ns(abs.to_str().context("non-UTF8 path")?));
+                let w = AVAssetWriter::initWithURL_fileType_error(
+                    AVAssetWriter::alloc(),
+                    &url,
+                    AVFileTypeQuickTimeMovie.unwrap(),
+                )
+                .map_err(|e| anyhow!("camera sidecar: {}", e.localizedDescription()))?;
+                // Crash-safe like the main file.
+                w.setMovieFragmentInterval(CMTime::new(2 * TIMESCALE as i64, TIMESCALE));
+                Some(w)
+            }
+            None => None,
+        };
+        let input = AVAssetWriterInput::initWithMediaType_outputSettings(
+            AVAssetWriterInput::alloc(),
+            AVMediaTypeVideo.unwrap(),
+            Some(&video_settings(&cv)),
+        );
+        input.setExpectsMediaDataInRealTime(true);
+        input.setMediaTimeScale(TIMESCALE);
+        let attrs = dict(vec![
+            (cf_ns(kCVPixelBufferPixelFormatTypeKey), num_i(PIX_BGRA as i64)),
+            (cf_ns(kCVPixelBufferWidthKey), num_i(cv.width as i64)),
+            (cf_ns(kCVPixelBufferHeightKey), num_i(cv.height as i64)),
+        ]);
+        let adaptor = AVAssetWriterInputPixelBufferAdaptor::initWithAssetWriterInput_sourcePixelBufferAttributes(
+            AVAssetWriterInputPixelBufferAdaptor::alloc(),
+            &input,
+            Some(&attrs),
+        );
+        let target: &AVAssetWriter = sidecar.as_deref().unwrap_or(writer);
+        if !target.canAddInput(&input) {
+            bail!("cannot add camera track (unsupported codec/size {}x{}?)", cv.width, cv.height);
+        }
+        target.addInput(&input);
+        if sidecar.is_none() {
+            // One alternate group, composite as default: QuickTime/AVPlayer
+            // show the composite; editors still see the camera track.
+            let members: [&AVAssetWriterInput; 2] = [main, &input];
+            let arr = objc2_foundation::NSArray::from_slice(&members);
+            let group =
+                AVAssetWriterInputGroup::initWithInputs_defaultInput(AVAssetWriterInputGroup::alloc(), &arr, Some(main));
+            if writer.canAddInputGroup(&group) {
+                writer.addInputGroup(&group);
+            } else {
+                bail!("cannot add video track group");
+            }
+        }
+        Ok(CamOut { input, adaptor, sidecar })
     }
 }
 

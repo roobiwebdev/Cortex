@@ -143,6 +143,9 @@ fn record(a: RecordArgs) -> Result<()> {
             stats.audio_drops,
             stats.audio_clipped_samples
         );
+        if stats.cam_track_frames > 0 {
+            eprintln!("rec: camera track: {} frames, {} skipped", stats.cam_track_frames, stats.cam_track_drops);
+        }
     }
     if std::env::var_os("REC_DEBUG").is_some() {
         let avg = |sum: f64, n: u64| if n == 0 { 0.0 } else { sum / n as f64 * 1000.0 };
