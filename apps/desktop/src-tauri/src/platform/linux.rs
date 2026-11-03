@@ -66,6 +66,12 @@ impl WindowChrome for Chrome {
         top
     }
     fn set_ignores_mouse_events(&self, window: &WebviewWindow, ignore: bool) {
+        // tao sets the input shape on the GDK window, which only exists once the GTK window
+        // is realized; floating windows are configured before they are first shown.
+        if let Ok(gtk_window) = window.gtk_window() {
+            use gtk::prelude::WidgetExt;
+            gtk_window.realize();
+        }
         let _ = window.set_ignore_cursor_events(ignore);
     }
     fn set_capturable(&self, _window: &WebviewWindow) {}
