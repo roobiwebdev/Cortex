@@ -920,7 +920,20 @@ impl Inner {
             .streams
             .iter()
             .filter_map(|(id, _)| statuses.iter().find(|(i, _)| i == id))
-            .map(|(_, s)| StreamStatus {
+            .enumerate()
+            .map(|(n, (_, s))| {
+                // A drop or a failed first connection becomes a toast.
+                let was = self.state.streams.get(n);
+                let (was_live, was_state) = was.map_or((false, ""), |p| (p.live, p.state.as_str()));
+                if let Some(message) = live::stream_alert(was_live, was_state, s) {
+                    ev.push(EngineEvent::Error {
+                        message,
+                        recoverable: true,
+                    });
+                }
+                s
+            })
+            .map(|s| StreamStatus {
                 name: s.name.clone(),
                 live: s.live,
                 state: s.state.clone(),
