@@ -69,13 +69,18 @@ impl DesktopEngine for WindowsEngine {
 pub struct Chrome;
 
 impl WindowChrome for Chrome {
-    fn configure_floating(&self, window: &WebviewWindow, _kind: FloatingKind) -> bool {
+    fn configure_floating(&self, window: &WebviewWindow, kind: FloatingKind) -> bool {
         let Some(h) = raw(window) else {
             return false;
         };
         let _ = window.set_skip_taskbar(true);
         let _ = window.set_always_on_top(true);
-        let floating = shell::make_floating(h);
+        // The region picker and the menu bar panel take keys (Enter, Esc, menus).
+        let no_activate = matches!(
+            kind,
+            FloatingKind::Hud | FloatingKind::Toast | FloatingKind::Countdown
+        );
+        let floating = shell::make_floating(h, no_activate);
         let hidden = shell::exclude_from_capture(h);
         for e in [&floating, &hidden]
             .into_iter()
