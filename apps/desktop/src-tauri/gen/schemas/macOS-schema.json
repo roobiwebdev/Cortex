@@ -189,6 +189,12 @@
           "markdownDescription": "Enables the cancel_countdown command without any pre-configured scope."
         },
         {
+          "description": "Enables the cancel_trim command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-cancel-trim",
+          "markdownDescription": "Enables the cancel_trim command without any pre-configured scope."
+        },
+        {
           "description": "Enables the check_permissions command without any pre-configured scope.",
           "type": "string",
           "const": "allow-check-permissions",
@@ -243,6 +249,12 @@
           "markdownDescription": "Enables the import_rec_settings command without any pre-configured scope."
         },
         {
+          "description": "Enables the list_recordings command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-list-recordings",
+          "markdownDescription": "Enables the list_recordings command without any pre-configured scope."
+        },
+        {
           "description": "Enables the open_floating command without any pre-configured scope.",
           "type": "string",
           "const": "allow-open-floating",
@@ -279,6 +291,18 @@
           "markdownDescription": "Enables the push_toast command without any pre-configured scope."
         },
         {
+          "description": "Enables the recording_thumbnails command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-recording-thumbnails",
+          "markdownDescription": "Enables the recording_thumbnails command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the recording_waveform command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-recording-waveform",
+          "markdownDescription": "Enables the recording_waveform command without any pre-configured scope."
+        },
+        {
           "description": "Enables the relaunch command without any pre-configured scope.",
           "type": "string",
           "const": "allow-relaunch",
@@ -289,6 +313,12 @@
           "type": "string",
           "const": "allow-remove-stream-key",
           "markdownDescription": "Enables the remove_stream_key command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the rename_recording command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-rename-recording",
+          "markdownDescription": "Enables the rename_recording command without any pre-configured scope."
         },
         {
           "description": "Enables the request_permission command without any pre-configured scope.",
@@ -351,6 +381,12 @@
           "markdownDescription": "Enables the stop_live command without any pre-configured scope."
         },
         {
+          "description": "Enables the trim_recording command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-trim-recording",
+          "markdownDescription": "Enables the trim_recording command without any pre-configured scope."
+        },
+        {
           "description": "Enables the update_settings command without any pre-configured scope.",
           "type": "string",
           "const": "allow-update-settings",
@@ -373,6 +409,12 @@
           "type": "string",
           "const": "deny-cancel-countdown",
           "markdownDescription": "Denies the cancel_countdown command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the cancel_trim command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-cancel-trim",
+          "markdownDescription": "Denies the cancel_trim command without any pre-configured scope."
         },
         {
           "description": "Denies the check_permissions command without any pre-configured scope.",
@@ -429,6 +471,12 @@
           "markdownDescription": "Denies the import_rec_settings command without any pre-configured scope."
         },
         {
+          "description": "Denies the list_recordings command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-list-recordings",
+          "markdownDescription": "Denies the list_recordings command without any pre-configured scope."
+        },
+        {
           "description": "Denies the open_floating command without any pre-configured scope.",
           "type": "string",
           "const": "deny-open-floating",
@@ -465,6 +513,18 @@
           "markdownDescription": "Denies the push_toast command without any pre-configured scope."
         },
         {
+          "description": "Denies the recording_thumbnails command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-recording-thumbnails",
+          "markdownDescription": "Denies the recording_thumbnails command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the recording_waveform command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-recording-waveform",
+          "markdownDescription": "Denies the recording_waveform command without any pre-configured scope."
+        },
+        {
           "description": "Denies the relaunch command without any pre-configured scope.",
           "type": "string",
           "const": "deny-relaunch",
@@ -475,6 +535,12 @@
           "type": "string",
           "const": "deny-remove-stream-key",
           "markdownDescription": "Denies the remove_stream_key command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the rename_recording command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-rename-recording",
+          "markdownDescription": "Denies the rename_recording command without any pre-configured scope."
         },
         {
           "description": "Denies the request_permission command without any pre-configured scope.",
@@ -535,6 +601,12 @@
           "type": "string",
           "const": "deny-stop-live",
           "markdownDescription": "Denies the stop_live command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the trim_recording command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-trim-recording",
+          "markdownDescription": "Denies the trim_recording command without any pre-configured scope."
         },
         {
           "description": "Denies the update_settings command without any pre-configured scope.",

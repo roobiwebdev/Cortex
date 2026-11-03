@@ -87,6 +87,22 @@ export const commands = {
 	pushToast: (toast: UiToast_Deserialize) => typedError<null, EngineError>(__TAURI_INVOKE("push_toast", { toast })),
 	/**  Show (creating it if needed) and focus one of the app's normal windows. */
 	openWindow: (window: AppWindow) => typedError<null, EngineError>(__TAURI_INVOKE("open_window", { window })),
+	/**  Every recording in the output folder (.mov/.mp4), newest first, at most 200. */
+	listRecordings: () => typedError<Recording[], EngineError>(__TAURI_INVOKE("list_recordings")),
+	/**  Rename a recording's file (same folder, same extension). Returns it under its new name. */
+	renameRecording: (id: string, name: string) => typedError<Recording, EngineError>(__TAURI_INVOKE("rename_recording", { id, name })),
+	/**  `count` JPEG thumbnails spread over the recording, as `data:` URLs (cached on disk). */
+	recordingThumbnails: (id: string, count: number) => typedError<string[], EngineError>(__TAURI_INVOKE("recording_thumbnails", { id, count })),
+	/**  Peak level (0..1) of the played audio in `buckets` equal slices. Empty without audio. */
+	recordingWaveform: (id: string, buckets: number) => typedError<number[], EngineError>(__TAURI_INVOKE("recording_waveform", { id, buckets })),
+	/**
+	 *  Export `start..end` of a recording (see `TrimRequest`). Copy writes "<name>-trim.<ext>";
+	 *  Replace moves the original to the Trash and puts the trimmed file at its name. Progress
+	 *  arrives as `trim://progress`; `cancel_trim` stops it. Returns the new recording.
+	 */
+	trimRecording: (id: string, request: TrimRequest) => typedError<Recording, EngineError>(__TAURI_INVOKE("trim_recording", { id, request })),
+	/**  Stop a running export of `id` (no-op if none runs). */
+	cancelTrim: (id: string) => __TAURI_INVOKE<void>("cancel_trim", { id }),
 };
 
 /** Events */
@@ -96,7 +112,9 @@ export const events = {
 	engineRecordingFinished: makeEvent<RecordingFinishedEvent, RecordingFinishedEvent>("engine://recording-finished"),
 	engineReplaySaved: makeEvent<ReplaySavedEvent, ReplaySavedEvent>("engine://replay-saved"),
 	engineState: makeEvent<EngineStateEvent_Serialize, EngineStateEvent_Deserialize>("engine://state"),
+	recordingsChanged: makeEvent<RecordingsChangedEvent, RecordingsChangedEvent>("recordings://changed"),
 	settingsChanged: makeEvent<SettingsChangedEvent_Serialize, SettingsChangedEvent_Deserialize>("settings://changed"),
+	trimProgress: makeEvent<TrimProgressEvent, TrimProgressEvent>("trim://progress"),
 };
 
 /* Types */
@@ -288,6 +306,13 @@ export type InputDevice = {
 	id: string,
 	name: string,
 	connected: boolean,
+};
+
+/**  Which optional tracks the trimmed file keeps. The screen track is always kept. */
+export type KeepTracks = {
+	camera: boolean,
+	system: boolean,
+	mic: boolean,
 };
 
 /**  Linear levels 0..1 (1 = full scale); peaks hold and decay. */
@@ -497,6 +522,9 @@ export type Recording = {
 /**  A recording was written. */
 export type RecordingFinishedEvent = Recording;
 
+/**  The recordings in the output folder, newest first. Sent after every rescan that changed it. */
+export type RecordingsChangedEvent = Recording[];
+
 /**  A rectangle in points (macOS screen coordinates: origin top-left, y down). */
 export type Rect = {
 	x: number,
@@ -579,6 +607,30 @@ export type StreamStatus = {
 };
 
 export type ThemePref = "system" | "light" | "dark";
+
+/**  Fast copies the original samples (passthrough, edit list); Exact re-encodes the video. */
+export type TrimMode = "fast" | "exact";
+
+/**  Copy writes "<name>-trim.<ext>"; Replace moves the original to the Trash and takes its name. */
+export type TrimOutput = "copy" | "replace";
+
+/**  Export progress for the recording `id`, 0..1. */
+export type TrimProgress = {
+	id: string,
+	progress: number,
+};
+
+/**  Trim export progress, about ten times a second. */
+export type TrimProgressEvent = TrimProgress;
+
+/**  `trim_recording`'s options, in seconds of the source file. */
+export type TrimRequest = {
+	startSecs: number,
+	endSecs: number,
+	mode: TrimMode,
+	output: TrimOutput,
+	keep: KeepTracks,
+};
 
 /**  A toast another window asks the toasts window to show (`Toast` in `lib/types.ts`). */
 export type UiToast = UiToast_Serialize | UiToast_Deserialize;
