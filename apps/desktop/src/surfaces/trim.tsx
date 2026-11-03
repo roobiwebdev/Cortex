@@ -18,6 +18,7 @@ import { Slider } from "@starter/ui/components/slider";
 import { cn } from "@starter/ui/lib/utils";
 
 import { formatAgo, formatBytes } from "../lib/format";
+import { CoachMark } from "../components/coach-mark";
 import { engine, useEngine } from "../lib/engine";
 import type { RecorderSettings, Recording } from "../lib/types";
 import type { SurfaceProps } from "../prototype/surfaces";
@@ -318,6 +319,10 @@ function TrimEditor({
         {/* Player + tracks */}
         <div className="flex min-h-0 flex-1">
           <div className="relative min-w-0 flex-1 bg-stage p-4">
+            <CoachMark hint="quick-trim" title="Trimming" className="absolute top-6 left-1/2 -translate-x-1/2">
+              Drag the handles under the video, or press I and O while it plays. Fast keeps the quality and is instant;
+              Exact cuts on the exact frame.
+            </CoachMark>
             <TrimPlayer
               settings={settings}
               view={view}

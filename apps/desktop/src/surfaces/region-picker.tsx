@@ -3,6 +3,7 @@ import { AppWindow } from "lucide-react";
 
 import { isTauri } from "@tauri-apps/api/core";
 
+import { CoachMark } from "../components/coach-mark";
 import { engine, useEngine } from "../lib/engine";
 import type { CaptureTarget, Display } from "../lib/types";
 import { onPageShown } from "../lib/visibility";
@@ -463,6 +464,13 @@ function RegionPickerBody({ navigate }: SurfaceProps) {
           <AppWindow className="size-4 shrink-0 text-muted-foreground" />
           {offscreenNote}
         </div>
+      )}
+
+      {mode === "area" && !drag && (
+        <CoachMark hint="area-picker" title="Drawing an area" className="absolute top-[14%] left-1/2 -translate-x-1/2">
+          Drag to draw, or click a window to snap to its frame. Hold Shift for a square, Space to move it, and press
+          Return to record.
+        </CoachMark>
       )}
 
       <RegionToolbar
