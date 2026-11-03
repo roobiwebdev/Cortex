@@ -301,7 +301,7 @@ pub fn run() {
             }
             // Debug builds only: release builds keep every floating window out of captures.
             let capturable = debug.capturable && cfg!(debug_assertions);
-            floating::init(app, floating, &settings, capturable);
+            floating::init(app, floating, &settings, &data_dir, capturable);
             // First launch: the tour, until it is finished, skipped or closed once. Not in
             // automated runs (debug recordings, hidden main window).
             if debug.record_secs.is_none() && !debug.hide_main {
