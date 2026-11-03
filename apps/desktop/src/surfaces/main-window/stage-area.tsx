@@ -24,6 +24,33 @@ const RES_LABEL: Record<Resolution, string> = {
 const CODEC_LABEL: Record<Codec, string> = { auto: "HEVC", h264: "H.264", hevc: "HEVC", prores: "ProRes" };
 const LOW_DISK = 5e9;
 
+/** The recorded frame's shape (width / height), so the preview stage matches the output. */
+function ratio(w: number, h: number): number {
+  return w > 0 && h > 0 ? w / h : 16 / 10;
+}
+
+function targetAspect(e: EngineState): number {
+  const t = e.settings.target;
+  switch (t.kind) {
+    case "region":
+      return ratio(t.w, t.h);
+    case "window": {
+      const w = e.windows.find((x) => x.id === t.windowId);
+      return w ? ratio(w.frame.w, w.frame.h) : 16 / 10;
+    }
+    case "app": {
+      // Recorded on the display holding the app's frontmost window.
+      const w = e.windows.find((x) => x.bundleId === t.bundleId);
+      const d = e.displays.find((x) => x.id === (w?.displayId ?? 1));
+      return d ? ratio(d.width, d.height) : 16 / 10;
+    }
+    case "display": {
+      const d = e.displays.find((x) => x.id === t.displayId);
+      return d ? ratio(d.width, d.height) : 16 / 10;
+    }
+  }
+}
+
 /**
  * SOURCE OF TRUTH KEYWORDS: StageArea, preview, countdown overlay, permission denied, saving overlay, output chips
  * WHAT:  The main window centre: the live preview stage with its state overlays (countdown,
@@ -45,7 +72,7 @@ export function StageArea({
   const recording = e.status === "recording" || e.status === "paused";
   const needsScreen = s.scene !== "cam";
   const denied = needsScreen && e.permissions.screen !== "granted";
-  const aspect = s.target.kind === "display" ? 16 / 10 : 16 / 9;
+  const aspect = targetAspect(e);
 
   return (
     <div className="flex min-h-0 flex-1 flex-col gap-2.5 px-4 pt-3">

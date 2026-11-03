@@ -71,6 +71,7 @@ export function SelectionFrame({
   sizeLabel,
   detail,
   snappedApp,
+  snappedBundleId,
   adjusting,
   editable,
   containerHeight,
@@ -81,6 +82,7 @@ export function SelectionFrame({
   sizeLabel: string;
   detail?: string;
   snappedApp?: string;
+  snappedBundleId?: string;
   adjusting: boolean;
   editable: boolean;
   containerHeight: number;
@@ -112,7 +114,7 @@ export function SelectionFrame({
         className="absolute left-0 flex h-6 items-center gap-1.5 rounded-[7px] bg-popover px-2 text-[11.5px] font-medium whitespace-nowrap text-popover-foreground shadow-float"
         style={{ top: labelTop }}
       >
-        {snappedApp && <AppIconTile app={snappedApp} size={16} className="shadow-none" />}
+        {snappedApp && <AppIconTile app={snappedApp} bundleId={snappedBundleId} size={16} className="shadow-none" />}
         <span className="tabular">{sizeLabel}</span>
         {detail && <span className="text-muted-foreground">{detail}</span>}
       </div>
@@ -152,12 +154,14 @@ export function SnapHighlight({
   rect,
   radius,
   app,
+  bundleId,
   title,
   hint,
 }: {
   rect: CssRect;
   radius: number;
   app: string;
+  bundleId?: string;
   title: string;
   hint: string;
 }) {
@@ -167,7 +171,7 @@ export function SnapHighlight({
       style={{ ...rect, borderRadius: radius }}
     >
       <div className="flex max-w-[80%] items-center gap-2.5 rounded-[14px] bg-popover py-2 pr-3.5 pl-2 text-popover-foreground shadow-float">
-        <AppIconTile app={app} size={30} />
+        <AppIconTile app={app} bundleId={bundleId} size={30} />
         <div className="min-w-0">
           <div className="truncate text-[13px] font-semibold">
             {app} <span className="font-normal text-muted-foreground">— {title}</span>
