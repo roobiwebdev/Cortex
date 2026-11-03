@@ -22,10 +22,17 @@ fn main() {
     let http = TcpListener::bind(("127.0.0.1", port)).expect("bind HTTP");
     println!("whip_sink: listening on http://127.0.0.1:{port}/whip");
 
-    // 1. The WHIP POST: SDP offer in, SDP answer + Location out.
-    let (mut conn, _) = http.accept().expect("accept");
-    let (method, auth, offer) = read_request(&mut conn);
-    println!("whip_sink: {method}, authorization {}", if auth.is_empty() { "none" } else { "present" });
+    // 1. The WHIP POST: SDP offer in, SDP answer + Location out. A client
+    // reconnecting first DELETEs its old session (from a previous sink): OK it.
+    let (mut conn, offer) = loop {
+        let (mut conn, _) = http.accept().expect("accept");
+        let (method, auth, body) = read_request(&mut conn);
+        println!("whip_sink: {method}, authorization {}", if auth.is_empty() { "none" } else { "present" });
+        if method.starts_with("POST") {
+            break (conn, body);
+        }
+        let _ = write!(conn, "HTTP/1.1 200 OK\r\nContent-Length: 0\r\nConnection: close\r\n\r\n");
+    };
     let socket = UdpSocket::bind("127.0.0.1:0").expect("bind UDP");
     let mut rtc = Rtc::builder()
         .clear_codecs()
