@@ -610,7 +610,8 @@ mod tests {
     #[test]
     fn json_is_camel_case_and_matches_the_ui_shape() {
         let v = serde_json::to_value(RecorderSettings::default()).unwrap();
-        assert_eq!(v["outputDir"], "~/Movies/Cortex");
+        // `~/Movies/Cortex` on macOS, `~/Videos/Cortex` elsewhere.
+        assert_eq!(v["outputDir"], DEFAULT_OUTPUT_DIR);
         assert_eq!(v["target"], json!({"kind": "display", "displayId": 1}));
         assert_eq!(v["pipPlace"], json!({"corner": "bottom-right"}));
         assert_eq!(v["scene"], "screen-cam");
@@ -815,9 +816,10 @@ mod tests {
     #[test]
     fn output_dir_expands_home() {
         let s = RecorderSettings::default();
+        let folder = DEFAULT_OUTPUT_DIR.trim_start_matches("~/");
         assert_eq!(
             s.output_dir_in("/Users/a".as_ref()),
-            std::path::PathBuf::from("/Users/a/Movies/Cortex")
+            std::path::Path::new("/Users/a").join(folder)
         );
         let s = RecorderSettings {
             output_dir: "/tmp/x".into(),
