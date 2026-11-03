@@ -42,3 +42,101 @@ html[data-hidden] *::before,
 html[data-hidden] *::after {
   animation-play-state: paused !important;
 }
+
+/* First-run tour. The stage: an accent wash on the sunken tone, a dotted texture that fades
+   out, and a few sparkles. Colours come from the studio tokens only. Scenes enter in 0.3 s,
+   mocks in 0.5 s; Reduce Motion stops them all (studio.css), leaving each end frame. */
+.tour-stage {
+  background:
+    radial-gradient(120% 90% at 12% 0%, color-mix(in oklab, var(--accent-solid) 36%, transparent), transparent 64%),
+    radial-gradient(90% 70% at 100% 100%, color-mix(in oklab, var(--accent-solid) 20%, transparent), transparent 72%),
+    var(--sunken);
+}
+.tour-dots {
+  background-image: radial-gradient(color-mix(in oklab, var(--text) 20%, transparent) 1px, transparent 1.3px);
+  background-size: 16px 16px;
+  mask-image: linear-gradient(165deg, black 5%, transparent 78%);
+}
+/* Darkens everything outside a selection (capture step). */
+.tour-dim-outside {
+  box-shadow: 0 0 0 999px color-mix(in oklab, var(--stage) 48%, transparent);
+}
+.tour-scene {
+  animation: tour-scene 0.3s var(--ease-out-quick) both;
+}
+.tour-rise {
+  animation: tour-rise 0.5s var(--ease-out-quick) both;
+}
+.tour-pop {
+  animation: tour-pop 0.45s var(--ease-spring) both;
+}
+.tour-sparkle {
+  animation: tour-twinkle 2.8s ease-in-out infinite;
+}
+.tour-key-press {
+  animation: tour-key-press 0.5s var(--ease-out-quick) both;
+}
+.tour-fill {
+  transform-origin: left center;
+  animation: tour-fill 0.6s var(--ease-out-quick) both;
+}
+.tour-trim-left {
+  animation: tour-trim-left 0.6s var(--ease-out-quick) both;
+}
+.tour-trim-right {
+  animation: tour-trim-right 0.6s var(--ease-out-quick) both;
+}
+@keyframes tour-scene {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+}
+@keyframes tour-rise {
+  from {
+    opacity: 0;
+    transform: translateY(14px) scale(0.97);
+  }
+}
+@keyframes tour-pop {
+  0% {
+    opacity: 0;
+    transform: scale(0.6);
+  }
+  60% {
+    opacity: 1;
+    transform: scale(1.06);
+  }
+}
+@keyframes tour-twinkle {
+  0%,
+  100% {
+    opacity: 0.85;
+    transform: scale(1);
+  }
+  50% {
+    opacity: 0.25;
+    transform: scale(0.75);
+  }
+}
+@keyframes tour-key-press {
+  50% {
+    transform: translateY(3px);
+    box-shadow: none;
+  }
+}
+@keyframes tour-fill {
+  from {
+    transform: scaleX(0);
+  }
+}
+@keyframes tour-trim-left {
+  from {
+    width: 0%;
+  }
+}
+@keyframes tour-trim-right {
+  from {
+    width: 0%;
+  }
+}

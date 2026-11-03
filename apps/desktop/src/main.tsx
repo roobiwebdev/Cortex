@@ -10,6 +10,7 @@ import "./styles.css";
 
 import { TauriWindow } from "./app/tauri-window";
 import { connectEngine } from "./lib/engine";
+import { loadPlatform } from "./lib/platform";
 import { trackVisibility } from "./lib/visibility";
 import { PrototypeShell } from "./prototype/shell";
 
@@ -17,7 +18,7 @@ async function mount(root: HTMLElement) {
   trackVisibility();
   // Inside Tauri each window renders only its own surface; a browser gets the review harness.
   if (isTauri()) {
-    await connectEngine();
+    await Promise.all([connectEngine(), loadPlatform()]);
     const { label } = getCurrentWindow();
     createRoot(root).render(
       <StrictMode>
