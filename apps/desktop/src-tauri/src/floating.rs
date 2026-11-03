@@ -448,6 +448,11 @@ fn engine_call(
 
 /// ⇧⌘R: start, cancel the countdown, or stop and save.
 fn toggle_record(app: &AppHandle) {
+    // The tour's shortcut step wants the press for itself (runs on the main thread).
+    let status = state(app).lock().status;
+    if crate::tour::catch_record_hotkey(app, status) {
+        return;
+    }
     engine_call(app, |s| match s.state().status {
         EngineStatus::Idle => s.start(),
         EngineStatus::Countdown => s.cancel_countdown(),

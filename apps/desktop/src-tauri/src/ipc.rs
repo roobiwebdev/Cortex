@@ -482,6 +482,8 @@ pub fn builder() -> tauri_specta::Builder<tauri::Wry> {
             crate::floating::window_ready,
             crate::floating::push_toast,
             crate::windows::open_window,
+            crate::tour::platform,
+            crate::tour::set_hotkey_practice,
             crate::trim::list_recordings,
             crate::trim::rename_recording,
             crate::trim::recording_thumbnails,
@@ -497,7 +499,8 @@ pub fn builder() -> tauri_specta::Builder<tauri::Wry> {
             EngineErrorEvent,
             SettingsChangedEvent,
             crate::trim::RecordingsChangedEvent,
-            crate::trim::TrimProgressEvent
+            crate::trim::TrimProgressEvent,
+            crate::tour::HotkeyPressedEvent
         ])
         // serde_json writes NaN/Infinity as `null`, so floats default to `number | null`.
         // rec-core clamps every float to a finite value, so the bindings type them `number`.

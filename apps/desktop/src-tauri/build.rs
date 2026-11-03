@@ -33,6 +33,8 @@ const COMMANDS: &[&str] = &[
     "window_ready",
     "push_toast",
     "open_window",
+    "platform",
+    "set_hotkey_practice",
     "list_recordings",
     "rename_recording",
     "recording_thumbnails",

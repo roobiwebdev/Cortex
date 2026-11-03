@@ -1,0 +1,7 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "onboarding",
+  "description": "The first-run tour: only the onboarding window may route the record shortcut to itself while it teaches it.",
+  "windows": ["onboarding"],
+  "permissions": ["allow-set-hotkey-practice"]
+}

@@ -33,6 +33,7 @@
     "allow-window-ready",
     "allow-push-toast",
     "allow-open-window",
+    "allow-platform",
     "allow-list-recordings",
     "allow-rename-recording",
     "core:event:allow-listen",

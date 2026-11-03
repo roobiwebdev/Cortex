@@ -285,6 +285,12 @@
           "markdownDescription": "Enables the pause command without any pre-configured scope."
         },
         {
+          "description": "Enables the platform command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-platform",
+          "markdownDescription": "Enables the platform command without any pre-configured scope."
+        },
+        {
           "description": "Enables the push_toast command without any pre-configured scope.",
           "type": "string",
           "const": "allow-push-toast",
@@ -343,6 +349,12 @@
           "type": "string",
           "const": "allow-save-replay",
           "markdownDescription": "Enables the save_replay command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the set_hotkey_practice command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-set-hotkey-practice",
+          "markdownDescription": "Enables the set_hotkey_practice command without any pre-configured scope."
         },
         {
           "description": "Enables the set_preview_enabled command without any pre-configured scope.",
@@ -507,6 +519,12 @@
           "markdownDescription": "Denies the pause command without any pre-configured scope."
         },
         {
+          "description": "Denies the platform command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-platform",
+          "markdownDescription": "Denies the platform command without any pre-configured scope."
+        },
+        {
           "description": "Denies the push_toast command without any pre-configured scope.",
           "type": "string",
           "const": "deny-push-toast",
@@ -565,6 +583,12 @@
           "type": "string",
           "const": "deny-save-replay",
           "markdownDescription": "Denies the save_replay command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the set_hotkey_practice command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-set-hotkey-practice",
+          "markdownDescription": "Denies the set_hotkey_practice command without any pre-configured scope."
         },
         {
           "description": "Denies the set_preview_enabled command without any pre-configured scope.",
