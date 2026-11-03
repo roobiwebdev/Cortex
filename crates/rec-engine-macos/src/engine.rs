@@ -42,6 +42,9 @@ pub struct EngineOptions {
     pub test_pattern: bool,
     /// Stop recordings automatically after this many recorded seconds.
     pub max_duration_secs: Option<f64>,
+    /// Treat these grants as missing (self-tests of the no-permission paths on a Mac
+    /// where they are granted).
+    pub withheld: Vec<Permission>,
 }
 
 impl Default for EngineOptions {
@@ -52,6 +55,7 @@ impl Default for EngineOptions {
                 .unwrap_or_default(),
             test_pattern: false,
             max_duration_secs: None,
+            withheld: vec![],
         }
     }
 }
@@ -242,11 +246,15 @@ fn read_permissions() -> Permissions {
 }
 
 /// Permissions as the UI should see them: the test pattern needs no Screen
-/// Recording grant, so it reports screen as granted (self-tests, perf runs).
-fn state_permissions(test_pattern: bool) -> Permissions {
+/// Recording grant, so it reports screen as granted (self-tests, perf runs), and
+/// withheld grants report as never asked.
+fn state_permissions(opts: &EngineOptions) -> Permissions {
     let mut p = read_permissions();
-    if test_pattern {
+    if opts.test_pattern {
         p.screen = PermissionState::Granted;
+    }
+    for w in &opts.withheld {
+        p.set(*w, PermissionState::NotDetermined);
     }
     p
 }
@@ -445,7 +453,7 @@ impl Inner {
         let plan = plan_sources(
             self.settings.scene,
             self.settings.mic_enabled,
-            &state_permissions(self.opts.test_pattern),
+            &state_permissions(&self.opts),
             self.opts.test_pattern,
         )
         .map_err(|permissions| EngineError::MissingPermissions { permissions })?;
@@ -847,7 +855,7 @@ impl Inner {
         }
         // About once a second: permissions granted in System Settings, disk space.
         if self.ticks.is_multiple_of(30) {
-            let p = state_permissions(self.opts.test_pattern);
+            let p = state_permissions(&self.opts);
             for perm in Permission::ALL {
                 if p.get(perm) != self.state.permissions.get(perm) {
                     ev.push(EngineEvent::PermissionChanged {
@@ -1051,7 +1059,7 @@ impl MacEngine {
             live.set_config(r.live_config());
         }
         let mut state = EngineState {
-            permissions: state_permissions(opts.test_pattern),
+            permissions: state_permissions(&opts),
             ..Default::default()
         };
         state.free_disk_bytes = free_disk_bytes(&settings.output_dir_in(&opts.home));
@@ -1364,7 +1372,7 @@ impl RecorderEngine for MacEngine {
     }
 
     fn permission(&self, p: Permission) -> PermissionState {
-        read_permissions().get(p)
+        self.core.run(|i, _| state_permissions(&i.opts)).get(p)
     }
 
     fn request_permission(&self, p: Permission) -> PermissionState {
@@ -1374,8 +1382,11 @@ impl RecorderEngine for MacEngine {
             Permission::Microphone => tcc::Kind::Mic,
             Permission::Camera => tcc::Kind::Camera,
         };
-        let state = perm_state(tcc::request_in_app(kind, Duration::from_secs(60)));
         let core = &*self.core;
+        if core.run(|i, _| i.opts.withheld.contains(&p)) {
+            return PermissionState::NotDetermined;
+        }
+        let state = perm_state(tcc::request_in_app(kind, Duration::from_secs(60)));
         core.run(|i, ev| {
             if i.state.permissions.get(p) != state {
                 i.state.permissions.set(p, state);
