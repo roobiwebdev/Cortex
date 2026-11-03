@@ -24,6 +24,7 @@ apps/site           SvelteKit landing page for the recorder, forked from Rec's s
 crates/rec-core     Recorder settings schema, engine API and state (platform-neutral, no Apple code)
 crates/rec-engine-macos   Rec's capture/encode engine (ScreenCaptureKit, AVFoundation, VideoToolbox)
 crates/rec-macos-ui Native window behaviour: panels, levels, capture exclusion
+crates/rec-engine-windows Windows engine (Windows.Graphics.Capture, Media Foundation, WASAPI) and Win32 window helpers
 crates/rec-cli      The rec-rs command-line recorder
 packages/db         Drizzle schema, relations, migrations  (database shape only)
 packages/core       Server building blocks: settings, secrets, email, storage, payments, notify, logger
@@ -58,7 +59,7 @@ Desktop request flow: **React surface → `lib/engine.ts` → generated `ipc/bin
 - **Capabilities are an allow-list.** A new command goes in `COMMANDS` (`src-tauri/build.rs`) and gets an `allow-<command>` grant in `src-tauri/capabilities/`. No shell, fs or http plugins for the webview. No remote content.
 - **No secrets over IPC.** Stream keys stay in the Keychain. The webview only sees whether a key is stored.
 - **OS calls go through `src-tauri/src/platform`.** No other shell module names `rec_engine` or `rec_macos_ui`. See `docs/engineering/platforms.md`.
-- **`unsafe` only in `rec-engine-macos` and `rec-macos-ui`**, each block with a `// SAFETY:` comment.
+- **`unsafe` only in `rec-engine-macos`, `rec-macos-ui` and `rec-engine-windows`**, each block with a `// SAFETY:` comment.
 - **New crates pass `cargo fmt --check` and `cargo clippy -- -D warnings`.** The imported Rec crates keep upstream style.
 - The TypeScript rules (section 3) and UI rules (section 6) apply to `apps/desktop/src`. Recorder tokens live in `packages/ui/src/styles/studio.css`.
 

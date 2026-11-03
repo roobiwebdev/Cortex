@@ -4,15 +4,16 @@ Cortex ships a macOS screen, camera and audio recorder. The capture engine is Re
 
 ## The layout
 
-| Folder                    | Job                                                                                                        | May depend on                                     |
-| ------------------------- | ---------------------------------------------------------------------------------------------------------- | ------------------------------------------------- |
-| `crates/rec-core`         | Platform-neutral settings schema, engine API (`RecorderEngine`, `EngineEvent`), state, settings store.     | serde, specta (optional). No Apple code.          |
-| `crates/rec-engine-macos` | Rec's capture, compose, encode, mixer and live code. Exposes `MacEngine`, which implements `rec_core`.     | rec-core, Apple frameworks                        |
-| `crates/rec-macos-ui`     | Native window behaviour: live preview view, non-activating panels, capture exclusion, levels.              | Apple frameworks, raw-window-handle               |
-| `crates/rec-cli`          | The `rec-rs` command-line recorder.                                                                        | rec-engine-macos                                  |
-| `apps/desktop/src`        | React 19 + Vite + Tailwind 4 surfaces (main, settings, HUD, toasts, countdown, region picker, trim).       | `@starter/ui`, `@tauri-apps/api`                  |
-| `apps/desktop/src-tauri`  | The Tauri shell (Rust crate `cortex-desktop`): windows, tray, IPC commands. `src/platform` is the OS seam. | rec-core; on macOS rec-engine-macos, rec-macos-ui |
-| `third_party/`            | Patched copies of upstream crates. See `third_party/README.md`.                                            |                                                   |
+| Folder                      | Job                                                                                                        | May depend on                                                                    |
+| --------------------------- | ---------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------- |
+| `crates/rec-core`           | Platform-neutral settings schema, engine API (`RecorderEngine`, `EngineEvent`), state, settings store.     | serde, specta (optional). No Apple code.                                         |
+| `crates/rec-engine-macos`   | Rec's capture, compose, encode, mixer and live code. Exposes `MacEngine`, which implements `rec_core`.     | rec-core, Apple frameworks                                                       |
+| `crates/rec-macos-ui`       | Native window behaviour: live preview view, non-activating panels, capture exclusion, levels.              | Apple frameworks, raw-window-handle                                              |
+| `crates/rec-engine-windows` | The Windows engine (`WindowsEngine`) and Win32 window helpers. Written, type-checked, not yet run.         | rec-core; on Windows the `windows` crate                                         |
+| `crates/rec-cli`            | The `rec-rs` command-line recorder.                                                                        | rec-engine-macos                                                                 |
+| `apps/desktop/src`          | React 19 + Vite + Tailwind 4 surfaces (main, settings, HUD, toasts, countdown, region picker, trim).       | `@starter/ui`, `@tauri-apps/api`                                                 |
+| `apps/desktop/src-tauri`    | The Tauri shell (Rust crate `cortex-desktop`): windows, tray, IPC commands. `src/platform` is the OS seam. | rec-core; on macOS rec-engine-macos, rec-macos-ui; on Windows rec-engine-windows |
+| `third_party/`              | Patched copies of upstream crates. See `third_party/README.md`.                                            |                                                                                  |
 
 The Rust workspace is the root `Cargo.toml` (members `crates/*` and `apps/desktop/src-tauri`). The toolchain is pinned in `rust-toolchain.toml`. `.cargo/config.toml` sets `MACOSX_DEPLOYMENT_TARGET=15.0`, because the engine uses ScreenCaptureKit APIs from macOS 15. The pnpm workspace sees `apps/desktop` as the package `desktop`.
 
@@ -171,8 +172,8 @@ pnpm --filter desktop check-types                TypeScript check
 pnpm --filter desktop test                       output-size mirror against the shared Rust fixture, tour step table
 pnpm --filter desktop ipc:bindings               regenerate src/ipc/bindings.ts from the Rust commands
 cargo test --workspace                           every Rust test
-cargo fmt --check -p rec-core -p cortex-desktop  formatting for the crates we own
-cargo clippy --no-deps -p rec-core -p cortex-desktop -p rec-macos-ui -- -D warnings
+cargo fmt --check -p rec-core -p cortex-desktop -p rec-engine-windows  formatting for the crates we own
+cargo clippy --no-deps -p rec-core -p cortex-desktop -p rec-macos-ui -p rec-engine-windows -- -D warnings
 scripts/desktop/perf-compare.sh cortex 4k60-hevc 60 OUT   CPU/frames of a release Cortex.app recording vs `rec` mode
 cargo run --release -p rec-engine-macos --example engine_smoke   test-pattern recording + ffprobe check
 cargo test --release -p rec-engine-macos --test trim_test_pattern  6 s test-pattern recording, trimmed 1-4 s in both modes, ffprobe checks
@@ -406,7 +407,7 @@ There is no server in the recorder yet, so the tRPC procedure builder does not a
 
 ## Rust rules
 
-- No new `unsafe` outside `rec-engine-macos` and `rec-macos-ui`. Every `unsafe` block has a `// SAFETY:` comment that says why the call is sound.
+- No new `unsafe` outside `rec-engine-macos`, `rec-macos-ui` and `rec-engine-windows`. Every `unsafe` block has a `// SAFETY:` comment that says why the call is sound.
 - New crates must pass `cargo fmt --check` and `cargo clippy -- -D warnings`. CI enforces this for `rec-core` and `cortex-desktop`. The imported Rec crates keep their upstream style for now, so subtree pulls stay clean.
 - **Never block on the main thread from engine or background threads.** Engine events reach `ipc::emitter` and `floating::observer` on the engine's ticker and writer threads, and at quit the main thread waits for those threads. Any `WebviewWindow` getter (`is_visible`, `outer_position`, `scale_factor`, ...) or `run_on_main` from `rec_macos_ui` called off the main thread waits for the main thread: that deadlocked quit. From those threads, read cached state (`ipc::VisibleWindows`) and hand window work to `AppHandle::run_on_main_thread` without waiting for it. The same applies to anything the main thread may join.
 - Errors cross IPC as `rec_core::EngineError`, never as panics. Do not `unwrap()` on input that came from the webview.
@@ -426,10 +427,13 @@ Real ScreenCaptureKit capture cannot run in CI because hosted runners cannot gra
 
 ## CI
 
-`.github/workflows/desktop.yml` runs on a macOS runner when a change touches `crates/**`, `apps/desktop/**`, `packages/ui/**`, `Cargo.*` or `third_party/**`. It runs fmt and clippy on the crates we own, `cargo test --workspace`, the `engine_smoke` recording, `pnpm --filter desktop check-types`, and an unsigned `tauri build --debug --bundles app`. No signing secrets are configured. The Linux `ci.yml` job does not build Rust.
+`.github/workflows/desktop.yml` runs on a macOS runner when a change touches `crates/**`, `apps/desktop/**`, `packages/ui/**`, `Cargo.*` or `third_party/**`. It runs fmt and clippy on the crates we own, `cargo test --workspace`, the `engine_smoke` recording, `pnpm --filter desktop check-types`, and an unsigned `tauri build --debug --bundles app`. No signing secrets are configured. `.github/workflows/desktop-windows.yml` does the same on `windows-latest` for `rec-core`, `rec-engine-windows` and `cortex-desktop` (fmt, clippy, tests) and builds the NSIS and MSI installers; it has not run yet. The Linux `ci.yml` job does not build Rust.
 
 ## Windows and Linux
 
-`rec-core` has no Apple code on purpose, and the shell reaches macOS code only through `src-tauri/src/platform` (`RecorderEngine` and `MediaLibrary` from `rec-core`, plus the shell's `DesktopEngine`, `WindowChrome`, `Hotkeys` and `SystemIntegration`). On Windows and Linux the shell builds against a stub engine that says recording is not available yet. `EngineState.capabilities` tells the UI what the running engine supports.
+`rec-core` has no Apple code on purpose, and the shell reaches OS code only through `src-tauri/src/platform` (`RecorderEngine` and `MediaLibrary` from `rec-core`, plus the shell's `DesktopEngine`, `WindowChrome`, `Hotkeys` and `SystemIntegration`). `EngineState.capabilities` tells the UI what the running engine supports.
 
-[Platforms](platforms.md) has the full inventory of macOS touch points, the cross-target build status, and the design for the Windows and Linux engines.
+- **Windows** builds against `rec-engine-windows` (Windows.Graphics.Capture, Media Foundation, WASAPI). It is type-checked and its logic unit-tested on the Mac, but it has not run on Windows yet. `CORTEX_DEBUG_FRAGMENTED_MP4=1` tries Media Foundation's fragmented (crash-safe) MP4 sink. The first-run script is [Testing the Windows engine](windows-testing.md).
+- **Linux** builds against a stub engine that says recording is not available yet.
+
+[Platforms](platforms.md) has the full inventory of macOS touch points, the cross-target build status, the Windows engine's status per capability, and the design for Linux.
