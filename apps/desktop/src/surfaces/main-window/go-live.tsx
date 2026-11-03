@@ -6,6 +6,7 @@ import { Switch } from "@starter/ui/components/switch";
 import { cn } from "@starter/ui/lib/utils";
 
 import { engine } from "../../lib/engine";
+import { needsKey } from "../../lib/streaming";
 import type { EngineState, StreamDest, StreamService } from "../../lib/types";
 import type { SurfaceId } from "../../prototype/surfaces";
 
@@ -22,7 +23,8 @@ function blocker(dests: StreamDest[]): string | null {
   if (on.length === 0) return "Turn on a destination";
   const missingUrl = on.find((d) => d.service === "custom" && !d.url);
   if (missingUrl) return "Enter the server's URL in Settings";
-  const missingKey = on.find((d) => !d.keyStored);
+  // RTMP(S) needs a key; a WHIP server may take none.
+  const missingKey = on.find(needsKey);
   if (missingKey) return `Save the stream key for ${SERVICE_NAME[missingKey.service]} in Settings`;
   return null;
 }
@@ -115,6 +117,22 @@ export function GoLiveButton({ e, navigate }: { e: EngineState; navigate: (id: S
               </li>
             ))}
           </ul>
+
+          {e.live && e.streams.length > 0 && (
+            <ul aria-label="Connection status" className="mt-1 space-y-0.5 border-t px-1 pt-2">
+              {e.streams.map((st, i) => (
+                <li
+                  key={`${st.name}-${i}`}
+                  className="flex items-baseline justify-between gap-2 text-[11.5px] leading-4"
+                >
+                  <span className="truncate text-muted-foreground">{st.name}</span>
+                  <span className={cn("shrink-0", st.live ? "text-ok" : "text-warn")}>
+                    {st.live ? "Live" : st.state}
+                  </span>
+                </li>
+              ))}
+            </ul>
+          )}
 
           {!e.live && enabledCount > 1 && (
             <p className="px-1 pt-2 text-[11.5px] leading-4 text-muted-foreground">
