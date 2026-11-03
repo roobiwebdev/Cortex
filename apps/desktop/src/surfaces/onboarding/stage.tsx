@@ -23,7 +23,7 @@ import { cn } from "@starter/ui/lib/utils";
 
 import { CameraBubble } from "../../components/camera-bubble";
 import { micLevels, silentLevels } from "../../lib/engine";
-import type { EngineState, Permission, PipPlace, Platform } from "../../lib/types";
+import type { EngineState, Permission, PipPlace, PlatformOs } from "../../lib/types";
 import { MockScreen } from "../../prototype/mock-screen";
 import type { ChipState } from "./permission-chip";
 import { PLATFORM_FACTS, type TourStepId } from "./steps";
@@ -33,7 +33,7 @@ export type CaptureMode = "display" | "window" | "area" | "app";
 
 export interface StageProps {
   step: TourStepId;
-  platform: Platform;
+  platform: PlatformOs;
   engine: EngineState;
   /** Chip state per permission, including "waiting" while a prompt is open. */
   chips: Record<Permission, ChipState>;
