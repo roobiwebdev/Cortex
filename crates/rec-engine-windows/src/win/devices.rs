@@ -126,9 +126,10 @@ fn process_exe(pid: u32) -> String {
     }
 }
 
-/// A window id (`CaptureWindow.id`) as a handle.
+/// A window id (`CaptureWindow.id`) as a handle. Windows widens 32-bit handles by sign
+/// extension, so the id goes back through `i32`.
 pub fn hwnd(id: u32) -> HWND {
-    HWND(id as usize as *mut core::ffi::c_void)
+    HWND(id as i32 as isize as *mut core::ffi::c_void)
 }
 
 fn window_id(h: HWND) -> u32 {
