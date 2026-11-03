@@ -8,6 +8,7 @@ import { FreeDisk } from "../../components/progress-text";
 import { PreviewStage } from "../../components/preview-stage";
 import { engine, useEngine } from "../../lib/engine";
 import type { Codec, EngineState, Resolution } from "../../lib/types";
+import { formatSize, recordedOutput, sameOutput, sourcePixels } from "../../lib/output-size";
 import { MockScreen } from "../../prototype/mock-screen";
 import type { SurfaceId } from "../../prototype/surfaces";
 import { PermissionAsk } from "../../components/permission-ask";
@@ -20,35 +21,13 @@ const RES_LABEL: Record<Resolution, string> = {
   "4k": "4K",
   native: "Native",
 };
-// "Auto" resolves to HEVC on Apple silicon; the chip shows what will actually be written.
-const CODEC_LABEL: Record<Codec, string> = { auto: "HEVC", h264: "H.264", hevc: "HEVC", prores: "ProRes" };
+const CODEC_LABEL: Record<Codec, string> = { auto: "Auto", h264: "H.264", hevc: "HEVC", prores: "ProRes" };
 const LOW_DISK = 5e9;
 
 /** The recorded frame's shape (width / height), so the preview stage matches the output. */
-function ratio(w: number, h: number): number {
-  return w > 0 && h > 0 ? w / h : 16 / 10;
-}
-
 function targetAspect(e: EngineState): number {
-  const t = e.settings.target;
-  switch (t.kind) {
-    case "region":
-      return ratio(t.w, t.h);
-    case "window": {
-      const w = e.windows.find((x) => x.id === t.windowId);
-      return w ? ratio(w.frame.w, w.frame.h) : 16 / 10;
-    }
-    case "app": {
-      // Recorded on the display holding the app's frontmost window.
-      const w = e.windows.find((x) => x.bundleId === t.bundleId);
-      const d = e.displays.find((x) => x.id === (w?.displayId ?? 1));
-      return d ? ratio(d.width, d.height) : 16 / 10;
-    }
-    case "display": {
-      const d = e.displays.find((x) => x.id === t.displayId);
-      return d ? ratio(d.width, d.height) : 16 / 10;
-    }
-  }
+  const px = sourcePixels(e.settings.target, e);
+  return px && px.w > 0 && px.h > 0 ? px.w / px.h : 16 / 10;
 }
 
 /**
@@ -165,7 +144,15 @@ const isLowDisk = (s: EngineState) => s.freeDiskBytes < LOW_DISK;
 
 function ChipRow({ e, navigate }: { e: EngineState; navigate: (id: SurfaceId) => void }) {
   const s = e.settings;
-  const format = [RES_LABEL[s.resolution], `${s.fps} fps`, CODEC_LABEL[s.codec], s.container.toUpperCase()].join(" · ");
+  const out = useEngine(recordedOutput, sameOutput);
+  // What gets written: the real frame size and the codec "Auto" picks for it.
+  const format = [
+    RES_LABEL[s.resolution],
+    ...(out ? [formatSize(out.size)] : []),
+    `${s.fps} fps`,
+    CODEC_LABEL[out?.codec ?? s.codec],
+    s.container.toUpperCase(),
+  ].join(" · ");
   const lowDisk = useEngine(isLowDisk);
   return (
     <div className="flex h-7 shrink-0 items-center gap-1.5">
