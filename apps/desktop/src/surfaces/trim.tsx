@@ -187,8 +187,11 @@ function TrimEditor({
   return (
     <div className="relative flex size-full flex-col">
       {/* Title bar zone (traffic lights are drawn by the window at left). */}
-      <header className="relative flex h-11 shrink-0 items-center justify-center border-b">
-        <EditableTitle value={rec.name} onCommit={(name) => engine.renameRecording(rec.id, name)} />
+      {/* Above the window's drag strip; only the title takes clicks, the rest drags the window. */}
+      <header className="pointer-events-none relative z-20 flex h-11 shrink-0 items-center justify-center border-b">
+        <div className="pointer-events-auto">
+          <EditableTitle value={rec.name} onCommit={(name) => engine.renameRecording(rec.id, name)} />
+        </div>
         <p className="absolute right-4 text-[11.5px] text-muted-foreground tabular">
           {rec.width}×{rec.height} · {formatBytes(rec.bytes)} · {formatAgo(rec.createdAt)}
         </p>
