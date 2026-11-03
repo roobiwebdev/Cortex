@@ -183,6 +183,12 @@
           "markdownDescription": "Enables the cancel_countdown command without any pre-configured scope."
         },
         {
+          "description": "Enables the check_permissions command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-check-permissions",
+          "markdownDescription": "Enables the check_permissions command without any pre-configured scope."
+        },
+        {
           "description": "Enables the devices command without any pre-configured scope.",
           "type": "string",
           "const": "allow-devices",
@@ -265,6 +271,12 @@
           "type": "string",
           "const": "allow-push-toast",
           "markdownDescription": "Enables the push_toast command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the relaunch command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-relaunch",
+          "markdownDescription": "Enables the relaunch command without any pre-configured scope."
         },
         {
           "description": "Enables the remove_stream_key command without any pre-configured scope.",
@@ -351,6 +363,12 @@
           "markdownDescription": "Denies the cancel_countdown command without any pre-configured scope."
         },
         {
+          "description": "Denies the check_permissions command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-check-permissions",
+          "markdownDescription": "Denies the check_permissions command without any pre-configured scope."
+        },
+        {
           "description": "Denies the devices command without any pre-configured scope.",
           "type": "string",
           "const": "deny-devices",
@@ -433,6 +451,12 @@
           "type": "string",
           "const": "deny-push-toast",
           "markdownDescription": "Denies the push_toast command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the relaunch command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-relaunch",
+          "markdownDescription": "Denies the relaunch command without any pre-configured scope."
         },
         {
           "description": "Denies the remove_stream_key command without any pre-configured scope.",

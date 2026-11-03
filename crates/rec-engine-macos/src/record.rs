@@ -113,6 +113,8 @@ pub struct Options {
     pub live: Option<Arc<crate::live::Live>>,
     /// Stream destinations (URL, key) to start with the session.
     pub streams: Vec<(String, String)>,
+    /// Camera only, no screen capture: the camera's frames drive the clock.
+    pub no_screen: bool,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, clap::ValueEnum)]
@@ -143,7 +145,7 @@ impl std::error::Error for MissingPermissions {}
 
 pub fn check_permissions(o: &Options) -> Result<()> {
     let mut missing = vec![];
-    if o.test_pattern.is_none() && tcc::screen_status() != Status::Granted {
+    if o.test_pattern.is_none() && !o.no_screen && tcc::screen_status() != Status::Granted {
         missing.push("Screen & System Audio Recording");
     }
     if o.mic.is_some() && tcc::mic_status() != Status::Granted {
@@ -350,6 +352,10 @@ impl Session {
                     mic: sck_mic,
                 };
                 self.screen = Some(ScreenCapture::start(&cfg, self.shared.clone())?);
+            }
+            (None, None) if o.no_screen && o.webcam.is_some() => {
+                self.shared.with(|s| s.clock_from_camera());
+                self.description = "camera".into();
             }
             (None, None) => bail!("internal: no capture target"),
         }

@@ -254,6 +254,48 @@ pub fn request_all(screen: bool, mic: bool, camera: bool, wait: Duration) {
     }
 }
 
+/// Which privacy permission an in-app request is for.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Kind {
+    Screen,
+    Mic,
+    Camera,
+}
+
+/// Ask for one permission from inside the app and return the resulting state.
+///
+/// Unlike `request_all` (the CLI's path), this never resets an earlier decision with
+/// `tccutil` (that wiped grants the user had given) and never re-launches the
+/// executable (inside the app that started a second copy of the app). Camera and
+/// microphone show the system prompt when no decision exists and wait up to `wait` for
+/// the answer; the completion arrives on an AVFoundation queue, so call this off the
+/// main thread. Screen Recording calls `CGRequestScreenCaptureAccess`, which lists the
+/// app in System Settings and shows the system's alert once; the grant itself is made
+/// in System Settings.
+pub fn request_in_app(kind: Kind, wait: Duration) -> Status {
+    match kind {
+        Kind::Screen => {
+            if screen_status() != Status::Granted {
+                let ok = CGRequestScreenCaptureAccess();
+                if !ok {
+                    // Also touch ScreenCaptureKit: on recent macOS this is what adds the
+                    // app to the Screen & System Audio Recording list.
+                    let _ = crate::screen::displays();
+                }
+            }
+            screen_status()
+        }
+        Kind::Mic | Kind::Camera => {
+            let video = kind == Kind::Camera;
+            if av_status(video) == Status::NotDetermined {
+                let rx = av_request_async(video);
+                let _ = rx.recv_timeout(wait);
+            }
+            av_status(video)
+        }
+    }
+}
+
 pub fn report() -> (Status, Status, Status) {
     (screen_status(), mic_status(), camera_status())
 }

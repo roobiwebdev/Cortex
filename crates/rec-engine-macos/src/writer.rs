@@ -256,6 +256,8 @@ pub struct Sink {
     corner_fill: Option<crate::compose::CornerFill>,
     /// Hold the start until the camera is ready (see `wait_for_camera`).
     cam_gate: Option<CamGate>,
+    /// No screen source: camera frames start the clock (camera-only sessions).
+    cam_clock: bool,
     /// Output-size buffers for scaled screen frames fed to the compositor.
     scaled_pool: Option<CFRetained<CVPixelBufferPool>>,
     /// Output size and pixel format (for a pool created later).
@@ -385,6 +387,7 @@ impl Sink {
             scaler: None,
             corner_fill: None,
             cam_gate: None,
+            cam_clock: false,
             scaled_pool: None,
             out_spec: (v.width, v.height, v.pixel_format),
             stats: Stats::default(),
@@ -501,6 +504,29 @@ impl Sink {
         self.cam_gate = Some(CamGate { settle, pending: None, ready_at: None, give_up: now + settle + CAMERA_TIMEOUT_SECS });
     }
 
+    /// There is no screen source: the camera's frames start the clock.
+    pub fn clock_from_camera(&mut self) {
+        self.cam_clock = true;
+    }
+
+    /// Start the clock (and the file) at `pts_s`, then feed the audio held until now.
+    fn start_clock(&mut self, pts_s: f64) {
+        if self.t0.is_none() {
+            let t0 = (pts_s * TIMESCALE as f64).round() as i64;
+            self.t0 = Some(t0);
+            if let Some(o) = &self.out {
+                unsafe { o.writer.startSessionAtSourceTime(CMTime::new(t0, TIMESCALE)) };
+                if o.mix_input.is_some() {
+                    let act = self.mix_sources;
+                    self.mixer = Some(Mixer::new(t0 as f64 / TIMESCALE as f64, act[0], act[1]));
+                }
+            }
+        }
+        for (kind, sb) in std::mem::take(&mut self.preroll) {
+            self.push_audio(kind, &sb.0);
+        }
+    }
+
     /// Screen frames are a single window's: fill its transparent corners.
     pub fn fill_window_corners(&mut self) {
         self.corner_fill = Some(crate::compose::CornerFill::new());
@@ -558,20 +584,7 @@ impl Sink {
         self.stats.screen_latency_max = self.stats.screen_latency_max.max(lat);
         self.note_latency(0, lat, pts_s);
         self.stats.screen_latency_sum += lat;
-        if self.t0.is_none() {
-            let t0 = (pts_s * TIMESCALE as f64).round() as i64;
-            self.t0 = Some(t0);
-            if let Some(o) = &self.out {
-                unsafe { o.writer.startSessionAtSourceTime(CMTime::new(t0, TIMESCALE)) };
-                if o.mix_input.is_some() {
-                    let act = self.mix_sources;
-                    self.mixer = Some(Mixer::new(t0 as f64 / TIMESCALE as f64, act[0], act[1]));
-                }
-            }
-        }
-        for (kind, sb) in std::mem::take(&mut self.preroll) {
-            self.push_audio(kind, &sb.0);
-        }
+        self.start_clock(pts_s);
         let pb = match self.corner_fill.as_mut() {
             Some(f) => f.fill(&pb).unwrap_or(pb),
             None => pb,
@@ -593,6 +606,14 @@ impl Sink {
                 // The waiting screen frame starts the file now.
                 self.cam_gate = None;
                 self.push_screen(pts, screen.0);
+            }
+        }
+        if self.cam_clock && self.t0.is_none() {
+            // Camera only: once its exposure has settled, its frames start the file.
+            let ready = self.cam_gate.as_ref().is_none_or(|g| g.ready_at.is_some_and(|r| secs(pts) >= r.min(g.give_up)));
+            if ready {
+                self.cam_gate = None;
+                self.start_clock(secs(pts));
             }
         }
         let lat = secs(host_now()) - secs(pts);

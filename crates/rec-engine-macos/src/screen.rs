@@ -50,6 +50,14 @@ fn shareable_content() -> Result<Retained<SCShareableContent>> {
     }
 }
 
+/// The main display's size in pixels, from CoreGraphics (works without the
+/// Screen Recording grant). 1920x1080 if it can't be read.
+pub fn main_display_pixels() -> (usize, usize) {
+    let mode = CGDisplayCopyDisplayMode(objc2_core_graphics::CGMainDisplayID());
+    let px = (CGDisplayMode::pixel_width(mode.as_deref()), CGDisplayMode::pixel_height(mode.as_deref()));
+    if px.0 == 0 || px.1 == 0 { (1920, 1080) } else { px }
+}
+
 pub fn displays() -> Result<Vec<DisplayInfo>> {
     let content = shareable_content()?;
     let mut out = vec![];

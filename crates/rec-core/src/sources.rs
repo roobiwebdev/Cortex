@@ -61,6 +61,25 @@ pub fn plan_sources(
     })
 }
 
+/// The permissions to ask for before a recording starts: the ones its settings use that
+/// macOS has never asked about. Denied ones are not asked again (macOS would not show a
+/// prompt); the recording runs without them.
+pub fn prompts_before_start(
+    scene: Scene,
+    mic_enabled: bool,
+    perms: &Permissions,
+) -> Vec<Permission> {
+    let undecided = |p: Permission| perms.get(p) == PermissionState::NotDetermined;
+    let mut out = vec![];
+    if mic_enabled && undecided(Permission::Microphone) {
+        out.push(Permission::Microphone);
+    }
+    if scene != Scene::Screen && undecided(Permission::Camera) {
+        out.push(Permission::Camera);
+    }
+    out
+}
+
 /// A short, user-facing note for sources a recording runs without.
 pub fn dropped_note(dropped: &[Permission]) -> Option<String> {
     let names: Vec<&str> = dropped
@@ -179,6 +198,18 @@ mod tests {
             plan_sources(Scene::Cam, true, &perms(Granted, Granted, Denied), false),
             Err(vec![Permission::Camera])
         );
+    }
+
+    #[test]
+    fn start_asks_only_for_undecided_sources_in_use() {
+        let p = perms(Granted, NotDetermined, NotDetermined);
+        assert_eq!(
+            prompts_before_start(Scene::ScreenCam, true, &p),
+            vec![Permission::Microphone, Permission::Camera]
+        );
+        assert_eq!(prompts_before_start(Scene::Screen, false, &p), vec![]);
+        let p = perms(Granted, Denied, Granted);
+        assert_eq!(prompts_before_start(Scene::Cam, true, &p), vec![]);
     }
 
     #[test]

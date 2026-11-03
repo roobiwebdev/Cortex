@@ -15,7 +15,8 @@ use std::time::{Duration, Instant};
 use rec_core::api::EngineError;
 use rec_core::settings::{RecorderSettings, StreamDest};
 use rec_core::state::{
-    Devices, EngineState, EngineStatus, Levels, Permission, PermissionState, Recording,
+    Devices, EngineState, EngineStatus, Levels, Permission, PermissionReport, PermissionState,
+    Recording,
 };
 use serde::{Deserialize, Serialize};
 use specta::Type;
@@ -335,6 +336,23 @@ async fn request_permission(
     blocking(&shell, move |s| Ok(s.request_permission(permission))).await
 }
 
+/// The privacy grants now, and whether a Screen Recording grant waits for a relaunch.
+/// Cheap enough to poll about once a second while a permission step is shown.
+#[tauri::command]
+#[specta::specta]
+async fn check_permissions(shell: Shared<'_>) -> Result<PermissionReport, EngineError> {
+    blocking(&shell, |s| Ok(s.permission_report())).await
+}
+
+/// Quit and reopen Cortex, so a new Screen Recording grant applies. Refused while recording.
+#[tauri::command]
+#[specta::specta]
+fn relaunch(app: AppHandle, shell: Shared<'_>) -> Result<(), EngineError> {
+    shell.can_relaunch()?;
+    app.request_restart();
+    Ok(())
+}
+
 /// Open the System Settings privacy pane for a permission.
 #[tauri::command]
 #[specta::specta]
@@ -425,6 +443,8 @@ pub fn builder() -> tauri_specta::Builder<tauri::Wry> {
             get_settings,
             devices,
             request_permission,
+            check_permissions,
+            relaunch,
             open_system_settings,
             reveal_recording,
             open_recordings_folder,
