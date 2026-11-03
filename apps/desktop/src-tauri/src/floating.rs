@@ -695,9 +695,14 @@ pub fn open_floating(app: AppHandle, surface: FloatingSurface) -> Result<(), Eng
             let win = windows::ensure(&app, REGION)
                 .ok_or_else(|| EngineError::failed("Could not open the region picker"))?;
             // One overlay per display is the goal; for now the display where the pick starts.
+            // In points from that display's own scale: the window may still be on a display
+            // with another scale, which a physical size would be converted with.
             if let Some(m) = active_monitor(&app) {
-                win.set_position(*m.position()).map_err(failed)?;
-                win.set_size(*m.size()).map_err(failed)?;
+                let k = m.scale_factor();
+                win.set_position(m.position().to_logical::<f64>(k))
+                    .map_err(failed)?;
+                win.set_size(m.size().to_logical::<f64>(k))
+                    .map_err(failed)?;
             }
             win.show().map_err(failed)?;
             win.set_focus().map_err(failed)?;
