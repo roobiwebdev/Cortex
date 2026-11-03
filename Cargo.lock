@@ -1018,6 +1018,7 @@ name = "cortex-desktop"
 version = "0.1.0"
 dependencies = [
  "glib 0.18.5",
+ "gtk",
  "rec-core",
  "rec-engine-linux",
  "rec-engine-macos",

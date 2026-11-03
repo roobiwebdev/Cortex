@@ -39,8 +39,10 @@ rec-macos-ui = { path = "../../../crates/rec-macos-ui" }
 rec-engine-windows = { path = "../../../crates/rec-engine-windows" }
 
 # The Linux engine (ScreenCast portal, PipeWire, GStreamer) and its desktop helpers.
-# glib is the version Tauri's GTK uses: shortcut activations and signals run on its loop.
+# glib and gtk are the versions Tauri uses: shortcut activations and signals run on the
+# GTK main loop, and floating windows are realized before their input shape is set.
 # See src/platform/linux.rs.
 [target.'cfg(target_os = "linux")'.dependencies]
 rec-engine-linux = { path = "../../../crates/rec-engine-linux" }
 glib = "0.18"
+gtk = "0.18"
