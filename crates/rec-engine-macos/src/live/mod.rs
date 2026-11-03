@@ -102,7 +102,7 @@ pub struct OutputStatus {
 /// its very first connection failed (and is retrying). Later retries stay
 /// quiet; the stream's state shows them.
 pub fn stream_alert(was_live: bool, was_state: &str, now: &OutputStatus) -> Option<String> {
-    let why = now.error.as_deref().map(|e| format!(": {e}")).unwrap_or_default();
+    let why = now.error.as_deref().map(|e| format!(": {}", e.trim_end_matches('.'))).unwrap_or_default();
     if was_live && !now.live && now.state != "stopped" {
         Some(format!("Stream to {} dropped{why}. Reconnecting…", now.name))
     } else if !was_live
@@ -703,7 +703,7 @@ mod tests {
             live,
             reconnects,
             duration,
-            error: Some("cannot connect".into()),
+            error: Some("cannot connect.".into()),
             ..Default::default()
         };
         assert_eq!(stream_alert(false, "connecting", &st("live", true, 0, 1.0)), None);
