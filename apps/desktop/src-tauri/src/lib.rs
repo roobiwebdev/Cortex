@@ -9,6 +9,7 @@ pub mod platform;
 mod preview;
 mod quit;
 pub mod shell;
+mod tour;
 mod trim;
 mod windows;
 
@@ -167,6 +168,9 @@ pub fn run() {
 
     let app = tauri::Builder::default()
         .invoke_handler(ipc.invoke_handler())
+        // The default app menu plus "Help › Show the Tour".
+        .menu(tour::app_menu)
+        .on_menu_event(|app, event| tour::on_menu_event(app, &event))
         // The Trim window plays recordings from here (see `trim::media_protocol`).
         .register_asynchronous_uri_scheme_protocol("cortex-media", trim::media_protocol)
         // Window state read from engine threads comes from this cache (see `ipc::VisibleWindows`).
@@ -174,6 +178,7 @@ pub fn run() {
         .setup(move |app| {
             ipc.mount_events(app);
             app.manage(quit::Quit::default());
+            tour::setup(app);
             let debug = DebugRun::from_env();
             // ~/Library/Application Support/dev.roobi.cortex/settings.json
             let data_dir = match debug.data_dir.clone() {
@@ -297,6 +302,13 @@ pub fn run() {
             // Debug builds only: release builds keep every floating window out of captures.
             let capturable = debug.capturable && cfg!(debug_assertions);
             floating::init(app, floating, &settings, capturable);
+            // First launch: the tour, until it is finished, skipped or closed once. Not in
+            // automated runs (debug recordings, hidden main window).
+            if debug.record_secs.is_none() && !debug.hide_main {
+                let (handle, completed) = (app.handle().clone(), settings.onboarding_completed);
+                let h = handle.clone();
+                let _ = handle.run_on_main_thread(move || tour::open_on_first_run(&h, completed));
+            }
             // After the floating windows are set up: a settings change already drives them.
             // Only into a scratch settings folder: never the user's own settings.
             if let (Some(spec), Some(_)) = (&debug.target, &debug.data_dir) {

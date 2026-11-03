@@ -123,6 +123,9 @@ pub(crate) fn ensure(app: &AppHandle, label: &str) -> Option<WebviewWindow> {
             }
         });
     }
+    if label == ONBOARDING {
+        crate::tour::on_window_created(app, &win);
+    }
     floating::on_created(app, &win);
     eprintln!(
         "cortex: created the {label} window in {} ms",
