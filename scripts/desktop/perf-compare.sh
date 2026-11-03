@@ -162,5 +162,12 @@ esac
     echo "probe: $(probe "$file")"
   fi
   grep -E 'preview [0-9.]+ fps' "$log" | tail -3 || true
+  # Idle preview-on numbers only count if the preview ran the whole time (a Space switch or
+  # Mission Control stops it, rightly). The first 5 s window includes start-up.
+  if [[ $mode == idle && $config == preview-on ]]; then
+    low=$(grep -E 'preview [0-9.]+ fps' "$log" | tail -n +2 | awk '$3 < 29' | wc -l | tr -d ' ')
+    [[ $low == 0 ]] && echo "preview: ran throughout" || echo "preview: INVALID, $low 5 s windows under 29 fps"
+    grep -E 'preview (occlusion|hole):' "$log" | tail -5 || true
+  fi
   grep -iE 'drop|dup|error|fail' "$log" | tail -5 || true
 } | tee "$out/$tag.summary"

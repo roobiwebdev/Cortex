@@ -117,7 +117,7 @@ impl LivePreview {
             return;
         };
         f(&mut w);
-        let on = w.hole && w.visible;
+        let on = should_preview(w.hole, w.visible);
         if self.trace {
             eprintln!(
                 "cortex: preview {why}: hole={} visible={} -> on={on} (was {})",
@@ -137,6 +137,20 @@ impl LivePreview {
         // The engine keeps capturing for replay or streaming even when this is false.
         let _ = self.engine_tx.send(on);
     }
+}
+
+/**
+ * SOURCE OF TRUTH KEYWORDS: should_preview, preview decision, occlusion, hole, visible, preview on off
+ * WHAT:  Whether the engine's preview session should run: the page shows the hole and
+ *        the window is visible (its occlusion state: not hidden, minimised, fully covered
+ *        or on another Space).
+ * WHY:   Nobody sees the preview otherwise, and it costs about 14% CPU. Recording, replay
+ *        and streaming are not inputs: the engine keeps capturing for them on its own and
+ *        feeds this view from the recording session (`sync_preview` in rec-engine-macos).
+ * WHERE: `LivePreview::update`.
+ */
+fn should_preview(hole: bool, visible: bool) -> bool {
+    hole && visible
 }
 
 /// Wraps a sink to print how many frames a second reach the view, and their size,
@@ -165,4 +179,22 @@ fn counted(sink: rec_macos_ui::PreviewFn) -> rec_macos_ui::PreviewFn {
         }
         sink(pb)
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::should_preview;
+
+    #[test]
+    fn preview_runs_only_with_hole_and_visible_window() {
+        // (hole, visible) -> on. "visible" is false when hidden, minimised, covered or on another Space.
+        for (hole, visible, on) in [
+            (true, true, true),
+            (true, false, false),
+            (false, true, false),
+            (false, false, false),
+        ] {
+            assert_eq!(should_preview(hole, visible), on, "hole={hole} visible={visible}");
+        }
+    }
 }
