@@ -88,6 +88,15 @@ impl LivePreview {
         });
         let p = preview.clone();
         preview.view.on_window_visibility(move |visible| {
+            if p.trace {
+                // Main thread here, so the window getters do not block.
+                eprintln!(
+                    "cortex: preview window: shown={:?} minimized={:?} focused={:?}",
+                    p.window.is_visible().ok(),
+                    p.window.is_minimized().ok(),
+                    p.window.is_focused().ok()
+                );
+            }
             p.update("occlusion", |w| w.visible = visible);
         });
         Ok(preview)
