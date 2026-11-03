@@ -151,65 +151,6 @@ fn debug_open(app: &tauri::AppHandle, what: &str) {
     }
 }
 
-#[cfg(test)]
-mod tests {
-    use rec_core::settings::CaptureTarget;
-    use rec_core::state::{CaptureWindow, Rect};
-
-    #[test]
-    fn debug_targets_parse() {
-        let w = |id, app: &str, w| CaptureWindow {
-            id,
-            app: app.into(),
-            title: "t".into(),
-            bundle_id: String::new(),
-            display_id: 1,
-            frame: Rect {
-                x: 0.0,
-                y: 0.0,
-                w,
-                h: 100.0,
-            },
-        };
-        let ws = [
-            w(5, "Finder", 100.0),
-            w(6, "Finder", 300.0),
-            w(7, "Safari", 900.0),
-        ];
-        let t = |s| super::debug_target(s, &ws);
-        assert_eq!(
-            t("window:finder"),
-            Some(CaptureTarget::Window { window_id: 6 })
-        );
-        assert_eq!(
-            t("window:42"),
-            Some(CaptureTarget::Window { window_id: 42 })
-        );
-        assert_eq!(
-            t("display:2"),
-            Some(CaptureTarget::Display { display_id: 2 })
-        );
-        assert_eq!(
-            t("region:1,10,20,640,360"),
-            Some(CaptureTarget::Region {
-                display_id: 1,
-                x: 10.0,
-                y: 20.0,
-                w: 640.0,
-                h: 360.0
-            })
-        );
-        assert_eq!(
-            t("app:com.apple.finder"),
-            Some(CaptureTarget::App {
-                bundle_id: "com.apple.finder".into()
-            })
-        );
-        assert_eq!(t("region:1,2"), None);
-        assert_eq!(t("nope"), None);
-    }
-}
-
 pub fn run() {
     // A child started by `Shell::permission_report`: answer and exit before any UI starts.
     if std::env::args().nth(1).as_deref() == Some(shell::SCREEN_PREFLIGHT_ARG) {
@@ -390,4 +331,63 @@ pub fn run() {
         RunEvent::Reopen { .. } => windows::show_main(app),
         _ => {}
     });
+}
+
+#[cfg(test)]
+mod tests {
+    use rec_core::settings::CaptureTarget;
+    use rec_core::state::{CaptureWindow, Rect};
+
+    #[test]
+    fn debug_targets_parse() {
+        let w = |id, app: &str, w| CaptureWindow {
+            id,
+            app: app.into(),
+            title: "t".into(),
+            bundle_id: String::new(),
+            display_id: 1,
+            frame: Rect {
+                x: 0.0,
+                y: 0.0,
+                w,
+                h: 100.0,
+            },
+        };
+        let ws = [
+            w(5, "Finder", 100.0),
+            w(6, "Finder", 300.0),
+            w(7, "Safari", 900.0),
+        ];
+        let t = |s| super::debug_target(s, &ws);
+        assert_eq!(
+            t("window:finder"),
+            Some(CaptureTarget::Window { window_id: 6 })
+        );
+        assert_eq!(
+            t("window:42"),
+            Some(CaptureTarget::Window { window_id: 42 })
+        );
+        assert_eq!(
+            t("display:2"),
+            Some(CaptureTarget::Display { display_id: 2 })
+        );
+        assert_eq!(
+            t("region:1,10,20,640,360"),
+            Some(CaptureTarget::Region {
+                display_id: 1,
+                x: 10.0,
+                y: 20.0,
+                w: 640.0,
+                h: 360.0
+            })
+        );
+        assert_eq!(
+            t("app:com.apple.finder"),
+            Some(CaptureTarget::App {
+                bundle_id: "com.apple.finder".into()
+            })
+        );
+        assert_eq!(t("region:1,2"), None);
+        assert_eq!(t("nope"), None);
+    }
 }

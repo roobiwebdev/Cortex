@@ -168,7 +168,7 @@ pub fn find_app(sel: &str) -> Result<AppInfo> {
     let content = shareable_content()?;
     let me = std::process::id() as i32;
     let lower = sel.trim().to_lowercase();
-    let wins = windows_in(&*content)?;
+    let wins = windows_in(&content)?;
     let mut best: Option<AppInfo> = None;
     for a in unsafe { content.applications() }.iter() {
         let (pid, name, bundle_id) = unsafe {
