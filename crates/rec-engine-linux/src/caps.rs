@@ -18,8 +18,6 @@ pub struct Probe {
     pub system_audio: bool,
     /// The GlobalShortcuts portal answered.
     pub global_shortcuts: bool,
-    /// The recordings list can read files (GStreamer's discoverer and decoders exist).
-    pub media: bool,
 }
 
 pub fn linux_capabilities(p: &Probe) -> PlatformCapabilities {
@@ -44,7 +42,8 @@ pub fn linux_capabilities(p: &Probe) -> PlatformCapabilities {
         preview: PreviewKind::None,
         live_streaming: false,
         replay_buffer: false,
-        quick_trim: p.media,
+        // The list reads files, but trimming (export) is not built yet.
+        quick_trim: false,
     }
 }
 
@@ -59,14 +58,13 @@ mod tests {
             hevc: true,
             system_audio: true,
             global_shortcuts: false,
-            media: true,
         });
         assert!(c.recording && c.display_capture && c.window_capture && c.region_capture);
         assert_eq!(c.source_picker, SourcePicker::System);
         assert!(!c.app_capture && !c.per_app_audio && !c.capture_exclusion && !c.prores);
         assert!(!c.global_hotkeys);
         assert_eq!(c.preview, PreviewKind::None);
-        assert!(c.hevc && c.system_audio && c.quick_trim);
+        assert!(c.hevc && c.system_audio && !c.quick_trim);
         assert_eq!(c.os, PlatformOs::Linux);
     }
 
