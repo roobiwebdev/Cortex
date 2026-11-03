@@ -44,6 +44,9 @@ pub fn linux_capabilities(p: &Probe) -> PlatformCapabilities {
         replay_buffer: false,
         // The list reads files, but trimming (export) is not built yet.
         quick_trim: false,
+        // qtmux writes QuickTime; the camera is a second video track in either container.
+        mov_container: p.can_record,
+        camera_track: p.can_record,
     }
 }
 
@@ -65,6 +68,7 @@ mod tests {
         assert!(!c.global_hotkeys);
         assert_eq!(c.preview, PreviewKind::None);
         assert!(c.hevc && c.system_audio && !c.quick_trim);
+        assert!(c.mov_container && c.camera_track);
         assert_eq!(c.os, PlatformOs::Linux);
     }
 
@@ -76,5 +80,6 @@ mod tests {
             ..Probe::default()
         });
         assert!(!c.recording && !c.hevc && !c.system_audio && !c.display_capture);
+        assert!(!c.mov_container && !c.camera_track);
     }
 }
