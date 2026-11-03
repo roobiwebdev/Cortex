@@ -150,6 +150,7 @@ rec_engine::trim (AVFoundation)   inspect · thumbnails (JPEG) · waveform (peak
 | Which IPC commands a window may call                | `src-tauri/capabilities/default.json` plus the `COMMANDS` list in `src-tauri/build.rs`      |
 | Design tokens for the recorder                      | `packages/ui/src/styles/studio.css` (scoped under `.studio`)                                |
 | Window behaviour (focus, levels, capture exclusion) | `crates/rec-macos-ui`                                                                       |
+| Tour copy and platform facts                        | `apps/desktop/src/surfaces/onboarding/steps.ts`                                             |
 | Window list and sizes (all but `main` are lazy)     | `src-tauri/tauri.conf.json`, built on demand by `windows::ensure`                           |
 | The engine adapter every surface uses               | `apps/desktop/src/lib/engine.ts`                                                            |
 
@@ -164,7 +165,7 @@ pnpm --filter desktop dev                        browser design harness on http:
 pnpm --filter desktop tauri dev                  the real app with hot reload
 pnpm --filter desktop tauri build --debug        debug .app in target/debug/bundle/macos
 pnpm --filter desktop check-types                TypeScript check
-pnpm --filter desktop test                       output-size mirror against the shared Rust fixture
+pnpm --filter desktop test                       output-size mirror against the shared Rust fixture, tour step table
 pnpm --filter desktop ipc:bindings               regenerate src/ipc/bindings.ts from the Rust commands
 cargo test --workspace                           every Rust test
 cargo fmt --check -p rec-core -p cortex-desktop  formatting for the crates we own
@@ -223,6 +224,19 @@ CORTEX_DEBUG_TEST_PATTERN=1 CORTEX_DEBUG_RECORD_SECS=6 CORTEX_DEBUG_HIDE_MAIN=1 
 ```
 
 It keeps its settings and recordings in a temporary folder, starts one recording with a 3 s countdown, and with `CORTEX_DEBUG_CAPTURABLE=1` lets `screencapture` see the floating windows. Release builds ignore these variables.
+
+## First-run tour and coach marks
+
+The onboarding window (880×560, `AppWindow::Onboarding`) is a nine-step tour: welcome, permissions, what to record, camera, the record shortcut, files, Quick trim, replay and live, done. The left half is an animated stage (`surfaces/onboarding/stage.tsx`), the right half has a kicker, headline, lede and the real control for the step (`panels.tsx`). Enter and → go forward, ← goes back, the dot pager jumps back to a step already passed.
+
+- **When it opens.** At launch while `settings.onboardingCompleted` is false (`tour::open_on_first_run`, skipped in debug recording runs and with `CORTEX_DEBUG_HIDE_MAIN`), from Help › Show the Tour (`tour::app_menu`, Tauri's default menu plus one item) and from Settings › General. Finishing, Skip tour and closing the window (`WindowEvent::CloseRequested` in `tour.rs`) all store `onboardingCompleted = true`. Settings version 2 counts every version 1 file as onboarded, so existing users never see it at launch.
+- **Gate.** Only the macOS Screen Recording grant blocks Continue (`gatedPermission` in `steps.ts`). Camera and microphone can be skipped. The step index is kept in `localStorage` until the tour is done, so a relaunch for Screen Recording comes back to the same step.
+- **Per platform.** `rec_core::Platform::current()` reaches the UI through the `platform` command (`lib/platform.ts`, read before the first render). All copy and platform facts (permission rows, shortcut keys, default folder, key store) live in one typed table, `PLATFORM_FACTS` / `TOUR_COPY` in `surfaces/onboarding/steps.ts`. On Windows the permissions step is the camera and microphone privacy switches with no gate; on Linux it explains the screen-sharing portal. The browser harness switches platform from the sidebar or `?platform=windows|linux` (`?clean` hides the review controls for screenshots).
+- **Shortcut practice.** The Carbon hotkey never reaches the webview. While the shortcut step is on screen the tour calls `set_hotkey_practice(true)` (onboarding window only, `capabilities/onboarding.json`), and ⇧⌘R is sent to it as `tour://hotkey-pressed` instead of starting a recording, provided nothing is recording and the window is visible (`tour::catch_record_hotkey`). Practice is switched off when the step changes and when the window closes.
+- **Sound.** `lib/sounds.ts` synthesizes a soft blip per step with Web Audio (no audio files). It plays only when `settings.sounds` is on and the engine is idle.
+- **Motion.** Scenes enter in 0.3 s, mocks in 0.5 s (`tour-*` classes in `src/styles.css`, colours from studio tokens). Reduce Motion stops them through the rule in `studio.css` and leaves each end frame.
+- **Coach marks.** `components/coach-mark.tsx` shows a small tip the first time someone draws an area (region picker), opens Quick trim and opens Go live. Dismissed hints are stored in `settings.seenHints` (`rec_core::settings::CoachHint`); Settings › General › Show tips again clears them.
+- **Checks.** `pnpm --filter desktop test` also runs `surfaces/onboarding/steps.test.ts` (copy for every platform and step, the gate, resuming). `rec-core` tests cover the version 2 migration and `seenHints`.
 
 ## Permissions
 
