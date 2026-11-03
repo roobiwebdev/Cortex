@@ -83,6 +83,11 @@ fn debug_open(app: &tauri::AppHandle, what: &str) {
 }
 
 pub fn run() {
+    // A child started by `Shell::permission_report`: answer and exit before any UI starts.
+    if std::env::args().nth(1).as_deref() == Some(shell::SCREEN_PREFLIGHT_ARG) {
+        let granted = rec_engine::tcc::screen_status() == rec_engine::tcc::Status::Granted;
+        std::process::exit(if granted { 0 } else { 1 });
+    }
     let ipc = ipc::builder();
 
     let app = tauri::Builder::default()

@@ -13,7 +13,11 @@ use std::time::{Duration, Instant};
 
 use rec_core::api::{EngineError, EngineEvent, RecorderEngine};
 use rec_core::settings::{RecorderSettings, StreamDest};
-use rec_core::state::{Devices, EngineState, Levels, Permission, PermissionState, Recording};
+use rec_core::sources::prompts_before_start;
+use rec_core::state::{
+    Devices, EngineState, Levels, Permission, PermissionReport, PermissionState, Permissions,
+    Recording,
+};
 use rec_core::store::{self, DEFAULT_DEBOUNCE, SettingsStore};
 use rec_engine::engine::{EngineOptions, MacEngine};
 
@@ -193,9 +197,48 @@ impl Shell {
         s
     }
 
-    /// Start with the stored settings (the engine runs the countdown).
+    /// Start with the stored settings (the engine runs the countdown). A microphone or
+    /// camera macOS has never asked about is asked for first (this waits for the answer);
+    /// one that stays missing is left out of the recording, with a warning.
     pub fn start(&self) -> Result<(), EngineError> {
-        self.engine.start(&self.settings())
+        let s = self.settings();
+        let perms = self.permissions();
+        for p in prompts_before_start(s.scene, s.mic_enabled, &perms) {
+            self.engine.request_permission(p);
+        }
+        self.engine.start(&s)
+    }
+
+    /// The privacy grants as macOS reports them to this process now.
+    pub fn permissions(&self) -> Permissions {
+        let mut p = Permissions::default();
+        for perm in Permission::ALL {
+            p.set(perm, self.engine.permission(perm));
+        }
+        p
+    }
+
+    /// The grants, plus whether a Screen Recording grant needs a relaunch to apply: this
+    /// process still sees no grant, but a new process (the same app) does.
+    pub fn permission_report(&self) -> PermissionReport {
+        let permissions = self.permissions();
+        let screen_needs_relaunch =
+            permissions.screen != PermissionState::Granted && screen_granted_in_new_process();
+        PermissionReport {
+            permissions,
+            screen_needs_relaunch,
+        }
+    }
+
+    /// Relaunching would cut a recording short.
+    pub fn can_relaunch(&self) -> Result<(), EngineError> {
+        if self.engine.state().status == rec_core::EngineStatus::Idle {
+            Ok(())
+        } else {
+            Err(EngineError::failed(
+                "Stop the recording before reopening Cortex",
+            ))
+        }
     }
 
     pub fn cancel_countdown(&self) -> Result<(), EngineError> {
@@ -322,6 +365,26 @@ impl Shell {
             eprintln!("cortex: could not save settings: {e}");
         }
     }
+}
+
+/// The argument that makes the app binary print nothing, check Screen Recording and exit
+/// (0 = granted). See `lib::screen_preflight_child`.
+pub const SCREEN_PREFLIGHT_ARG: &str = "--cortex-screen-preflight";
+
+/// Ask a new process of this app whether Screen Recording is granted. macOS answers a
+/// running process from what it saw at launch, so this is how the app learns that a grant
+/// made in System Settings is waiting for a relaunch.
+fn screen_granted_in_new_process() -> bool {
+    let Ok(exe) = std::env::current_exe() else {
+        return false;
+    };
+    Command::new(exe)
+        .arg(SCREEN_PREFLIGHT_ARG)
+        .stdin(std::process::Stdio::null())
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null())
+        .status()
+        .is_ok_and(|s| s.success())
 }
 
 /// `path` canonicalized, if it is an existing file under `dir`.

@@ -30,6 +30,13 @@ export const commands = {
 	devices: () => typedError<Devices, EngineError>(__TAURI_INVOKE("devices")),
 	/**  Show the system prompt; resolves when answered (or after 60 s). */
 	requestPermission: (permission: Permission) => typedError<PermissionState, EngineError>(__TAURI_INVOKE("request_permission", { permission })),
+	/**
+	 *  The privacy grants now, and whether a Screen Recording grant waits for a relaunch.
+	 *  Cheap enough to poll about once a second while a permission step is shown.
+	 */
+	checkPermissions: () => typedError<PermissionReport, EngineError>(__TAURI_INVOKE("check_permissions")),
+	/**  Quit and reopen Cortex, so a new Screen Recording grant applies. Refused while recording. */
+	relaunch: () => typedError<null, EngineError>(__TAURI_INVOKE("relaunch")),
 	/**  Open the System Settings privacy pane for a permission. */
 	openSystemSettings: (permission: Permission) => typedError<null, EngineError>(__TAURI_INVOKE("open_system_settings", { permission })),
 	/**  Show a recording in Finder (only files inside the recordings folder). */
@@ -269,6 +276,16 @@ export type LevelsEvent = Levels;
 export type MicBackend = "sck" | "avcapture";
 
 export type Permission = "screen" | "microphone" | "camera";
+
+/**  A fresh look at the privacy grants, for the onboarding chips (polled about once a second). */
+export type PermissionReport = {
+	permissions: Permissions,
+	/**
+	 *  Screen Recording is granted, but macOS applies it to this process only after a
+	 *  relaunch (a new process sees the grant, this one does not).
+	 */
+	screenNeedsRelaunch: boolean,
+};
 
 export type PermissionState = "granted" | 
 /**  Also covers "restricted" (parental controls / MDM): the user can't grant it here. */

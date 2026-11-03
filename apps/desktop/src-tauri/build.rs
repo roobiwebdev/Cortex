@@ -16,6 +16,8 @@ const COMMANDS: &[&str] = &[
     "get_settings",
     "devices",
     "request_permission",
+    "check_permissions",
+    "relaunch",
     "open_system_settings",
     "reveal_recording",
     "open_recordings_folder",

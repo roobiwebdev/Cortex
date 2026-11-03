@@ -18,6 +18,8 @@
     "allow-get-settings",
     "allow-devices",
     "allow-request-permission",
+    "allow-check-permissions",
+    "allow-relaunch",
     "allow-open-system-settings",
     "allow-reveal-recording",
     "allow-open-recordings-folder",

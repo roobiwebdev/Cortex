@@ -171,6 +171,10 @@ pub struct RecordArgs {
     /// checks. Implies --mic-backend avcapture.
     #[arg(long)]
     pub(crate) test_pattern: bool,
+    /// Camera-only session without screen capture (no Screen Recording
+    /// grant needed; no system audio). Needs --scene cam.
+    #[arg(long, hide = true)]
+    pub(crate) no_screen: bool,
     /// With --test-pattern: add random noise blocks to stress the encoder.
     #[arg(long, requires = "test_pattern")]
     pub(crate) noise: bool,
@@ -255,6 +259,26 @@ fn default_output() -> PathBuf {
     dir.join(name)
 }
 
+/// Narrow record arguments to the sources a permission plan allows (the
+/// app's graceful degradation; the CLI keeps its strict permission check).
+pub fn apply_plan(a: &mut RecordArgs, plan: &rec_core::sources::SourcePlan) {
+    if !plan.mic {
+        a.no_mic = true;
+        a.mic = None;
+    }
+    if !plan.camera {
+        a.webcam = None;
+        a.scene = Some(compose::Scene::Screen);
+    }
+    if !plan.screen && !a.test_pattern {
+        a.no_screen = true;
+        a.no_system_audio = true;
+        a.system_audio = false;
+        // ScreenCaptureKit's mic needs a screen stream.
+        a.mic_backend = record::MicBackend::Avcapture;
+    }
+}
+
 /// Turn record arguments into session options and a capture target
 /// (shared by the CLI and the GUI).
 pub fn prepare(a: RecordArgs) -> Result<(record::Options, Option<screen::Target>)> {
@@ -277,6 +301,10 @@ pub fn prepare(a: RecordArgs) -> Result<(record::Options, Option<screen::Target>
     if scene.uses_cam() && webcam.is_none() {
         webcam = Some(None);
     }
+    let no_screen = a.no_screen && !a.test_pattern;
+    if no_screen && scene != compose::Scene::Cam {
+        bail!("capturing without the screen needs --scene cam");
+    }
     let mut opts = record::Options {
         output: a.output.unwrap_or_else(default_output),
         size: (0, 0),
@@ -284,7 +312,7 @@ pub fn prepare(a: RecordArgs) -> Result<(record::Options, Option<screen::Target>
         fps: a.fps,
         codec: Codec::H264,
         bitrate: 0,
-        system_audio: !a.no_system_audio,
+        system_audio: !a.no_system_audio && !no_screen,
         mic,
         mic_warning,
         webcam,
@@ -308,7 +336,8 @@ pub fn prepare(a: RecordArgs) -> Result<(record::Options, Option<screen::Target>
         test_pattern: a.test_pattern.then_some(a.noise),
         audio_layout: a.audio_tracks,
         volumes: [a.system_gain, a.mic_gain].map(|db| mixer::Volume { db, muted: false }),
-        mic_backend: if a.test_pattern { record::MicBackend::Avcapture } else { a.mic_backend },
+        mic_backend: if a.test_pattern || no_screen { record::MicBackend::Avcapture } else { a.mic_backend },
+        no_screen,
         scene,
         system_offset_ms: a.system_audio_offset_ms,
         mic_offset_ms: a.mic_offset_ms,
@@ -322,6 +351,9 @@ pub fn prepare(a: RecordArgs) -> Result<(record::Options, Option<screen::Target>
     }
     let (target, native) = if a.test_pattern {
         (None, (3840, 2160))
+    } else if no_screen {
+        // Sized like the main display, read from CoreGraphics (no grant needed).
+        (None, screen::main_display_pixels())
     } else {
         let mut displays = screen::displays()?;
         if a.display == 0 || a.display > displays.len() {

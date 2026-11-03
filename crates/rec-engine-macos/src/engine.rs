@@ -30,6 +30,7 @@ use crate::record::{self, Session};
 use crate::settings::{Settings, StreamDest as RecDest};
 use crate::writer::{AudioLayout, Codec, PreviewFn, Stats};
 use crate::{camera, live, screen, tcc};
+use rec_core::sources::{dropped_note, plan_sources};
 
 /// How the engine runs; not user settings.
 #[derive(Clone, Debug)]
@@ -438,9 +439,27 @@ impl Inner {
             args.extend(["--duration".into(), format!("{d}")]);
         }
         let refs: Vec<&str> = args.iter().map(String::as_str).collect();
-        let parsed = crate::args::parse_record_args(&refs)
+        let mut parsed = crate::args::parse_record_args(&refs)
             .map_err(|e| EngineError::failed(format!("{e:#}")))?;
+        // Open what the grants allow; only a source the scene can't do without blocks it.
+        let plan = plan_sources(
+            self.settings.scene,
+            self.settings.mic_enabled,
+            &state_permissions(self.opts.test_pattern),
+            self.opts.test_pattern,
+        )
+        .map_err(|permissions| EngineError::MissingPermissions { permissions })?;
+        crate::args::apply_plan(&mut parsed, &plan);
         let (mut o, t) = crate::args::prepare(parsed).map_err(engine_error)?;
+        // A recording says what it runs without (the preview shows Allow buttons instead).
+        if output.is_some()
+            && let Some(note) = dropped_note(&plan.dropped)
+        {
+            ev.push(EngineEvent::Error {
+                message: note,
+                recoverable: true,
+            });
+        }
         o.live = Some(self.live.clone());
         // With the mutes, which the CLI doesn't take.
         o.volumes = rec.volumes();
@@ -636,6 +655,17 @@ impl Inner {
 
     /// Run a preview session while wanted and nothing records; restart it when
     /// a capture setting changes (the GUI's `sync_preview`).
+    /// A grant changed: re-list cameras and mics (macOS may hide them before a grant), and
+    /// rebuild the preview so it picks up (or drops) the source.
+    fn permissions_changed(&mut self, core: &Core, ev: &mut Events) {
+        core.devices_changed.store(true, Ordering::SeqCst);
+        self.preview_error = None;
+        if self.preview.is_some() {
+            self.preview_key = None;
+        }
+        self.sync_preview(core, ev);
+    }
+
     fn sync_preview(&mut self, core: &Core, ev: &mut Events) {
         let want = (self.preview_wanted || self.live_wanted())
             && self.recording.is_none()
@@ -826,7 +856,10 @@ impl Inner {
                     });
                 }
             }
-            self.state.permissions = p;
+            if p != self.state.permissions {
+                self.state.permissions = p;
+                self.permissions_changed(core, ev);
+            }
             self.state.free_disk_bytes =
                 free_disk_bytes(&self.settings.output_dir_in(&self.opts.home));
         }
@@ -1052,7 +1085,8 @@ impl MacEngine {
             preview_sink: Arc::new(Mutex::new(None)),
             preview_px: Arc::new(AtomicU64::new(0)),
             low_power,
-            devices_changed: Arc::new(AtomicBool::new(false)),
+            // The first tick lists the devices.
+            devices_changed: Arc::new(AtomicBool::new(true)),
             quit: AtomicBool::new(false),
         });
         let c = core.clone();
@@ -1335,20 +1369,21 @@ impl RecorderEngine for MacEngine {
 
     fn request_permission(&self, p: Permission) -> PermissionState {
         // Blocks until the prompt is answered (up to a minute); not under the lock.
-        tcc::request_all(
-            p == Permission::Screen,
-            p == Permission::Microphone,
-            p == Permission::Camera,
-            Duration::from_secs(60),
-        );
-        let state = read_permissions().get(p);
-        self.core.run(|i, ev| {
+        let kind = match p {
+            Permission::Screen => tcc::Kind::Screen,
+            Permission::Microphone => tcc::Kind::Mic,
+            Permission::Camera => tcc::Kind::Camera,
+        };
+        let state = perm_state(tcc::request_in_app(kind, Duration::from_secs(60)));
+        let core = &*self.core;
+        core.run(|i, ev| {
             if i.state.permissions.get(p) != state {
                 i.state.permissions.set(p, state);
                 ev.push(EngineEvent::PermissionChanged {
                     permission: p,
                     state,
                 });
+                i.permissions_changed(core, ev);
             }
         });
         state
