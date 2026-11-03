@@ -27,11 +27,17 @@ fn main() {
     let (mut conn, offer) = loop {
         let (mut conn, _) = http.accept().expect("accept");
         let (method, auth, body) = read_request(&mut conn);
-        println!("whip_sink: {method}, authorization {}", if auth.is_empty() { "none" } else { "present" });
+        println!(
+            "whip_sink: {method}, authorization {}",
+            if auth.is_empty() { "none" } else { "present" }
+        );
         if method.starts_with("POST") {
             break (conn, body);
         }
-        let _ = write!(conn, "HTTP/1.1 200 OK\r\nContent-Length: 0\r\nConnection: close\r\n\r\n");
+        let _ = write!(
+            conn,
+            "HTTP/1.1 200 OK\r\nContent-Length: 0\r\nConnection: close\r\n\r\n"
+        );
     };
     let socket = UdpSocket::bind("127.0.0.1:0").expect("bind UDP");
     let mut rtc = Rtc::builder()
@@ -42,7 +48,11 @@ fn main() {
         .build(Instant::now());
     rtc.add_local_candidate(Candidate::host(socket.local_addr().unwrap(), "udp").unwrap());
     let offer = SdpOffer::from_sdp_string(&offer).expect("SDP offer");
-    let answer = rtc.sdp_api().accept_offer(offer).expect("accept offer").to_sdp_string();
+    let answer = rtc
+        .sdp_api()
+        .accept_offer(offer)
+        .expect("accept offer")
+        .to_sdp_string();
     write!(
         conn,
         "HTTP/1.1 201 Created\r\nContent-Type: application/sdp\r\nLocation: /whip/session\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{answer}",
@@ -65,7 +75,10 @@ fn main() {
         if let Ok((mut c, _)) = http.accept() {
             c.set_nonblocking(false).ok();
             let (m, ..) = read_request(&mut c);
-            let _ = write!(c, "HTTP/1.1 200 OK\r\nContent-Length: 0\r\nConnection: close\r\n\r\n");
+            let _ = write!(
+                c,
+                "HTTP/1.1 200 OK\r\nContent-Length: 0\r\nConnection: close\r\n\r\n"
+            );
             if m.starts_with("DELETE") {
                 break "DELETE received";
             }
@@ -76,7 +89,9 @@ fn main() {
                 Output::Transmit(t) => {
                     let _ = socket.send_to(&t.contents, t.destination);
                 }
-                Output::Event(Event::IceConnectionStateChange(IceConnectionState::Disconnected)) => {
+                Output::Event(Event::IceConnectionStateChange(
+                    IceConnectionState::Disconnected,
+                )) => {
                     break 'run "ICE disconnected";
                 }
                 Output::Event(Event::Connected) => println!("whip_sink: connected"),
@@ -103,7 +118,9 @@ fn main() {
                 Output::Event(_) => {}
             }
         };
-        let wait = timeout.saturating_duration_since(Instant::now()).clamp(Duration::from_millis(1), Duration::from_millis(20));
+        let wait = timeout
+            .saturating_duration_since(Instant::now())
+            .clamp(Duration::from_millis(1), Duration::from_millis(20));
         socket.set_read_timeout(Some(wait)).unwrap();
         let input = match socket.recv_from(&mut buf) {
             Ok((n, source)) => Input::Receive(
@@ -115,7 +132,9 @@ fn main() {
                     contents: buf[..n].try_into().unwrap(),
                 },
             ),
-            Err(e) if matches!(e.kind(), ErrorKind::WouldBlock | ErrorKind::TimedOut) => Input::Timeout(Instant::now()),
+            Err(e) if matches!(e.kind(), ErrorKind::WouldBlock | ErrorKind::TimedOut) => {
+                Input::Timeout(Instant::now())
+            }
             Err(e) => panic!("recv: {e}"),
         };
         rtc.handle_input(input).expect("input");
@@ -150,5 +169,9 @@ fn read_request(conn: &mut std::net::TcpStream) -> (String, String, String) {
     }
     let mut body = vec![0; len];
     r.read_exact(&mut body).unwrap();
-    (line.trim_end().to_string(), auth, String::from_utf8_lossy(&body).into_owned())
+    (
+        line.trim_end().to_string(),
+        auth,
+        String::from_utf8_lossy(&body).into_owned(),
+    )
 }

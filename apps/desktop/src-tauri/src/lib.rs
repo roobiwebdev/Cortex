@@ -1,6 +1,8 @@
 //! Cortex desktop shell: windows, menu bar icon, and the typed IPC layer over
 //! the macOS recorder engine (`rec-engine-macos`, driven through `shell::Shell`).
 
+#[cfg(debug_assertions)]
+mod debug_live;
 mod floating;
 mod ipc;
 mod preview;
@@ -37,6 +39,8 @@ use crate::shell::{Outbound, Shell};
 /// - `CORTEX_DEBUG_TARGET`: what to capture, written to the settings at launch. Only with
 ///   `CORTEX_DEBUG_DATA_DIR`, so the user's settings are never touched. One of
 ///   `display:N`, `window:ID|substring`, `app:BUNDLE_ID`, `region:N,X,Y,W,H` (points).
+/// - `CORTEX_DEBUG_LIVE_URL` (+ `_KEY`, `_SECS`): Go live to a local test server through the
+///   IPC commands, then quit (debug builds; see `debug_live.rs`).
 ///
 /// Used by `scripts/desktop/perf-compare.sh`.
 #[derive(Default)]
@@ -278,6 +282,8 @@ pub fn run() {
                     let _ = main.show();
                 }
             }
+            #[cfg(debug_assertions)]
+            debug_live::maybe_start(app.handle(), shell.clone());
             if debug.record_secs.is_some() {
                 std::thread::spawn(move || {
                     std::thread::sleep(std::time::Duration::from_secs(3));

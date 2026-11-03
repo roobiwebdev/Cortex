@@ -158,5 +158,7 @@ fn main() {
         }
     }
     engine.shutdown();
-    log(format!("done: {errors} error event(s), replay {replay_saved:?}"));
+    log(format!(
+        "done: {errors} error event(s), replay {replay_saved:?}"
+    ));
 }
