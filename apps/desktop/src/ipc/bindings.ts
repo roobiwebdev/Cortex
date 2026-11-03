@@ -263,6 +263,8 @@ export type EngineState_Deserialize = {
 	outputLatencyMs?: number | null,
 	/**  A preview session is running (frames go to the preview sink). */
 	previewing: boolean,
+	/**  What this platform's engine can do; the UI hides or explains the rest. */
+	capabilities: PlatformCapabilities,
 };
 
 export type EngineState_Serialize = {
@@ -289,6 +291,8 @@ export type EngineState_Serialize = {
 	outputLatencyMs: number | null,
 	/**  A preview session is running (frames go to the preview sink). */
 	previewing: boolean,
+	/**  What this platform's engine can do; the UI hides or explains the rest. */
+	capabilities: PlatformCapabilities,
 };
 
 export type EngineStatus = "idle" | "countdown" | "recording" | "paused" | "finalizing";
@@ -357,6 +361,59 @@ export type PipCorner = "top-left" | "top-right" | "bottom-left" | "bottom-right
 export type PipPlace = ({ corner: PipCorner }) & { x?: never; y?: never } | ({ x: number; y: number }) & { corner?: never };
 
 export type PipShape = "rounded" | "circle" | "square" | "pill" | "squircle" | "rect";
+
+/**
+ * 
+ *  * SOURCE OF TRUTH KEYWORDS: PlatformCapabilities, capabilities, feature availability, prores, hevc, capture exclusion, global hotkeys, per-app audio
+ *  * WHAT:  What the running platform engine can do. Part of `EngineState`, so every window
+ *  *        knows before it offers a choice.
+ *  * WHY:   Windows and Linux differ from macOS (Wayland only captures what its portal picked,
+ *  *        ProRes is Apple-only, some compositors can't hide our windows). The UI hides or
+ *  *        explains an unavailable feature instead of failing when the user picks it.
+ *  * WHERE: Built by each engine (`rec_engine::engine::mac_capabilities`, the shell's stub
+ *  *        engines); read in React through `useEngine((s) => s.capabilities)`.
+ *  
+ */
+export type PlatformCapabilities = {
+	os: PlatformOs,
+	/**  The engine can record at all (false for the not-yet-built Windows and Linux engines). */
+	recording: boolean,
+	/**  Whole display, a region of it, one window, every window of one app. */
+	displayCapture: boolean,
+	regionCapture: boolean,
+	windowCapture: boolean,
+	appCapture: boolean,
+	sourcePicker: SourcePicker,
+	/**  Everything the computer plays, as its own track. */
+	systemAudio: boolean,
+	/**  Only the captured app's sound (app capture). */
+	perAppAudio: boolean,
+	/**  Cortex's own windows (HUD, toasts, countdown) are kept out of recordings and screenshots. */
+	captureExclusion: boolean,
+	/**  Record/stop and save-replay shortcuts work while another app is in front. */
+	globalHotkeys: boolean,
+	/**  Hardware or software encoders for these codecs exist (H.264 is always required). */
+	hevc: boolean,
+	prores: boolean,
+	preview: PreviewKind,
+	/**  Go live (RTMP/WHIP) and the replay buffer. */
+	liveStreaming: boolean,
+	replayBuffer: boolean,
+	/**  The recordings library can inspect, thumbnail and trim files. */
+	quickTrim: boolean,
+};
+
+/**  The operating system an engine runs on (UI copy: "Finder" vs "File Explorer"). */
+export type PlatformOs = "macos" | "windows" | "linux";
+
+/**  How the live preview reaches the main window. */
+export type PreviewKind = 
+/**  A native view under a transparent hole in the webview (macOS today). */
+"native" | 
+/**  Frames are drawn by the webview (lower rate), for webviews that cannot be transparent. */
+"fallback" | 
+/**  No preview. */
+"none";
 
 export type RecorderSettings = RecorderSettings_Serialize | RecorderSettings_Deserialize;
 
@@ -560,6 +617,16 @@ export type SettingsChangedEvent_Deserialize = RecorderSettings_Deserialize;
 
 /**  The stored settings changed (from any window, or a stream key was saved). */
 export type SettingsChangedEvent_Serialize = RecorderSettings_Serialize;
+
+/**  Who picks what is captured. */
+export type SourcePicker = 
+/**  The app lists displays, windows and apps and the user picks in Cortex. */
+"app" | 
+/**
+ *  The system shows its own picker (Wayland's ScreenCast portal); the app cannot list
+ *  or name windows and gets whatever the user chose there.
+ */
+"system";
 
 export type StreamCodec = "auto" | "h264" | "hevc";
 

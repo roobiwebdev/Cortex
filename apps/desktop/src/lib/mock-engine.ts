@@ -194,6 +194,26 @@ let state: EngineState = {
   freeDiskBytes: 182_000_000_000,
   outputLatencyMs: 12,
   previewing: true,
+  // What the macOS engine reports (`mac_capabilities` in rec-engine-macos).
+  capabilities: {
+    os: "macos",
+    recording: true,
+    displayCapture: true,
+    regionCapture: true,
+    windowCapture: true,
+    appCapture: true,
+    sourcePicker: "app",
+    systemAudio: true,
+    perAppAudio: true,
+    captureExclusion: true,
+    globalHotkeys: true,
+    hevc: true,
+    prores: true,
+    preview: "native",
+    liveStreaming: true,
+    replayBuffer: true,
+    quickTrim: true,
+  },
 };
 
 const listeners = new Set<() => void>();

@@ -33,6 +33,7 @@ export type {
   PipCorner,
   PipPlace,
   PipShape,
+  PlatformCapabilities,
   Recording,
   Resolution,
   Scene,

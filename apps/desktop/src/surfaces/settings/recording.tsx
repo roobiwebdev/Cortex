@@ -5,7 +5,7 @@ import { Switch } from "@starter/ui/components/switch";
 
 import { engine, useEngine } from "../../lib/engine";
 import { autoBitrate, formatSize, outputSize, recordedOutput, RESOLUTIONS, sameOutput } from "../../lib/output-size";
-import type { Codec, Container, Fps, Resolution } from "../../lib/types";
+import type { Codec, Container, EngineState, Fps, Resolution } from "../../lib/types";
 import { OutputFolderRow, NamingRow } from "./files";
 import { ChoiceSelect, NumberField, SettingsGroup, SettingsPage, SettingsRow } from "./parts";
 
@@ -17,6 +17,9 @@ const RES_LABEL: Record<Resolution, string> = {
   native: "Native (exact pixels)",
 };
 const FPS: readonly Fps[] = [24, 30, 60];
+
+/** What this computer's engine can do (stable object between state events). */
+const selectCapabilities = (e: EngineState) => e.capabilities;
 
 /** Mb/s for display, from bits per second. */
 const toMbps = (bps: number) => Math.round(bps / 1_000_000);
@@ -39,6 +42,14 @@ export function RecordingSection() {
   // prototype-local: custom W×H is not in RecorderSettings yet (Resolution needs a { w, h } variant).
   const [custom, setCustom] = React.useState<{ on: boolean; w: number; h: number }>({ on: false, w: 1600, h: 1000 });
   const proRes = s.codec === "prores";
+  // Codecs this computer can encode; a stored choice stays listed so the select never goes blank.
+  const caps = useEngine(selectCapabilities);
+  const codecs: { value: Codec; label: string }[] = [
+    { value: "auto", label: "Auto" },
+    { value: "h264", label: "H.264" },
+    ...(caps.hevc || s.codec === "hevc" ? [{ value: "hevc" as const, label: "HEVC (H.265)" }] : []),
+    ...(caps.prores || proRes ? [{ value: "prores" as const, label: "ProRes 422" }] : []),
+  ];
 
   return (
     <SettingsPage title="Recording" subtitle="Frame size, smoothness and file format for new recordings.">
@@ -112,12 +123,7 @@ export function RecordingSection() {
             aria-label="Codec"
             value={s.codec}
             onChange={(codec) => engine.update(codec === "prores" ? { codec, container: "mov" } : { codec })}
-            options={[
-              { value: "auto", label: "Auto" },
-              { value: "h264", label: "H.264" },
-              { value: "hevc", label: "HEVC (H.265)" },
-              { value: "prores", label: "ProRes 422" },
-            ]}
+            options={codecs}
           />
         </SettingsRow>
         <SettingsRow
