@@ -1,0 +1,35 @@
+{
+  "$schema": "../node_modules/@tauri-apps/cli/config.schema.json",
+  "bundle": {
+    "targets": ["deb", "rpm", "appimage"],
+    "icon": ["icons/32x32.png", "icons/128x128.png", "icons/128x128@2x.png", "icons/icon.png"],
+    "linux": {
+      "deb": {
+        "section": "video",
+        "depends": [
+          "gstreamer1.0-plugins-base",
+          "gstreamer1.0-plugins-good",
+          "gstreamer1.0-plugins-bad",
+          "gstreamer1.0-libav",
+          "gstreamer1.0-pipewire",
+          "gstreamer1.0-pulseaudio",
+          "xdg-desktop-portal"
+        ],
+        "recommends": ["gstreamer1.0-plugins-ugly", "gstreamer1.0-vaapi", "gnome-keyring | kwalletmanager"]
+      },
+      "rpm": {
+        "depends": [
+          "gstreamer1-plugins-base",
+          "gstreamer1-plugins-good",
+          "gstreamer1-plugins-bad-free",
+          "pipewire-gstreamer",
+          "xdg-desktop-portal"
+        ],
+        "recommends": ["gstreamer1-plugin-openh264", "gstreamer1-plugins-bad-freeworld", "gstreamer1-plugin-libav"]
+      },
+      "appimage": {
+        "bundleMediaFramework": false
+      }
+    }
+  }
+}
