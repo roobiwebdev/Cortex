@@ -2,6 +2,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Slider } from "@starter/ui/components/slider";
 import { cn } from "@starter/ui/lib/utils";
 
+import { ALLOW_ACCESS, allowAccessItem, askPermission } from "../../components/permission-ask";
 import { engine } from "../../lib/engine";
 import type { EngineState } from "../../lib/types";
 import { FieldRow, MicroLabel, SIDEBAR_SLIDER, SwitchRow, Tip } from "./parts";
@@ -31,6 +32,7 @@ export function CameraSection({ e, locked }: { e: EngineState; locked: boolean }
   const s = e.settings;
   const overlay = s.scene === "screen-cam";
   const selected = e.cameras.find((c) => c.id === s.cameraId);
+  const allowCamera = allowAccessItem("camera", e.cameras, e.permissions.camera);
   const usesRoundness = s.pipShape === "rounded" || s.pipShape === "square" || s.pipShape === "squircle";
 
   if (s.scene === "screen") {
@@ -45,7 +47,11 @@ export function CameraSection({ e, locked }: { e: EngineState; locked: boolean }
     <>
       <Select
         value={s.cameraId ?? NO_CAMERA}
-        onValueChange={(v) => engine.update({ cameraId: v === NO_CAMERA ? null : v })}
+        onValueChange={(v) =>
+          v === ALLOW_ACCESS
+            ? void askPermission("camera", e.permissions.camera)
+            : engine.update({ cameraId: v === NO_CAMERA ? null : v })
+        }
         disabled={locked}
       >
         <SelectTrigger size="sm" className="w-full bg-card" aria-label="Camera">
@@ -57,6 +63,7 @@ export function CameraSection({ e, locked }: { e: EngineState; locked: boolean }
               {c.connected ? c.name : `${c.name} (not connected)`}
             </SelectItem>
           ))}
+          {allowCamera && <SelectItem value={allowCamera.value}>{allowCamera.label}</SelectItem>}
         </SelectContent>
       </Select>
       {selected && !selected.connected && (

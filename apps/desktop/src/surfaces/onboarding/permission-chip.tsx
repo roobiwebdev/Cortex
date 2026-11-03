@@ -4,13 +4,17 @@ import { cn } from "@starter/ui/lib/utils";
 
 import type { PermissionState } from "../../lib/types";
 
-/** What the chip shows: the engine's TCC state, or "waiting" while System Settings is open. */
-export type ChipState = PermissionState | "waiting";
+/**
+ * What the chip shows: the TCC state, "waiting" while a prompt is open, or "relaunch" when
+ * Screen Recording is on but macOS applies it only after Cortex reopens.
+ */
+export type ChipState = PermissionState | "waiting" | "relaunch";
 
 const CHIP: Record<ChipState, { label: string; className: string }> = {
   "not-determined": { label: "Not granted", className: "bg-muted text-muted-foreground" },
   waiting: { label: "Waiting for System Settings…", className: "bg-accent-tint text-accent-text" },
   granted: { label: "Granted", className: "bg-ok-tint text-ok" },
+  relaunch: { label: "Allowed · reopen Cortex to apply", className: "bg-accent-tint text-accent-text" },
   denied: { label: "Denied — enable in System Settings", className: "bg-warn-tint text-warn" },
 };
 
@@ -33,7 +37,7 @@ export function PermissionChip({ state, className }: { state: ChipState; classNa
         className,
       )}
     >
-      {state === "granted" && <Check className="size-3.5" strokeWidth={2.5} />}
+      {(state === "granted" || state === "relaunch") && <Check className="size-3.5" strokeWidth={2.5} />}
       {state === "waiting" && <LoaderCircle className="size-3.5 animate-spin" />}
       {state === "denied" && <TriangleAlert className="size-3.5" />}
       {state === "not-determined" && <Circle className="size-2.5" strokeWidth={3} />}

@@ -101,6 +101,7 @@ export function PermissionPanel({
   chip,
   onRequest,
   onOpenSettings,
+  onRelaunch,
 }: {
   permission: Permission;
   kicker: string;
@@ -108,6 +109,8 @@ export function PermissionPanel({
   chip: ChipState;
   onRequest: () => void;
   onOpenSettings: () => void;
+  /** Quit and reopen Cortex (shown when a Screen Recording grant waits for it). */
+  onRelaunch: () => void;
 }) {
   const p = PERMISSION_STEPS[permission];
   const granted = chip === "granted";
@@ -122,20 +125,27 @@ export function PermissionPanel({
       <Headline id={titleId}>{p.title}</Headline>
       <Lede>{p.lede}</Lede>
 
-      <Button
-        variant={granted ? "soft" : "tactile"}
-        size="lg"
-        className="mt-5 h-10 rounded-[var(--radius)] px-4"
-        disabled={granted || waiting}
-        onClick={onRequest}
-      >
-        {granted ? <Check /> : denied ? <RotateCcw /> : <ShieldCheck />}
-        {granted ? "Allowed" : denied ? "Ask again" : p.allowLabel}
-      </Button>
+      {chip === "relaunch" ? (
+        <Button variant="tactile" size="lg" className="mt-5 h-10 rounded-[var(--radius)] px-4" onClick={onRelaunch}>
+          <RotateCcw />
+          Reopen Cortex
+        </Button>
+      ) : (
+        <Button
+          variant={granted ? "soft" : "tactile"}
+          size="lg"
+          className="mt-5 h-10 rounded-[var(--radius)] px-4"
+          disabled={granted || waiting}
+          onClick={onRequest}
+        >
+          {granted ? <Check /> : denied ? <RotateCcw /> : <ShieldCheck />}
+          {granted ? "Allowed" : denied ? "Ask again" : p.allowLabel}
+        </Button>
+      )}
 
       <div className="mt-3 flex flex-wrap items-center gap-x-3 gap-y-1">
         <PermissionChip state={chip} />
-        {p.need === "required" && chip !== "granted" && chip !== "waiting" && (
+        {p.need === "required" && chip !== "granted" && chip !== "waiting" && chip !== "relaunch" && (
           <span className="text-[12px] text-muted-foreground">Needed to continue</span>
         )}
         <Button

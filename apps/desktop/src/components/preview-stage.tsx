@@ -28,6 +28,7 @@ export function PreviewStage({
   paused,
   cameraStream,
   onPipPlace,
+  cameraBlocked,
   children,
 }: {
   settings: RecorderSettings;
@@ -37,6 +38,8 @@ export function PreviewStage({
   paused: boolean;
   cameraStream?: MediaStream | null;
   onPipPlace: (place: PipPlace) => void;
+  /** Shown where the camera overlay goes when the camera can't run (e.g. no permission). */
+  cameraBlocked?: React.ReactNode;
   children: React.ReactNode;
 }) {
   const stage = React.useRef<HTMLDivElement>(null);
@@ -126,7 +129,21 @@ export function PreviewStage({
             children
           )}
 
-          {showCam && bubbleW > 0 && (
+          {showCam && bubbleW > 0 && cameraBlocked && (
+            <div
+              className="absolute grid place-items-center"
+              style={{
+                left: center.x * box.w - bubbleW / 2,
+                top: center.y * box.h - bubbleH / 2,
+                width: bubbleW,
+                height: bubbleH,
+              }}
+            >
+              {cameraBlocked}
+            </div>
+          )}
+
+          {showCam && bubbleW > 0 && !cameraBlocked && (
             <>
               {drag && <SnapGuides box={box} bubbleW={bubbleW} bubbleH={bubbleH} active={nearest} />}
               <div
