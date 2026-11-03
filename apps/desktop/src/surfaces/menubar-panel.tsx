@@ -38,6 +38,7 @@ import { BytesWritten, DroppedFrames, ElapsedClock } from "../components/progres
 import { formatAgo, formatBytes, formatClock } from "../lib/format";
 import { engine, micLevels, systemLevels, useEngineCalm } from "../lib/engine";
 import type { EngineState } from "../lib/types";
+import { checkForUpdates, useUpdates } from "../lib/updates";
 import { MENUBAR_H } from "../prototype/desktop-backdrop";
 import type { SurfaceProps } from "../prototype/surfaces";
 import { ClipThumb } from "./floating/clip-thumb";
@@ -412,6 +413,7 @@ function MeterLine({
 
 function PanelMenu({ e, navigate }: { e: EngineState; navigate: SurfaceProps["navigate"] }) {
   const capturing = isCapturing(e.status);
+  const update = useUpdates().available;
   return (
     <DropdownMenu>
       <DropdownMenuTrigger
@@ -456,7 +458,16 @@ function PanelMenu({ e, navigate }: { e: EngineState; navigate: SurfaceProps["na
           Settings…
           <DropdownMenuShortcut>⌘,</DropdownMenuShortcut>
         </DropdownMenuItem>
-        <DropdownMenuItem className={MENU_ITEM}>Check for updates…</DropdownMenuItem>
+        <DropdownMenuItem
+          className={MENU_ITEM}
+          onClick={() => {
+            // The result shows in Settings → General, which also installs.
+            if (!update) checkForUpdates();
+            navigate("settings");
+          }}
+        >
+          {update ? `Update to Cortex ${update.version}…` : "Check for updates…"}
+        </DropdownMenuItem>
         <DropdownMenuSeparator className="mx-1 my-1" />
         <DropdownMenuItem className={cn(MENU_ITEM, "text-xs")} disabled>
           Global shortcut: ⇧⌘R

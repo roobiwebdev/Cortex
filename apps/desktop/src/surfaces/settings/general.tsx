@@ -1,5 +1,5 @@
 import * as React from "react";
-import { Check, Compass, Monitor, Moon, RefreshCw, Sun } from "lucide-react";
+import { Check, Compass, Download, Monitor, Moon, RefreshCw, Sun } from "lucide-react";
 
 import { Button } from "@starter/ui/components/button";
 import { Segmented } from "@starter/ui/components/segmented";
@@ -7,12 +7,14 @@ import { Switch } from "@starter/ui/components/switch";
 import { cn } from "@starter/ui/lib/utils";
 
 import { engine, useEngine } from "../../lib/engine";
+import { formatAgo } from "../../lib/format";
 import type { ThemePref } from "../../lib/types";
+import { APP_VERSION, checkForUpdates, installUpdate, useUpdates, type UpdateState } from "../../lib/updates";
 import { ACCENT_PRESETS } from "../../lib/use-studio-theme";
 import type { SurfaceId } from "../../prototype/surfaces";
 import { SettingsGroup, SettingsPage, SettingsRow } from "./parts";
 
-export const APP_VERSION = "0.1.0";
+export { APP_VERSION };
 
 /** General: appearance, app presence (login, Dock, HUD), help and updates. Matrix UI-04, UPD-02/03. */
 export function GeneralSection({ navigate }: { navigate: (id: SurfaceId) => void }) {
@@ -163,30 +165,55 @@ export function GeneralSection({ navigate }: { navigate: (id: SurfaceId) => void
   );
 }
 
-function UpdateRow() {
-  // prototype-local: a fake check that always finds the current version.
-  const [state, setState] = React.useState<"idle" | "checking" | "latest">("idle");
-  React.useEffect(() => {
-    if (state !== "checking") return;
-    const t = setTimeout(() => setState("latest"), 1200);
-    return () => clearTimeout(t);
-  }, [state]);
+/** What the Updates row says under the version. */
+function updateHint(u: UpdateState, busyRecording: boolean): React.ReactNode {
+  const next = u.available?.version;
+  if (u.installing) return `Installing Cortex ${next ?? ""}. Cortex reopens in a moment.`;
+  if (u.download) {
+    const pct = u.download.total ? Math.round((u.download.downloaded / u.download.total) * 100) : null;
+    return pct === null ? `Downloading Cortex ${next ?? ""}…` : `Downloading Cortex ${next ?? ""}… ${pct}%`;
+  }
+  if (u.checking) return "Checking…";
+  if (u.error) return u.error;
+  if (next) {
+    const when = busyRecording ? "Stop recording to install it." : u.ready ? "Downloaded and ready to install." : null;
+    return (
+      <>
+        Cortex {next} is available.{when && ` ${when}`}
+        {u.available?.notes && <span className="mt-1 line-clamp-3 block whitespace-pre-line">{u.available.notes}</span>}
+      </>
+    );
+  }
+  if (u.lastChecked) return `You're up to date. Checked ${formatAgo(u.lastChecked).toLowerCase()}.`;
+  return "Not checked yet.";
+}
 
+function UpdateRow() {
+  const u = useUpdates();
+  // Installing relaunches Cortex, so the shell refuses it while anything is being captured.
+  const busyRecording = useEngine((s) => s.status !== "idle" || s.live);
+  const busy = u.checking || u.download !== null || u.installing;
+  const canInstall = u.available !== null;
   return (
     <SettingsRow
       label={
         <span>
-          Version <span className="tabular">{APP_VERSION}</span>
+          Version <span className="tabular">{u.currentVersion}</span>
         </span>
       }
-      hint={
-        state === "latest" ? "You're up to date." : state === "checking" ? "Checking…" : "Last checked today at 09:12."
-      }
+      hint={updateHint(u, busyRecording)}
     >
-      <Button variant="soft" size="sm" disabled={state === "checking"} onClick={() => setState("checking")}>
-        <RefreshCw className={cn(state === "checking" && "animate-spin")} />
-        Check now
-      </Button>
+      {canInstall ? (
+        <Button variant="soft" size="sm" disabled={busy || busyRecording} onClick={installUpdate}>
+          <Download />
+          Install and reopen
+        </Button>
+      ) : (
+        <Button variant="soft" size="sm" disabled={busy} onClick={checkForUpdates}>
+          <RefreshCw className={cn(u.checking && "animate-spin")} />
+          Check now
+        </Button>
+      )}
     </SettingsRow>
   );
 }

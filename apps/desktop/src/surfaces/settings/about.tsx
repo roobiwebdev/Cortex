@@ -9,7 +9,7 @@ import { SettingsGroup, SettingsRow } from "./parts";
 
 const NOTICES: ReadonlyArray<{ name: string; license: string; use: string }> = [
   { name: "Rec", license: "MIT or Apache-2.0", use: "Recording engine design" },
-  { name: "Sparkle", license: "MIT", use: "Software updates" },
+  { name: "Tauri", license: "MIT or Apache-2.0", use: "App shell and software updates" },
   { name: "Inter", license: "SIL OFL 1.1", use: "Interface font" },
   { name: "Bricolage Grotesque", license: "SIL OFL 1.1", use: "Display font" },
   { name: "JetBrains Mono", license: "SIL OFL 1.1", use: "Monospaced font" },
@@ -28,9 +28,7 @@ export function AboutSection() {
           <Aperture className="size-10" strokeWidth={1.6} />
         </div>
         <h1 className="mt-4 font-display text-[30px] leading-none font-bold tracking-[-0.015em]">Cortex</h1>
-        <p className="tabular mt-2 text-[13px] text-muted-foreground">
-          Version {APP_VERSION} (prototype) · macOS 15 or later
-        </p>
+        <p className="tabular mt-2 text-[13px] text-muted-foreground">Version {APP_VERSION} · macOS 15 or later</p>
       </div>
 
       <div className="space-y-6">

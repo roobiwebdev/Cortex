@@ -41,6 +41,9 @@ const COMMANDS: &[&str] = &[
     "recording_waveform",
     "trim_recording",
     "cancel_trim",
+    "update_status",
+    "check_for_updates",
+    "install_update",
 ];
 
 fn main() {

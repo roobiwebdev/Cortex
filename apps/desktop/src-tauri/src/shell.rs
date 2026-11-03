@@ -131,9 +131,28 @@ pub struct Shell {
     settings: Mutex<RecorderSettings>,
     forwarder: Arc<Forwarder>,
     home: PathBuf,
+    /// True while an update installs: nothing may start recording or go live meanwhile.
+    /// Held while starting, so a start and an install never pass their checks together.
+    update_gate: Mutex<bool>,
     /// Set when the settings file was damaged and defaults were loaded.
     pub load_error: Option<String>,
 }
+
+/// Why an update can't install now, or None. Installing replaces the app and relaunches
+/// it, which would cut a recording, a countdown, a file being finalized or a live stream
+/// short.
+pub fn update_blocker(status: rec_core::EngineStatus, live: bool) -> Option<&'static str> {
+    use rec_core::EngineStatus::{Countdown, Finalizing, Idle, Paused, Recording};
+    match status {
+        Recording | Paused => Some("Stop the recording before installing the update"),
+        Countdown => Some("Cancel the countdown before installing the update"),
+        Finalizing => Some("Wait until the recording is saved, then install the update"),
+        Idle if live => Some("Stop streaming before installing the update"),
+        Idle => None,
+    }
+}
+
+const UPDATING: &str = "Cortex is installing an update and will reopen in a moment";
 
 impl Shell {
     /// Load settings from `settings_path`, start the engine, and send events to `emit`.
@@ -170,6 +189,7 @@ impl Shell {
             settings: Mutex::new(settings),
             forwarder,
             home,
+            update_gate: Mutex::new(false),
             load_error: loaded.error,
         }
     }
@@ -209,7 +229,36 @@ impl Shell {
         for p in prompts_before_start(s.scene, s.mic_enabled, &perms) {
             self.engine.request_permission(p);
         }
+        let gate = self.gate();
+        if *gate {
+            return Err(EngineError::failed(UPDATING));
+        }
         self.engine.start(&s)
+    }
+
+    fn gate(&self) -> MutexGuard<'_, bool> {
+        self.update_gate.lock().unwrap_or_else(|p| p.into_inner())
+    }
+
+    /// Claims the app for an update install: refused while recording, counting down,
+    /// finalizing or live (`update_blocker`). Until `end_update`, `start` and `go_live`
+    /// are refused, so nothing can begin between this check and the relaunch.
+    pub fn begin_update(&self) -> Result<(), EngineError> {
+        let mut gate = self.gate();
+        if *gate {
+            return Err(EngineError::failed(UPDATING));
+        }
+        let st = self.engine.state();
+        if let Some(why) = update_blocker(st.status, st.live) {
+            return Err(EngineError::failed(why));
+        }
+        *gate = true;
+        Ok(())
+    }
+
+    /// The install failed: recording may start again.
+    pub fn end_update(&self) {
+        *self.gate() = false;
     }
 
     /// The privacy grants as macOS reports them to this process now.
@@ -269,6 +318,10 @@ impl Shell {
     }
 
     pub fn go_live(&self) -> Result<(), EngineError> {
+        let gate = self.gate();
+        if *gate {
+            return Err(EngineError::failed(UPDATING));
+        }
         self.engine.go_live()
     }
 
@@ -411,6 +464,17 @@ pub fn open_system_settings(p: Permission) -> Result<(), EngineError> {
 mod tests {
     use super::*;
     use rec_core::state::Progress;
+
+    #[test]
+    fn updates_wait_for_recordings_and_streams() {
+        use rec_core::EngineStatus::*;
+        assert_eq!(update_blocker(Idle, false), None);
+        for status in [Countdown, Recording, Paused, Finalizing] {
+            assert!(update_blocker(status, false).is_some(), "{status:?}");
+            assert!(update_blocker(status, true).is_some(), "{status:?} live");
+        }
+        assert!(update_blocker(Idle, true).is_some(), "live while idle");
+    }
 
     fn forwarder() -> (Forwarder, Arc<Mutex<Vec<Outbound>>>) {
         let got = Arc::new(Mutex::new(vec![]));

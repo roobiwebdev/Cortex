@@ -30,3 +30,4 @@ rec-core = { path = "../../../crates/rec-core", features = ["specta"] }
 [target.'cfg(target_os = "macos")'.dependencies]
 rec-engine-macos = { path = "../../../crates/rec-engine-macos" }
 rec-macos-ui = { path = "../../../crates/rec-macos-ui" }
+tauri-plugin-updater = "2.14"
