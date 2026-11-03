@@ -4,6 +4,7 @@
 //! every public type derives `specta::Type` for tauri-specta.
 
 pub mod api;
+pub mod library;
 pub mod settings;
 pub mod sources;
 pub mod state;
