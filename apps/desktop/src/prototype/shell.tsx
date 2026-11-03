@@ -6,7 +6,9 @@ import { Segmented } from "@starter/ui/components/segmented";
 import { cn } from "@starter/ui/lib/utils";
 
 import { engine, useEngineCalm } from "../lib/engine";
-import type { ThemePref } from "../lib/types";
+import { catchHarnessHotkey } from "../lib/hotkey-practice";
+import { PLATFORMS, setHarnessPlatform, usePlatform } from "../lib/platform";
+import type { Platform, ThemePref } from "../lib/types";
 import { ACCENT_PRESETS, useStudioTheme } from "../lib/use-studio-theme";
 import { DesktopBackdrop } from "./desktop-backdrop";
 import { SURFACES, type SurfaceId } from "./surfaces";
@@ -24,6 +26,7 @@ export function PrototypeShell() {
   useStudioTheme(e.settings.theme, e.settings.accentHue);
   const [active, setActive] = React.useState<SurfaceId>(() => readHash());
   const [camera, setCamera] = React.useState<MediaStream | null>(null);
+  const platform = usePlatform();
 
   React.useEffect(() => {
     const onHash = () => setActive(readHash());
@@ -38,9 +41,12 @@ export function PrototypeShell() {
   // Global shortcuts, mirroring the app: ⇧⌘R record/stop, ⇧⌘S save replay, Esc cancels countdown.
   React.useEffect(() => {
     const onKey = (ev: KeyboardEvent) => {
-      if (ev.metaKey && ev.shiftKey && ev.key.toLowerCase() === "r") {
+      // Windows and Linux use Ctrl where macOS uses ⌘.
+      const mod = ev.metaKey || ev.ctrlKey;
+      if (mod && ev.shiftKey && ev.key.toLowerCase() === "r") {
         ev.preventDefault();
-        engine.toggleRecord();
+        // The tour's shortcut step takes the press instead of recording.
+        if (!catchHarnessHotkey()) engine.toggleRecord();
       } else if (ev.metaKey && ev.shiftKey && ev.key.toLowerCase() === "s") {
         ev.preventDefault();
         engine.saveReplay();
@@ -97,6 +103,14 @@ export function PrototypeShell() {
         ))}
 
         <div className="mt-auto space-y-3 border-t pt-4">
+          <Segmented<Platform>
+            aria-label="Platform"
+            size="sm"
+            className="w-full"
+            value={platform}
+            onValueChange={setHarnessPlatform}
+            options={PLATFORMS.map((p) => ({ value: p, label: PLATFORM_LABEL[p] }))}
+          />
           <Segmented<ThemePref>
             aria-label="Theme"
             size="sm"
@@ -168,6 +182,8 @@ export function PrototypeShell() {
     </div>
   );
 }
+
+const PLATFORM_LABEL: Record<Platform, string> = { macos: "macOS", windows: "Windows", linux: "Linux" };
 
 function readHash(): SurfaceId {
   const h = window.location.hash.slice(1);

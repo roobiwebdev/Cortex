@@ -10,12 +10,12 @@ import type { PermissionState } from "../../lib/types";
  */
 export type ChipState = PermissionState | "waiting" | "relaunch";
 
-const CHIP: Record<ChipState, { label: string; className: string }> = {
-  "not-determined": { label: "Not granted", className: "bg-muted text-muted-foreground" },
-  waiting: { label: "Waiting for System Settings…", className: "bg-accent-tint text-accent-text" },
-  granted: { label: "Granted", className: "bg-ok-tint text-ok" },
-  relaunch: { label: "Allowed · reopen Cortex to apply", className: "bg-accent-tint text-accent-text" },
-  denied: { label: "Denied — enable in System Settings", className: "bg-warn-tint text-warn" },
+const CHIP: Record<ChipState, { label: (settingsApp: string) => string; className: string }> = {
+  "not-determined": { label: () => "Not granted", className: "bg-muted text-muted-foreground" },
+  waiting: { label: (app) => `Waiting for ${app}…`, className: "bg-accent-tint text-accent-text" },
+  granted: { label: () => "Granted", className: "bg-ok-tint text-ok" },
+  relaunch: { label: () => "Allowed · reopen Cortex to apply", className: "bg-accent-tint text-accent-text" },
+  denied: { label: () => "Denied", className: "bg-warn-tint text-warn" },
 };
 
 /**
@@ -23,9 +23,18 @@ const CHIP: Record<ChipState, { label: string; className: string }> = {
  * WHAT:  A small status pill for one macOS privacy permission.
  * WHY:   The user needs to see the result of the system prompt without leaving the step,
  *        including the waiting period while System Settings is in front.
- * WHERE: onboarding permission steps and the Ready summary.
+ * WHERE: the tour's permissions step.
  */
-export function PermissionChip({ state, className }: { state: ChipState; className?: string }) {
+export function PermissionChip({
+  state,
+  settingsApp = "System Settings",
+  className,
+}: {
+  state: ChipState;
+  /** The app that holds the privacy switches ("System Settings" on macOS, "Settings" on Windows). */
+  settingsApp?: string;
+  className?: string;
+}) {
   const c = CHIP[state];
   return (
     <span
@@ -41,7 +50,7 @@ export function PermissionChip({ state, className }: { state: ChipState; classNa
       {state === "waiting" && <LoaderCircle className="size-3.5 animate-spin" />}
       {state === "denied" && <TriangleAlert className="size-3.5" />}
       {state === "not-determined" && <Circle className="size-2.5" strokeWidth={3} />}
-      {c.label}
+      {c.label(settingsApp)}
     </span>
   );
 }

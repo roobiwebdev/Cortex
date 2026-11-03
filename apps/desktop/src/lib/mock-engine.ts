@@ -82,6 +82,10 @@ const DEFAULT_SETTINGS: RecorderSettings = {
   showInDock: true,
   autoUpdate: true,
   accentHue: 188,
+  // The harness behaves like a first run: the tour resumes where it was, every coach mark shows.
+  onboardingCompleted: false,
+  seenHints: [],
+  sounds: true,
 };
 
 const HOUR = 3600;
