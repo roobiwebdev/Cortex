@@ -67,7 +67,7 @@ NSWindow (main) ─ contentView ─┬─ PreviewView (AVSampleBufferDisplayLaye
 
 ### Perf and self-test hooks
 
-The shell reads these at launch (never set in normal use): `CORTEX_DEBUG_DATA_DIR` (settings folder), `CORTEX_DEBUG_TEST_PATTERN=1` (record Rec's test pattern, no Screen Recording grant needed), `CORTEX_DEBUG_RECORD_SECS=N` (record N s after launch, print the path, quit), `CORTEX_DEBUG_HIDE_MAIN=1`, `CORTEX_DEBUG_FRONT=1` (keep the main window on top and on every Space, full-screen ones included, so the preview keeps running; a Space switch or Mission Control by someone at the Mac otherwise stops it, which is what cut short idle perf runs), `CORTEX_DEBUG_PREVIEW_STATS=1` (print the preview frame rate) `CORTEX_DEBUG_TARGET=display:N|window:ID-or-text|app:BUNDLE_ID|region:N,X,Y,W,H` (what to capture, in points; applied only together with `CORTEX_DEBUG_DATA_DIR`, so the user's settings are never changed) and, in debug builds, `CORTEX_DEBUG_OPEN=menubar|region|settings|onboarding|trim` (open that window 2 s after launch), and `CORTEX_DEBUG_LIVE_URL` with optional `_KEY` and `_SECS` (go live to a local test server through the IPC commands, store and then remove the key, print the stream states, quit; see `src-tauri/src/debug_live.rs`). `scripts/desktop/perf-compare.sh` uses them to compare CPU, memory and frame counts with Rec.app's `rec-rs record --test-pattern`, and marks an idle preview-on run invalid when any 5 s preview window drops under 29 fps.
+The shell reads these at launch (never set in normal use): `CORTEX_DEBUG_DATA_DIR` (settings folder), `CORTEX_DEBUG_TEST_PATTERN=1` (record Rec's test pattern, no Screen Recording grant needed), `CORTEX_DEBUG_RECORD_SECS=N` (record N s after launch, print the path, quit), `CORTEX_DEBUG_HIDE_MAIN=1`, `CORTEX_DEBUG_FRONT=1` (keep the main window on top and on every Space, full-screen ones included, so the preview keeps running; a Space switch or Mission Control by someone at the Mac otherwise stops it, which is what cut short idle perf runs), `CORTEX_DEBUG_PREVIEW_STATS=1` (print the preview frame rate) `CORTEX_DEBUG_TARGET=display:N|window:ID-or-text|app:BUNDLE_ID|region:N,X,Y,W,H` (what to capture, in points; applied only together with `CORTEX_DEBUG_DATA_DIR`, so the user's settings are never changed) `CORTEX_DEBUG_UPDATE_URL` (+ `CORTEX_DEBUG_UPDATE_INSTALL=1`; check a feed on 127.0.0.1 or localhost at launch, and install what it finds; see [Releasing](#releasing)) and, in debug builds, `CORTEX_DEBUG_OPEN=menubar|region|settings|onboarding|trim` (open that window 2 s after launch), and `CORTEX_DEBUG_LIVE_URL` with optional `_KEY` and `_SECS` (go live to a local test server through the IPC commands, store and then remove the key, print the stream states, quit; see `src-tauri/src/debug_live.rs`). `scripts/desktop/perf-compare.sh` uses them to compare CPU, memory and frame counts with Rec.app's `rec-rs record --test-pattern`, and marks an idle preview-on run invalid when any 5 s preview window drops under 29 fps.
 
 ## Capture targets
 
@@ -153,6 +153,9 @@ rec_engine::trim (AVFoundation)   inspect · thumbnails (JPEG) · waveform (peak
 | Tour copy and platform facts                        | `apps/desktop/src/surfaces/onboarding/steps.ts`                                             |
 | Window list and sizes (all but `main` are lazy)     | `src-tauri/tauri.conf.json`, built on demand by `windows::ensure`                           |
 | The engine adapter every surface uses               | `apps/desktop/src/lib/engine.ts`                                                            |
+| App version                                         | `src-tauri/tauri.conf.json` (`bump-version.sh` also sets `package.json` and `Cargo.toml`)   |
+| Update feed URL and updater public key              | `plugins.updater` in `src-tauri/tauri.conf.json`                                            |
+| Checking and installing updates                     | `src-tauri/src/updater.rs` (UI: `apps/desktop/src/lib/updates.ts`)                          |
 
 `bindings.ts` plays the role `RouterOutputs` plays on the web. If a TypeScript type for a setting or state field is wrong, fix the Rust type in `rec-core` and regenerate.
 
@@ -176,6 +179,8 @@ cargo test --release -p rec-engine-macos --test trim_test_pattern  6 s test-patt
 cargo run --release -p rec-engine-macos --example live_smoke -- --url rtmp://127.0.0.1:19351/live   Go live to a local server
 cargo run --release -p rec-engine-macos --example whip_sink        local WHIP endpoint for live_smoke
 scripts/desktop/third-party-licenses.sh          refresh apps/desktop/THIRD_PARTY_RUST.md
+scripts/desktop/bump-version.sh 0.1.1            set the app version in every manifest
+scripts/desktop/release-macos.sh --notes "..."   signed release (DMG, updater bundle, latest.json) in dist/desktop/<version>/
 ```
 
 The design harness runs every surface against `lib/mock-engine.ts`. Use it for design review and Playwright. It needs no Rust build.
@@ -264,7 +269,112 @@ APPLE_SIGNING_IDENTITY="Cortex Dev Signing" pnpm --filter desktop tauri build --
 
 To create one on another Mac, open Keychain Access, choose Certificate Assistant, Create a Certificate, and pick type "Code Signing". `security find-identity -p codesigning` should then list it. It shows as not trusted, which is fine for local signing.
 
-This identity is for development only. It cannot pass Gatekeeper on another machine. Public builds need a Developer ID certificate and notarization, which come later. Never commit the certificate or its private key, and never put it in CI.
+Until the Apple Developer membership exists, releases are signed with this identity too (see [Releasing](#releasing)). It cannot pass Gatekeeper on another machine: people who install it have to allow it once in System Settings → Privacy & Security. Never commit the certificate or its private key, never export it, and never put it in CI.
+
+## Releasing
+
+Verified on 2026-11-03 (Apple Silicon, macOS 27): 0.1.0 and 0.1.1 built with the script; a copy of 0.1.0 installed from its DMG into a scratch folder updated itself from a local feed to 0.1.1 and relaunched; the updated app kept the designated requirement `identifier "dev.roobi.cortex" and certificate leaf = H"b3e0…"`, still saw Screen Recording, Camera and Microphone as granted, and recorded both the test pattern and the real screen (3 s, 180 frames at 60 fps). A bundle re-packed after signing (signature check failed), a feed announcing 0.1.2 for the 0.1.1 bundle (signed-version check failed) and an install during a countdown (refused) all left 0.1.0 in place. Not yet seen: the DMG window as Finder draws it, notarization, and an update over real HTTPS.
+
+`scripts/desktop/release-macos.sh` builds a release into `dist/desktop/<version>/` (gitignored). It never uploads anything.
+
+### Steps
+
+1. Set the version: `scripts/desktop/bump-version.sh 0.1.1`. It writes `tauri.conf.json`, `apps/desktop/package.json`, `src-tauri/Cargo.toml` and the `cortex-desktop` entry in `Cargo.lock`. `cargo test -p cortex-desktop` fails if they disagree. The UI reads the version from `tauri.conf.json` at build time (`vite.config.ts`).
+2. Commit, then run `scripts/desktop/release-macos.sh --notes "What changed"` (or `--notes-file FILE`). It:
+   - cleans the bundle folder, the web build and the `cortex-desktop` crate, then runs `tauri build --bundles app` with updater artifacts on (the app and its `.app.tar.gz` + `.sig`);
+   - signs with `CORTEX_SIGNING_IDENTITY` (default `Cortex Dev Signing`), hardened runtime, `Entitlements.plist`;
+   - checks the signature, the `Info.plist` version, and that the designated requirement names this certificate;
+   - builds the DMG with `dmgbuild` and signs it;
+   - checks the DMG: it verifies, mounts, holds `Cortex.app` and an `Applications` link, and the app's signature still verifies after copying it out;
+   - checks that the updater signature carries the version (`requireSignedVersion`);
+   - notarizes and staples when Apple credentials are set (below);
+   - writes the release folder and unregisters the build's `Cortex.app` from Launch Services.
+3. Publish by hand once hosting exists: put the folder's files at `<base>/<version>/`, then replace `<base>/latest.json` with the new `latest.json`. Installed apps pick it up within a day (or at once with Check now).
+
+The release folder:
+
+| File                                      | What it is                                                                                |
+| ----------------------------------------- | ----------------------------------------------------------------------------------------- |
+| `Cortex_<version>_aarch64.dmg`            | The installer: the app and an Applications link on a light background.                    |
+| `Cortex_<version>_aarch64.app.tar.gz`     | The updater bundle: the signed `Cortex.app`, tarred.                                      |
+| `Cortex_<version>_aarch64.app.tar.gz.sig` | Its minisign signature from the updater key.                                              |
+| `latest.json`                             | The update manifest: version, notes, date, and per platform the bundle URL and signature. |
+| `SHA256SUMS`                              | SHA-256 of every file above.                                                              |
+| `BUILD.txt`                               | Commit, identity, designated requirement, whether it was notarized.                       |
+
+Builds are Apple Silicon only (`darwin-aarch64`). Intel Macs would need `tauri build --target universal-apple-darwin` and a `darwin-x86_64` entry in `latest.json`; the script does not do that yet.
+
+The DMG window is 660×400 with the app at (180, 200) and Applications at (480, 200) over `src-tauri/dmg/background.png` and `background@2x.png` (brand teal arrow and caption), set in `src-tauri/dmg/dmgbuild-settings.py`. The script builds it with [dmgbuild](https://github.com/dmgbuild/dmgbuild) (MIT, pinned to 1.6.7, installed into `~/.cache/cortex/dmgbuild-venv` on first use), which writes the window layout itself. Tauri's own DMG step scripts Finder over AppleEvents instead; that needs an Automation grant and a GUI session, and it timed out when run from an agent, so `tauri.conf.json` bundles only the app.
+
+### Placeholders to fill in
+
+The public download URL is not chosen yet (Vercel plus a private GitHub repo, so the files need some public host). Two values hold it:
+
+- `plugins.updater.endpoints` in `src-tauri/tauri.conf.json`: `https://cortex.example/updates/latest.json`. Every installed app asks this URL, so pick one that can stay. It must be `https`.
+- `CORTEX_UPDATE_BASE_URL` for the release script (default `https://cortex.example/updates`, marked `TODO(hosting)`): the base the bundle URLs in `latest.json` are built from.
+
+Until then **Check now** reports that it couldn't reach the feed, and the daily check fails quietly (logged only).
+
+### Keys and where they live
+
+| Secret                | Where                                                                                   | Used for                        |
+| --------------------- | --------------------------------------------------------------------------------------- | ------------------------------- |
+| Updater private key   | `~/.config/cortex/updater.key` (mode 600, folder 700). Never in the repo.               | Signing update bundles          |
+| Its password          | Login Keychain, generic password `cortex-updater-key` (account `updater`)               | Unlocking the key at build time |
+| Updater public key    | `plugins.updater.pubkey` in `tauri.conf.json` (also `~/.config/cortex/updater.key.pub`) | Verifying bundles in the app    |
+| Code-signing identity | Login Keychain, `Cortex Dev Signing` (later the Developer ID identity)                  | Signing the app and DMG         |
+
+**Back up `~/.config/cortex/updater.key` and its password now**, together, somewhere safe off this Mac (a password manager entry with the file attached works). Read the password with `security find-generic-password -s cortex-updater-key -w`. Every installed copy of Cortex trusts only this key. If it is lost, no update can ever reach those copies again: users would have to download a new DMG by hand. If it leaks, someone with access to the feed URL could ship them anything, so keep it off shared drives and out of CI logs. To use it on another Mac, copy the file to the same path and add the Keychain item, or set `CORTEX_UPDATER_KEY` and `TAURI_SIGNING_PRIVATE_KEY_PASSWORD`.
+
+Back up the `Cortex Dev Signing` certificate too (Keychain Access → export as .p12 with a password, stored with the key). Its hash is in the designated requirement, `identifier "dev.roobi.cortex" and certificate leaf = H"b3e0…"`. macOS ties Screen Recording, Camera and Microphone grants to that requirement, so as long as every release is signed with the same certificate, updates keep the grants. A new self-signed certificate (or ad-hoc signing, which changes the requirement on every build) means every user grants Screen Recording again after the update.
+
+### How updates work in the app
+
+- **Feed and check.** `tauri-plugin-updater` asks the endpoint for `latest.json` and offers the entry for `darwin-aarch64` if its version is newer. It is driven from Rust only (`src-tauri/src/updater.rs`): the webview has three commands, `update_status`, `check_for_updates` and `install_update`, granted to the Settings and menu bar windows (`capabilities/updates.json`). No window gets the updater or process plugin's own permissions, so a page can only ask for the one update the feed announces.
+- **Signatures.** The bundle must verify against the public key in `tauri.conf.json`, or it is never installed. `requireSignedVersion` also checks that the signature names the announced version, so a tampered feed can't relabel an older signed bundle as new.
+- **Never during a recording.** `Shell::begin_update` refuses the install while recording, paused, counting down, finalizing or live, and holds `start` and `go_live` off from then until the relaunch. A bundle that finishes downloading during a recording is kept; the button installs it later.
+- **Relaunch.** After installing, the app quits through the normal quit flow (finalize, flush settings) and `RunEvent::Exit` reopens it with `open -n`. Relaunching through Launch Services gives the new process its own launchd parent, as Tauri's restart does; unlike it, the `CORTEX_DEBUG_*` variables are passed on so test copies keep their scratch data folder.
+- **Quiet check.** While **Check for updates automatically** (`autoUpdate`) is on, the shell checks 20 s after launch and then hourly whenever the last attempt is a day old (`update-check.json` next to the settings). It only finds updates; installing always waits for a click in Settings → General (or the menu bar's **Update to Cortex x.y.z…**, which opens it).
+- **UI.** `lib/updates.ts` keeps the status from `updater://status` (checking, available version and notes, download progress, ready, installing, last error). Settings → General shows it in the Updates group; About shows the version.
+
+### Notarization: when the Apple Developer membership arrives
+
+Nothing in the code changes. In order:
+
+1. In the Apple Developer portal, create a **Developer ID Application** certificate (Certificates → +). Make the CSR in Keychain Access on this Mac so the private key lands in the login keychain. `security find-identity -p codesigning -v` should then list `Developer ID Application: <Name> (<TEAMID>)`.
+2. Create notarization credentials, either an app-specific password at account.apple.com (Sign-In and Security → App-Specific Passwords) for your Apple ID, or an App Store Connect API key (Users and Access → Integrations → Keys, "Developer" access; download the `.p8` once).
+3. Build with:
+
+   ```
+   CORTEX_SIGNING_IDENTITY="Developer ID Application: <Name> (<TEAMID>)" \
+   APPLE_ID=<apple id email> APPLE_PASSWORD=<app-specific password> APPLE_TEAM_ID=<TEAMID> \
+     scripts/desktop/release-macos.sh --notes "..."
+   ```
+
+   or with `APPLE_API_KEY=<key id> APPLE_API_ISSUER=<issuer uuid> APPLE_API_KEY_PATH=<path to .p8>` instead of the three `APPLE_*` values. Keep these in the Keychain or a password manager and export them only for the run. The Tauri bundler then notarizes and staples the app before it builds the DMG and the updater bundle; the script signs, notarizes and staples the DMG, and checks it with `spctl`. A half-set group of `APPLE_*` variables stops the script, and notarization refuses any identity that isn't Developer ID.
+
+4. Check on a clean Mac (or a new user account) that the downloaded DMG opens without the "unidentified developer" prompt.
+
+What users see: the Developer ID certificate has a different hash, so the designated requirement becomes `anchor apple generic and identifier "dev.roobi.cortex" and certificate leaf[subject.OU] = "<TEAMID>" …`. The first update from a `Cortex Dev Signing` build to a Developer ID build therefore looks like a new app to macOS, and **users grant Screen Recording (and Camera, Microphone) once more**. Say so in that release's notes. Later Developer ID releases keep the grants, because the requirement names the team, not one certificate. The updater key stays the same, so those installs still update.
+
+### Testing the updater locally
+
+`--local-test-feed` builds a copy that accepts a plain-HTTP feed (it sets `dangerousInsecureTransportProtocol` for that build only and writes to `dist/desktop/<version>-localtest/`; never publish it). `CORTEX_DEBUG_UPDATE_URL` points an app at a feed on `127.0.0.1` or `localhost` (other hosts are ignored); with it the app checks once at launch, prints the result, and with `CORTEX_DEBUG_UPDATE_INSTALL=1` installs what it finds. Release builds made without `--local-test-feed` only accept `https` there, and every bundle still needs our signature.
+
+```
+scripts/desktop/release-macos.sh --local-test-feed                  # the old version, e.g. 0.1.0
+scripts/desktop/bump-version.sh 0.1.1
+CORTEX_UPDATE_BASE_URL=http://127.0.0.1:8765 scripts/desktop/release-macos.sh --skip-clean
+# serve dist/desktop/ as http://127.0.0.1:8765/ with latest.json at the top:
+mkdir -p /tmp/feed && cp -R dist/desktop/0.1.1 /tmp/feed/ && cp dist/desktop/0.1.1/latest.json /tmp/feed/
+python3 -m http.server 8765 --bind 127.0.0.1 --directory /tmp/feed
+# a scratch copy of the old app, outside /Applications:
+open -n /path/to/scratch/Cortex.app --env CORTEX_DEBUG_DATA_DIR=/path/to/scratch/data \
+  --env CORTEX_DEBUG_UPDATE_URL=http://127.0.0.1:8765/latest.json --env CORTEX_DEBUG_UPDATE_INSTALL=1 \
+  --stdout /path/to/scratch/run.log --stderr /path/to/scratch/run.log
+```
+
+Afterwards unregister every test copy (`lsregister -u <path>`) so Launch Services never opens it instead of the installed app.
 
 ## The Swift 6.4 cryptokit patch
 
@@ -290,6 +400,7 @@ There is no server in the recorder yet, so the tRPC procedure builder does not a
 - **No remote content.** The CSP in `tauri.conf.json` allows only `'self'`, IPC, and `blob:`/`data:` media. Fonts and assets are bundled. Do not add CDN URLs or `withGlobalTauri`.
 - **Writes stay in the output folder.** The engine writes recordings only under the chosen output directory, and the settings store only under the app's Application Support folder. Trim and rename write only next to the recording they act on; Replace moves the original to the Trash.
 - **Media by id.** The webview reads recordings only through `cortex-media://`, which serves files from the latest output-folder scan to the Trim window. There is no asset protocol or fs scope.
+- **Updates are signed and driven from Rust.** The webview can read the update status, check, and install the one update the feed announced; it gets no updater or process plugin permission. A bundle installs only with a valid signature from our key that names its version. See [Releasing](#releasing).
 - **Minimal entitlements.** `Entitlements.plist` grants camera and audio input only. Add one only with a stated reason.
 - **Hidden from recordings.** HUD, toasts, countdown, the region picker and the menu bar panel must never appear in a capture. The engine's `SCContentFilter` excludes the whole app, and `rec-macos-ui` sets `sharingType = none` so other apps' screenshots miss them too.
 
