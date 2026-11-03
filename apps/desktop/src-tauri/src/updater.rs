@@ -251,7 +251,9 @@ pub fn setup(app: &tauri::App, data_dir: &Path) {
         .name("update-check".into())
         .spawn(move || {
             if feed.is_some() {
-                std::thread::sleep(Duration::from_secs(3));
+                // After a `CORTEX_DEBUG_RECORD_SECS` recording has started (at 3 s), so a
+                // test run can check that installing waits for it.
+                std::thread::sleep(Duration::from_secs(5));
                 debug_run(&handle, debug_install);
                 return;
             }
