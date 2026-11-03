@@ -180,7 +180,7 @@
   },
   "bundle": {
     "active": true,
-    "targets": ["app", "dmg"],
+    "targets": ["app"],
     "category": "Video",
     "shortDescription": "Screen, camera and audio recorder",
     "copyright": "MIT OR Apache-2.0",
