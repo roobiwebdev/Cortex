@@ -79,12 +79,25 @@ pub fn open_folder(dir: &Path) -> Result<(), String> {
 }
 
 /// Whether the GlobalShortcuts portal exists on this desktop (a quick D-Bus check).
+/// Reads the interface's `version` property, which fails when no portal backend provides it.
 pub fn global_shortcuts_available() -> bool {
     run_with_timeout(Duration::from_secs(2), async {
-        GlobalShortcuts::new()
+        let conn = ashpd::zbus::Connection::session()
             .await
-            .map(|p| p.version() > 0)
-            .map_err(|e| e.to_string())
+            .map_err(|e| e.to_string())?;
+        let reply = conn
+            .call_method(
+                Some("org.freedesktop.portal.Desktop"),
+                "/org/freedesktop/portal/desktop",
+                Some("org.freedesktop.DBus.Properties"),
+                "Get",
+                &("org.freedesktop.portal.GlobalShortcuts", "version"),
+            )
+            .await
+            .map_err(|e| e.to_string())?;
+        let v: ashpd::zvariant::OwnedValue =
+            reply.body().deserialize().map_err(|e| e.to_string())?;
+        Ok(u32::try_from(v).unwrap_or(0) > 0)
     })
     .unwrap_or(false)
 }
