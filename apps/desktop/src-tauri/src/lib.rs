@@ -21,9 +21,11 @@ use crate::shell::{Outbound, Shell};
 /// - `CORTEX_DEBUG_RECORD_SECS=N`: start recording 3 s after launch, stop after N recorded
 ///   seconds, print `cortex: recorded <path>` and quit.
 /// - `CORTEX_DEBUG_HIDE_MAIN=1`: hide the main window at launch (preview off).
-/// - `CORTEX_DEBUG_PREVIEW_STATS=1`: print the preview frame rate every 5 s.
-/// - `CORTEX_DEBUG_FRONT=1`: keep the main window above other apps, so the preview
-///   stays visible (and running) while a measurement runs.
+/// - `CORTEX_DEBUG_PREVIEW_STATS=1`: print the preview frame rate every 5 s (0 fps when it
+///   stalls) and every preview on/off decision with its reason.
+/// - `CORTEX_DEBUG_FRONT=1`: keep the main window above other apps and on every Space, so
+///   the preview stays visible (and running) while a measurement runs, even when someone
+///   at the Mac switches Spaces.
 ///
 /// - `CORTEX_DEBUG_CAPTURABLE=1`: let screenshots see the floating windows (debug builds),
 ///   and wait 5 s after a debug recording so its toast can be captured.
@@ -162,6 +164,9 @@ pub fn run() {
                     let _ = main.hide();
                 } else if debug.front {
                     let _ = main.set_always_on_top(true);
+                    // A Space switch moves an ordinary window off screen, which rightly stops
+                    // the preview and spoiled idle perf runs. Follow the user to every Space.
+                    let _ = main.set_visible_on_all_workspaces(true);
                     let _ = main.show();
                 }
             }
