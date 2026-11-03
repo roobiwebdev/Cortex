@@ -16,6 +16,7 @@ pub mod scale;
 pub mod screen;
 pub mod settings;
 pub mod synth;
+pub mod trim;
 pub mod tcc;
 pub mod util;
 pub mod writer;
