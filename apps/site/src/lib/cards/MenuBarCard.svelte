@@ -4,6 +4,10 @@
 	import { clock as format } from '#lib/demo/script.js';
 	import Fit from './Fit.svelte';
 
+	/**
+	 * ⇧⌘R pressed over another app starts a recording, and the floating HUD shows the time. Then the
+	 * menu bar panel opens: the same Stop button, the sources, and the app's links. Decorative only.
+	 */
 	const PRESSES = [
 		{ at: [600, 740, 880], until: 1300 },
 		{ at: [7800, 7940, 8080], until: 8500 }
@@ -14,63 +18,65 @@
 	const clock = loop(9000, 5000);
 	let t = $derived(clock.t);
 	let recording = $derived(t >= START && t < STOP);
-	let menu = $derived(envelope(t, 2600, 2780, 7400, 7600));
-	let highlight = $derived(t >= 3000 && t < 7400);
+	let hud = $derived(envelope(t, START, START + 260, STOP, STOP + 240));
+	let panel = $derived(envelope(t, 2600, 2780, 7000, 7200));
 	let press = $derived(PRESSES.find((p) => t >= p.at[0] && t < p.until) ?? null);
+	let elapsed = $derived(format(Math.max(0, t - START)));
 
-	let items = $derived([
-		[
-			{ label: recording ? 'Stop Recording' : 'Start Recording', key: '⇧⌘R' },
-			{ label: 'Pause', off: !recording },
-			{ label: 'Save Replay', key: '⇧⌘S' },
-			{ label: 'Go Live' }
-		],
-		[{ label: 'Show Rec Window' }, { label: 'Settings…', key: '⌘,' }],
-		[{ label: 'Reveal Last Recording' }, { label: 'Open Recordings Folder' }],
-		[
-			{ label: 'Global hotkey: ⇧⌘R', off: true },
-			{ label: 'Quit Rec', key: '⌘Q' }
-		]
-	]);
+	const SOURCES = [
+		{ label: 'Camera', detail: 'FaceTime HD Camera', on: true },
+		{ label: 'Microphone', detail: 'MacBook Pro Microphone', on: true },
+		{ label: 'System audio', detail: 'Sound from apps', on: true }
+	];
 </script>
 
 <div class="card-visual" {@attach clock.observe}>
 	<Fit width={506} height={304}>
 		<div class="backdrop"></div>
 		<div class="menubar">
-			<span class={['status', { rec: recording, open: menu > 0.5 }]}>
+			<span class={['status', { open: panel > 0.5 }]}>
 				<svg viewBox="0 0 14 14" aria-hidden="true">
-					{#if recording}
-						<circle cx="7" cy="7" r="6.5" class="fill" />
-						<circle cx="7" cy="7" r="2.6" class="hole" />
-					{:else}
-						<circle cx="7" cy="7" r="5.9" class="ring" />
-						<circle cx="7" cy="7" r="2.6" class="fill" />
-					{/if}
+					<circle cx="7" cy="7" r="5.9" class="ring" />
+					<circle cx="7" cy="7" r="2.6" class="fill" />
 				</svg>
-				{#if recording}<span>{format(t - START)}</span>{/if}
 			</span>
 			<span>Tue 9:41 AM</span>
 		</div>
 
 		<div class="keys">
 			{#each ['⇧', '⌘', 'R'] as key, i (key)}
-				<kbd class={{ down: press !== null && t >= press.at[i], r: key === 'R' }}>{key}</kbd>
+				<kbd class={{ down: press !== null && t >= (press.at[i] ?? 0), r: key === 'R' }}>{key}</kbd>
 			{/each}
 		</div>
 		<p class="hint">from any app</p>
 
-		{#if menu > 0}
-			<div class="menu" style:opacity={menu} style:transform="translateY({(1 - menu) * -4}px)">
-				{#each items as group, g (g)}
-					{#if g > 0}<i class="separator"></i>{/if}
-					{#each group as item, i (item.label)}
-						<div class={['item', { off: item.off, selected: highlight && g === 0 && i === 0 }]}>
-							<span>{item.label}</span>
-							{#if item.key}<span class="key">{item.key}</span>{/if}
+		{#if hud > 0}
+			<div class="hud" style:opacity={hud} style:transform="translateY({(1 - hud) * 8}px)">
+				<span class="hud-stop"><i></i></span>
+				<span class="hud-pause"><i></i><i></i></span>
+				<span class="hud-time"><small>REC</small>{elapsed}</span>
+			</div>
+		{/if}
+
+		{#if panel > 0}
+			<div class="panel" style:opacity={panel} style:transform="translateY({(1 - panel) * -4}px)">
+				<div class="panel-head">
+					<b>Cortex</b>
+					<span class={['state', { rec: recording }]}>{recording ? 'RECORDING' : 'READY'}</span>
+				</div>
+				<div class="sources">
+					{#each SOURCES as s (s.label)}
+						<div class="source">
+							<div><b>{s.label}</b><span>{s.detail}</span></div>
+							<span class={['switch', { on: s.on }]}><i></i></span>
 						</div>
 					{/each}
-				{/each}
+				</div>
+				<div class={['start', { rec: recording }]}>
+					<span>{recording ? 'Stop recording' : 'Start recording'}</span>
+					<kbd>⇧⌘R</kbd>
+				</div>
+				<div class="links"><span class="accent">Open Cortex</span><span>Settings ⌘,</span><span>Quit</span></div>
 			</div>
 		{/if}
 	</Fit>
@@ -80,11 +86,11 @@
 	.backdrop {
 		position: absolute;
 		inset: 0;
-		background-color: #0c0b14;
+		background-color: #0b1214;
 		background-image:
-			radial-gradient(circle farthest-corner at 10% 70%, rgba(98, 84, 220, 0.42), transparent 60%),
-			radial-gradient(circle farthest-corner at 100% 100%, rgba(40, 150, 190, 0.32), transparent 60%),
-			linear-gradient(160deg, #15132a, #0b0a14 55%, #0d1220);
+			radial-gradient(circle farthest-corner at 10% 70%, hsl(188 55% 40% / 0.45), transparent 60%),
+			radial-gradient(circle farthest-corner at 100% 100%, hsl(196 50% 30% / 0.35), transparent 60%),
+			linear-gradient(160deg, #10262b, #0a1215 55%, #0c1a1f);
 	}
 
 	.menubar {
@@ -105,7 +111,6 @@
 	.status {
 		display: flex;
 		align-items: center;
-		gap: 5px;
 		height: 20px;
 		padding: 0 7px;
 		border-radius: 5px;
@@ -113,10 +118,6 @@
 
 	.status.open {
 		background: rgba(255, 255, 255, 0.16);
-	}
-
-	.status.rec {
-		color: #ff453a;
 	}
 
 	.status svg {
@@ -134,14 +135,10 @@
 		stroke-width: 1.2;
 	}
 
-	.status .hole {
-		fill: #1a1013;
-	}
-
 	.keys {
 		position: absolute;
-		left: 56px;
-		top: 112px;
+		left: 40px;
+		top: 92px;
 		display: flex;
 		gap: 8px;
 	}
@@ -180,60 +177,204 @@
 
 	.hint {
 		position: absolute;
-		left: 56px;
-		top: 172px;
+		left: 40px;
+		top: 152px;
 		margin: 0;
 		color: rgba(244, 244, 245, 0.62);
 		font-size: 12px;
 	}
 
-	.menu {
+	/* The recording HUD: a capsule that floats over every app and stays out of the recording. */
+	.hud {
 		position: absolute;
-		top: 30px;
-		right: 26px;
-		width: 216px;
-		padding: 5px;
-		border-radius: 10px;
-		background: rgba(36, 36, 42, 0.72);
-		backdrop-filter: blur(24px) saturate(180%);
+		left: 40px;
+		top: 214px;
+		display: flex;
+		align-items: center;
+		gap: 8px;
+		padding: 7px 14px 7px 7px;
+		border-radius: 999px;
+		background: rgba(22, 24, 27, 0.92);
 		box-shadow:
-			inset 0 0.5px 0 rgba(255, 255, 255, 0.24),
-			0 0 0 0.5px rgba(0, 0, 0, 0.6),
-			0 18px 40px rgba(0, 0, 0, 0.5);
-		color: #f4f4f5;
-		font-size: 12.5px;
+			inset 0 0 0 1px rgba(255, 255, 255, 0.1),
+			0 12px 30px rgba(0, 0, 0, 0.45);
+		color: #ecedee;
 	}
 
-	.item {
+	.hud-stop,
+	.hud-pause {
+		display: grid;
+		place-items: center;
+		width: 32px;
+		height: 32px;
+		border-radius: 50%;
+	}
+
+	.hud-stop {
+		background: #f0565b;
+	}
+
+	.hud-stop i {
+		width: 11px;
+		height: 11px;
+		border-radius: 2.5px;
+		background: #fff;
+	}
+
+	.hud-pause {
+		display: flex;
+		justify-content: center;
+		gap: 3px;
+		background: rgba(255, 255, 255, 0.08);
+	}
+
+	.hud-pause i {
+		width: 3px;
+		height: 11px;
+		border-radius: 1px;
+		background: #ecedee;
+	}
+
+	.hud-time {
+		display: flex;
+		flex-direction: column;
+		font: 500 17px/19px var(--mono);
+		font-variant-numeric: tabular-nums;
+	}
+
+	.hud-time small {
+		color: #f0565b;
+		font: 700 9px/11px var(--sans);
+		letter-spacing: 0.08em;
+	}
+
+	.panel {
+		position: absolute;
+		top: 30px;
+		right: 16px;
+		width: 232px;
+		padding: 10px;
+		border-radius: 14px;
+		background: rgba(22, 24, 27, 0.94);
+		box-shadow:
+			inset 0 0 0 1px rgba(255, 255, 255, 0.08),
+			0 18px 40px rgba(0, 0, 0, 0.5);
+		color: #ecedee;
+		font-size: 12px;
+		line-height: 14px;
+	}
+
+	.panel-head {
+		display: flex;
+		align-items: center;
+		gap: 8px;
+		padding: 2px 2px 8px;
+	}
+
+	.state {
+		color: #9a9da3;
+		font-size: 9.5px;
+		font-weight: 600;
+		letter-spacing: 0.08em;
+	}
+
+	.state.rec {
+		color: #f0565b;
+	}
+
+	.sources {
+		border-radius: 9px;
+		background: #1d2024;
+	}
+
+	.source {
 		display: flex;
 		align-items: center;
 		justify-content: space-between;
-		height: 20px;
+		height: 34px;
 		padding: 0 9px;
-		border-radius: 5px;
 	}
 
-	.item.off {
-		color: rgba(244, 244, 245, 0.35);
+	.source + .source {
+		border-top: 1px solid #2a2d32;
 	}
 
-	.item.selected {
-		background: #0a64d8;
+	.source div {
+		display: flex;
+		flex-direction: column;
 	}
 
-	.key {
-		color: rgba(244, 244, 245, 0.55);
-		letter-spacing: 0.04em;
+	.source b {
+		font-weight: 500;
 	}
 
-	.selected .key {
-		color: rgba(255, 255, 255, 0.85);
+	.source span:not(.switch) {
+		color: #9a9da3;
+		font-size: 10px;
+		line-height: 12px;
 	}
 
-	.separator {
-		display: block;
-		height: 1px;
-		margin: 4px 9px;
-		background: rgba(255, 255, 255, 0.12);
+	.switch {
+		position: relative;
+		width: 26px;
+		height: 15px;
+		border-radius: 8px;
+		background: rgba(255, 255, 255, 0.15);
+	}
+
+	.switch.on {
+		background: hsl(188 58% 58%);
+	}
+
+	.switch i {
+		position: absolute;
+		top: 2px;
+		left: 2px;
+		width: 11px;
+		height: 11px;
+		border-radius: 50%;
+		background: #fff;
+	}
+
+	.switch.on i {
+		left: 13px;
+		background: hsl(188 60% 7%);
+	}
+
+	.start {
+		display: flex;
+		align-items: center;
+		justify-content: space-between;
+		height: 34px;
+		margin-top: 8px;
+		padding: 0 10px;
+		border-radius: 9px;
+		background: #f0565b;
+		box-shadow: 0 2px 0 #b33237;
+		color: #fff;
+		font-weight: 600;
+	}
+
+	.start kbd {
+		width: auto;
+		height: auto;
+		padding: 1px 5px;
+		border-radius: 4px;
+		background: rgba(255, 255, 255, 0.22);
+		box-shadow: none;
+		color: #fff;
+		font: 600 9.5px/13px var(--sans);
+	}
+
+	.links {
+		display: flex;
+		justify-content: space-between;
+		padding: 10px 2px 0;
+		color: #9a9da3;
+		font-size: 11px;
+	}
+
+	.links .accent {
+		color: hsl(188 58% 66%);
 	}
 </style>

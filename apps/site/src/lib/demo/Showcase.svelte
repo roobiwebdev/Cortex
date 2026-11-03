@@ -21,7 +21,7 @@
 	<div
 		class="frame"
 		role="img"
-		aria-label="Demo of the Rec window: picking a slides window as the source, turning on the camera overlay and dragging it to a corner, starting a recording with Shift-Command-R, pausing and resuming, then stopping and revealing one file with a video track and three audio tracks."
+		aria-label="Demo of the Cortex window: dragging an area over a slides window as the source, turning on the camera overlay and dragging it to a corner, starting a recording with Shift-Command-R, pausing and resuming, stopping to get one file with a screen track, a camera track and three audio tracks, then trimming both ends with Quick trim and saving a copy."
 		{@attach fit}
 		{@attach player.observe}
 	>
@@ -111,7 +111,7 @@
 		aspect-ratio: 30 / 19;
 		overflow: hidden;
 		border-radius: 16px;
-		background: #0c0b14;
+		background: #0b1214;
 		box-shadow:
 			0 0 0 1px rgba(255, 255, 255, 0.09),
 			0 40px 120px -20px rgba(0, 0, 0, 0.8);
@@ -258,7 +258,7 @@
 	.chapters .fill {
 		display: block;
 		height: 100%;
-		background: var(--fg);
+		background: var(--brand);
 		transform-origin: 0 50%;
 	}
 

@@ -1,38 +1,43 @@
 <script lang="ts">
+	import { onMount } from 'svelte';
 	import { resolve } from '$app/paths';
 	import icon from '#lib/assets/icon.webp';
 	import shareImage from '#lib/assets/og.jpg';
+	import AreaCard from '#lib/cards/AreaCard.svelte';
 	import CameraCard from '#lib/cards/CameraCard.svelte';
+	import CameraTrackCard from '#lib/cards/CameraTrackCard.svelte';
 	import FileCard from '#lib/cards/FileCard.svelte';
-	import LightCard from '#lib/cards/LightCard.svelte';
+	import FourKCard from '#lib/cards/FourKCard.svelte';
 	import LiveCard from '#lib/cards/LiveCard.svelte';
 	import MenuBarCard from '#lib/cards/MenuBarCard.svelte';
-	import SharpCard from '#lib/cards/SharpCard.svelte';
+	import SafeCard from '#lib/cards/SafeCard.svelte';
 	import Showcase from '#lib/demo/Showcase.svelte';
 	import { Player } from '#lib/demo/player.svelte.js';
 	import { play } from '#lib/demo/sound.js';
-	import DownloadCount from '#lib/DownloadCount.svelte';
 	import { reveal } from '#lib/motion.svelte.js';
+	import { detectPlatform, type Platform } from '#lib/platform.js';
 	import { theme } from '#lib/theme.svelte.js';
 	import {
 		ARCH,
-		AUTHOR,
-		AUTHOR_URL,
-		AUTHOR_X,
 		DESCRIPTION,
 		MIN_MACOS,
 		NAME,
+		NOTARIZED,
 		OG_IMAGE_ALT,
-		REPO_URL,
 		SITE_URL,
 		TITLE,
-		VERSION
+		UPSTREAM_AUTHOR,
+		UPSTREAM_NAME,
+		UPSTREAM_URL,
+		VERSION,
+		WAITLIST_EMAIL
 	} from '#lib/site.js';
 
 	const url = `${SITE_URL}/`;
 	// Imported, so the URL carries a content hash and changes with the image. The browser resolves
 	// the import against its own origin, so keep only the path.
 	const image = `${SITE_URL}${new URL(shareImage, SITE_URL).pathname}`;
+	// No price or offer: pricing isn't decided, and the page makes no claim about it.
 	const app = JSON.stringify({
 		'@context': 'https://schema.org',
 		'@type': 'SoftwareApplication',
@@ -42,13 +47,11 @@
 		image,
 		operatingSystem: `macOS ${MIN_MACOS} or later`,
 		applicationCategory: 'MultimediaApplication',
-		offers: { '@type': 'Offer', price: '0', priceCurrency: 'USD' },
 		downloadUrl: `${SITE_URL}/download`,
-		softwareVersion: VERSION,
-		author: { '@type': 'Person', name: AUTHOR, url: AUTHOR_URL }
+		softwareVersion: VERSION
 	}).replaceAll('<', '\\u003c');
-	// A literal closing tag here would end this <script> block.
-	const jsonLd = `<script type="application/ld+json">${app}<\/script>`;
+	// A literal closing tag here would end this <script> block, so it is split in two.
+	const jsonLd = `<script type="application/ld+json">${app}<` + `/script>`;
 
 	const player = new Player();
 
@@ -57,63 +60,86 @@
 		if (player.sound) play('switch');
 	}
 
+	// Prerendered for macOS; Windows and Linux visitors get "Coming soon" once the page loads.
+	let platform = $state<Platform>('mac');
+	onMount(() => {
+		platform = detectPlatform();
+	});
+	const SOON: Record<'windows' | 'linux', string> = { windows: 'Windows', linux: 'Linux' };
+	let soon = $derived(platform === 'windows' || platform === 'linux' ? SOON[platform] : null);
+	const waitlist = WAITLIST_EMAIL ? `mailto:${WAITLIST_EMAIL}?subject=Cortex%20for%20Windows%20or%20Linux` : null;
+
 	const recording = [
 		{
-			title: 'Your camera, anywhere',
-			body: 'Drag the webcam anywhere in the preview, or let it snap to a corner. Make it a circle, squircle or pill with a border and shadow, and change it while you record.',
+			title: 'Put your camera anywhere',
+			body: 'Drag the camera around the preview and let go near a corner to snap it there. Choose one of six shapes, then set its size, roundness, border and shadow, and mirror it if you like.',
 			Visual: CameraCard
 		},
 		{
-			title: 'One file, ready to edit',
-			body: 'Screen, system audio, mic and webcam land in one .mov or .mp4, with a mix track plus system audio and mic on their own tracks. H.264, HEVC or ProRes 422 at a constant frame rate.',
+			title: 'Record exactly what you mean',
+			body: 'A whole display, a single window, every window of one app, or an area you drag out. Cortex leaves its own windows and controls out of the picture.',
+			Visual: AreaCard
+		},
+		{
+			title: 'Everything in one file',
+			body: 'Screen, system audio, mic and camera are written to one .mov or .mp4: a mixed audio track, then system audio and mic on tracks of their own. H.264, HEVC or ProRes, at a constant frame rate.',
 			Visual: FileCard
+		},
+		{
+			title: 'The camera on its own track',
+			body: 'Turn on the camera track and the file also keeps the raw camera next to the screen, so an editor can reframe it later. With .mp4 it is saved beside the file as a .camera.mov.',
+			Visual: CameraTrackCard
 		}
 	];
 
 	const quiet = [
 		{
-			title: 'From any app',
-			body: '⇧⌘R starts and stops recording from anywhere, even with Rec hidden. The menu bar shows a red dot and the time, and closing the window keeps Rec running.',
+			title: 'Start from anywhere',
+			body: '⇧⌘R starts and stops a recording from any app. A small floating bar keeps the time without showing up in the file, and closing the window leaves Cortex in the menu bar.',
 			Visual: MenuBarCard
 		},
 		{
-			title: 'Replay and go live',
-			body: 'Keep the last 15 to 300 seconds in memory and save them with ⇧⌘S. Stream to YouTube, Twitch or any RTMP or WHIP server, with or without recording.',
+			title: 'Save the last minute, or stream it',
+			body: 'Keep the last 15 seconds to 5 minutes in memory and save them with ⇧⌘S. Go live to YouTube, Twitch, Kick or your own RTMP, RTMPS or WHIP server, with stream keys kept in the Keychain.',
 			Visual: LiveCard
 		},
 		{
-			title: 'Sharp at any size',
-			body: 'Rec captures your display at full resolution and scales it on the GPU with a Lanczos filter, so small text stays crisp at 1080p and 4K.',
-			Visual: SharpCard
+			title: 'True 4K',
+			body: 'With HEVC, the default above 1080p, 4K means 3840 pixels across at your screen’s own shape: a MacBook Pro display records at 3840 × 2482, with no black bars. The GPU scales it with a Lanczos filter.',
+			Visual: FourKCard
 		},
 		{
-			title: 'Light on your Mac',
-			body: 'A 4K60 screen recording takes about 6% of one core. A 30-minute test wrote all 108,000 frames, and a crash still leaves a playable file.',
-			Visual: LightCard
+			title: 'Built to keep every take',
+			body: 'A 10-minute 4K60 test kept all 36,000 frames. Cortex writes the file in 2-second pieces, so a crash still leaves it playable, and quitting saves the recording first.',
+			Visual: SafeCard
 		}
 	];
 
 	const shortcuts = [
 		{ keys: ['⇧', '⌘', 'R'], label: 'Start or stop recording' },
 		{ keys: ['⇧', '⌘', 'S'], label: 'Save the replay buffer' },
+		{ keys: ['esc'], label: 'Cancel the countdown' },
 		{ keys: ['⌘', ','], label: 'Settings' },
-		{ keys: ['⌘', '0'], label: 'Show the Rec window' },
-		{ keys: ['⌘', 'W'], label: 'Close the window' },
 		{ keys: ['⌘', 'Q'], label: 'Quit, after saving the file' }
 	];
 
-	const commands = [
-		{ command: 'rec-rs record --cam -r 4k', label: 'Screen and webcam at 4K' },
-		{ command: 'rec-rs record --window Slides', label: 'One window, found by its title' },
-		{ command: 'rec-rs pause', label: 'Pause, with no gap in the file' },
-		{ command: 'rec-rs stop', label: 'Finish and print the file' },
-		{ command: 'rec-rs save-replay', label: 'Save the replay buffer' },
-		{ command: 'rec-rs devices', label: 'List displays, windows, cameras and mics' }
+	const trimKeys = [
+		{ keys: ['Space'], label: 'Play or pause' },
+		{ keys: ['J', 'K', 'L'], label: 'Play backwards, pause, play forwards' },
+		{ keys: ['I', 'O'], label: 'Set the start and the end' },
+		{ keys: ['←', '→'], label: 'Step one frame, or one second with ⇧' },
+		{ keys: ['Home', 'End'], label: 'Jump to the start or the end' }
 	];
 
+	// TODO(notarize): with NOTARIZED = true in site.ts, the Gatekeeper step disappears.
 	const steps = [
-		'Download Rec and drag it to your Applications folder.',
-		'Open it and turn on Rec in System Settings → Privacy & Security → Screen & System Audio Recording.',
+		`Download ${NAME} and drag it to your Applications folder.`,
+		...(NOTARIZED
+			? []
+			: [
+					`${NAME} isn’t notarized by Apple yet, so macOS stops the first launch. Open it once and close the warning, then go to System Settings → Privacy & Security and click Open Anyway.`
+				]),
+		`Turn on ${NAME} in System Settings → Privacy & Security → Screen & System Audio Recording. If it asks, reopen ${NAME}.`,
 		'Allow the camera and mic when macOS asks. Then press ⇧⌘R.'
 	];
 </script>
@@ -138,7 +164,6 @@
 	<meta name="twitter:description" content={DESCRIPTION} />
 	<meta name="twitter:image" content={image} />
 	<meta name="twitter:image:alt" content={OG_IMAGE_ALT} />
-	<meta name="twitter:creator" content={AUTHOR_X} />
 	<!-- eslint-disable-next-line svelte/no-at-html-tags -->
 	{@html jsonLd}
 </svelte:head>
@@ -157,6 +182,17 @@
 			d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z"
 		/>
 	</svg>
+{/snippet}
+
+{#snippet download()}
+	{#if soon}
+		<span class="download soon" aria-disabled="true">{soon} · Coming soon</span>
+	{:else}
+		<a class="download" href={resolve('/download')} data-sveltekit-reload>
+			{@render apple()}
+			Download for macOS
+		</a>
+	{/if}
 {/snippet}
 
 {#snippet card(item: (typeof recording)[number], i: number)}
@@ -178,8 +214,8 @@
 		<div class="links">
 			<a class="link" href="#features">Features</a>
 			<a class="link" href="#shortcuts">Shortcuts</a>
+			<a class="link" href="#trim">Quick trim</a>
 			<a class="link" href="#install">Install</a>
-			<a class="link" href={REPO_URL}>GitHub</a>
 			<button
 				type="button"
 				class="theme"
@@ -197,25 +233,34 @@
 					/>
 				</svg>
 			</button>
-			<a class="pill" href={resolve('/download')} data-sveltekit-reload>Download</a>
+			{#if soon}
+				<a class="pill" href="#install">Get {NAME}</a>
+			{:else}
+				<a class="pill" href={resolve('/download')} data-sveltekit-reload>Download</a>
+			{/if}
 		</div>
 	</div>
 </nav>
 
 <main id="top">
 	<header class="hero">
-		<img class="logo" src={icon} width="112" height="112" alt="Rec app icon" />
-		<h1>Hit record. That's it.</h1>
+		<img class="logo" src={icon} width="112" height="112" alt="{NAME} app icon" />
+		<h1>One key. One file.</h1>
 		<p class="lede">
-			A fast, simple screen and camera recorder for the Mac, written in Rust. Your screen, system
-			audio, mic and webcam go into one file, ready to edit.
+			{NAME} records a display, a window, an app or just an area, with your camera, mic and system audio, into
+			one file for your editor. Press ⇧⌘R from any app to start.
 		</p>
 		<div class="cta">
-			<a class="download" href={resolve('/download')} data-sveltekit-reload>
-				{@render apple()}
-				Download for macOS
-			</a>
-			<p class="meta">Free · Version {VERSION} · {ARCH} · macOS {MIN_MACOS} or later<DownloadCount repo={REPO_URL} /></p>
+			{@render download()}
+			{#if soon}
+				<p class="meta">
+					{NAME} runs on macOS today. A {soon} version is on the way{#if waitlist}: <a href={waitlist}
+							>join the waitlist</a
+						>{/if}.
+				</p>
+			{:else}
+				<p class="meta">Version {VERSION} · {ARCH} · macOS {MIN_MACOS} or later</p>
+			{/if}
 		</div>
 	</header>
 
@@ -228,13 +273,13 @@
 			<h2 id="recording-title" {@attach reveal}>Recording</h2>
 			<div class="cards">
 				{#each recording as item, i (item.title)}
-					{@render card(item, i)}
+					{@render card(item, i % 2)}
 				{/each}
 			</div>
 		</section>
 
 		<section class="section" aria-labelledby="quiet-title">
-			<h2 id="quiet-title" {@attach reveal}>Out of your way</h2>
+			<h2 id="quiet-title" {@attach reveal}>Stays out of the way</h2>
 			<div class="cards">
 				{#each quiet as item, i (item.title)}
 					{@render card(item, i % 2)}
@@ -246,7 +291,7 @@
 	<section id="shortcuts" class="section split" aria-labelledby="shortcuts-title">
 		<div class="intro" {@attach reveal}>
 			<h2 id="shortcuts-title">Shortcuts</h2>
-			<p>⇧⌘R works in every app while Rec runs, and so does ⇧⌘S while the replay buffer is on.</p>
+			<p>⇧⌘R works in every app while {NAME} is open, and ⇧⌘S does too while the replay buffer is on.</p>
 		</div>
 		<ul class="shortcuts" {@attach reveal}>
 			{#each shortcuts as shortcut (shortcut.label)}
@@ -262,18 +307,21 @@
 		</ul>
 	</section>
 
-	<section class="section split" aria-labelledby="cli-title">
+	<section id="trim" class="section split" aria-labelledby="trim-title">
 		<div class="intro" {@attach reveal}>
-			<h2 id="cli-title">Command line</h2>
+			<h2 id="trim-title">Quick trim</h2>
 			<p>
-				Every control works from a shell too, with the rec-rs tool inside Rec.app. To run it by name, add
-				/Applications/Rec.app/Contents/MacOS to your PATH.
+				Cut the ends off a recording without leaving {NAME}. Fast copies the video as it is, with no re-encode;
+				Exact re-encodes for a cut on the exact frame. Save a copy, or replace the original and send it to the
+				Trash.
 			</p>
 		</div>
 		<ul class="commands" {@attach reveal}>
-			{#each commands as row (row.command)}
+			{#each trimKeys as row (row.label)}
 				<li>
-					<code><span aria-hidden="true">$</span>{row.command}</code>
+					<span class="combo">
+						{#each row.keys as key (key)}<kbd>{key}</kbd>{/each}
+					</span>
 					<span class="label">{row.label}</span>
 				</li>
 			{/each}
@@ -283,11 +331,25 @@
 	<section id="install" class="section split" aria-labelledby="install-title">
 		<div class="intro" {@attach reveal}>
 			<h2 id="install-title">Install</h2>
-			<p>Free. macOS {MIN_MACOS} or later on {ARCH}.</p>
+			<p>macOS {MIN_MACOS} or later on {ARCH}.</p>
 			<a class="download" href={resolve('/download')} data-sveltekit-reload>
 				{@render apple()}
 				Download for macOS
 			</a>
+			<ul class="platforms">
+				{#each ['windows', 'linux'] as const as os (os)}
+					<li class={{ yours: platform === os }}>
+						<span class="soon-button" aria-disabled="true">{SOON[os]} · Coming soon</span>
+					</li>
+				{/each}
+			</ul>
+			<p class="waitlist">
+				{#if waitlist}
+					Windows and Linux builds are on the way. <a href={waitlist}>Join the waitlist</a> to hear when they’re ready.
+				{:else}
+					Windows and Linux builds are on the way.
+				{/if}
+			</p>
 		</div>
 		<ol class="steps" {@attach reveal}>
 			{#each steps as step, i (step)}
@@ -302,10 +364,13 @@
 		<img src={icon} width="20" height="20" alt="" />
 		<span>{NAME}</span>
 	</div>
-	<p>Free and open source under the MIT or Apache 2.0 license. Made by <a href={AUTHOR_URL}>{AUTHOR}</a>.</p>
-	<a class="link" href={REPO_URL}>
+	<p>
+		{NAME}’s recording engine and this page’s design come from <a href={UPSTREAM_URL}>{UPSTREAM_NAME}</a> by
+		{UPSTREAM_AUTHOR}, used under the MIT license.
+	</p>
+	<a class="link" href={UPSTREAM_URL}>
 		{@render github()}
-		GitHub
+		{UPSTREAM_NAME} on GitHub
 	</a>
 </footer>
 
@@ -459,12 +524,12 @@
 	}
 
 	.logo {
-		filter: drop-shadow(0 18px 40px rgba(0, 0, 0, 0.55)) drop-shadow(0 0 40px rgba(255, 59, 48, 0.14));
+		filter: drop-shadow(0 18px 40px rgba(0, 0, 0, 0.55)) drop-shadow(0 0 40px var(--brand-glow));
 		animation-name: pop;
 	}
 
 	:global(:root[data-theme='light']) .logo {
-		filter: drop-shadow(0 18px 32px rgba(0, 0, 0, 0.22)) drop-shadow(0 0 40px rgba(255, 59, 48, 0.1));
+		filter: drop-shadow(0 18px 32px rgba(0, 0, 0, 0.22)) drop-shadow(0 0 40px var(--brand-glow));
 	}
 
 	h1 {
@@ -497,9 +562,9 @@
 		gap: 9px;
 		padding: 13px 22px 13px 20px;
 		border-radius: 999px;
-		background: var(--solid);
-		box-shadow: 0 10px 30px rgba(255, 255, 255, 0.07);
-		color: var(--on-solid);
+		background: var(--brand);
+		box-shadow: 0 10px 30px var(--brand-glow);
+		color: var(--on-brand);
 		font: 600 15px/18px var(--sans);
 		text-decoration: none;
 		transition:
@@ -508,12 +573,32 @@
 	}
 
 	:global(:root[data-theme='light']) .download {
-		box-shadow: 0 10px 30px rgba(0, 0, 0, 0.14);
+		box-shadow: 0 10px 30px var(--brand-glow);
 	}
 
 	.download:hover {
-		background: var(--solid-hover);
+		background: var(--brand-hover);
 		scale: 1.03;
+	}
+
+	/* Windows and Linux: shown like a button, but nothing to click yet. */
+	.download.soon,
+	.soon-button {
+		background: color-mix(in srgb, var(--fg) 8%, transparent);
+		box-shadow: inset 0 0 0 1px var(--line);
+		color: var(--muted);
+		cursor: default;
+	}
+
+	.download.soon:hover {
+		background: color-mix(in srgb, var(--fg) 8%, transparent);
+		scale: 1;
+	}
+
+	.meta a,
+	.waitlist a {
+		color: var(--fg);
+		text-underline-offset: 2px;
 	}
 
 	.download svg {
@@ -699,17 +784,37 @@
 		border-top: 1px solid var(--line);
 	}
 
-	code {
+	.combo {
 		display: flex;
-		gap: 8px;
-		width: 290px;
+		gap: 4px;
+		width: 150px;
 		flex-shrink: 0;
-		font: 13px/18px var(--mono);
-		white-space: pre;
 	}
 
-	code span {
-		color: color-mix(in srgb, var(--muted) 70%, transparent);
+	.platforms {
+		display: flex;
+		flex-wrap: wrap;
+		gap: 8px;
+		margin-top: 14px;
+	}
+
+	.soon-button {
+		display: inline-flex;
+		align-items: center;
+		height: 32px;
+		padding: 0 12px;
+		border-radius: 999px;
+		font: 500 12.5px var(--sans);
+		white-space: nowrap;
+	}
+
+	.platforms .yours .soon-button {
+		color: var(--fg);
+	}
+
+	#install .intro .waitlist {
+		margin-top: 12px;
+		font-size: 13px;
 	}
 
 	.steps {
@@ -832,7 +937,7 @@
 			gap: 2px;
 		}
 
-		code {
+		.combo {
 			width: auto;
 		}
 

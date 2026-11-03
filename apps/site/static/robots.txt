@@ -1,5 +1,5 @@
-# allow crawling everything by default
+# TODO(domain): cortex.example is a placeholder until hosting is decided (see src/lib/site.ts).
 User-agent: *
 Disallow:
 
-Sitemap: https://rec.rasmic.xyz/sitemap.xml
+Sitemap: https://cortex.example/sitemap.xml
