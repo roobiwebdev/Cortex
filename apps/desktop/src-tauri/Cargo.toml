@@ -24,10 +24,15 @@ specta = { version = "=2.0.0-rc.26", features = ["derive"] }
 specta-typescript = "=0.0.13"
 tauri-specta = { version = "=2.0.0-rc.26", features = ["derive", "typescript"] }
 rec-core = { path = "../../../crates/rec-core", features = ["specta"] }
+tauri-plugin-updater = "2.14"
 
 # The macOS engine and window behaviour. Other targets build the stub in
 # src/platform/unsupported.rs (see docs/engineering/platforms.md).
 [target.'cfg(target_os = "macos")'.dependencies]
 rec-engine-macos = { path = "../../../crates/rec-engine-macos" }
 rec-macos-ui = { path = "../../../crates/rec-macos-ui" }
-tauri-plugin-updater = "2.14"
+
+# The Windows engine (Windows.Graphics.Capture, Media Foundation, WASAPI) and its
+# window helpers. See src/platform/windows.rs.
+[target.'cfg(windows)'.dependencies]
+rec-engine-windows = { path = "../../../crates/rec-engine-windows" }

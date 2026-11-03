@@ -1,10 +1,11 @@
 //! SOURCE OF TRUTH KEYWORDS: stub engine, Windows, Linux, not available yet, UnsupportedEngine, cross-compile
-//! WHAT:  The Windows and Linux side of `platform` until their real engines exist: the app
+//! WHAT:  The Linux side of `platform` until its real engine exists (Windows has
+//!        `windows.rs`): the app
 //!        starts, every window works, no devices are listed and every capture, trim or
 //!        system call returns a clear "not available yet" error.
 //! WHY:   The shell must compile for every target so platform work can start from a building
 //!        app, and the UI already learns from `capabilities` (all off) what to hide.
-//! WHERE: Selected by `platform/mod.rs` when `target_os` is not macOS.
+//! WHERE: Selected by `platform/mod.rs` when `target_os` is neither macOS nor Windows.
 //!        `docs/engineering/platforms.md` describes the engines that replace it.
 
 use std::path::Path;
