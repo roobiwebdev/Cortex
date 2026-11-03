@@ -149,6 +149,8 @@ macOS privacy grants (TCC) are read and requested by `rec_engine::tcc`. The app 
 - The engine re-reads grants about once a second. A change re-lists cameras and mics and rebuilds the preview, so a grant takes effect without a restart. Devices are also listed on the engine's first tick.
 - Usage strings (`NSCameraUsageDescription`, `NSMicrophoneUsageDescription`, `NSScreenCaptureUsageDescription`) live in `src-tauri/Info.plist` and must be in the built bundle, or macOS refuses to prompt.
 
+To check the missing-permission paths on a Mac where everything is granted, set `CORTEX_DEBUG_WITHHOLD=camera,microphone` (grants then read as never asked). Launch test builds with `open -n -a <app> --env ... --stdout <log> --stderr <log>`: run straight from a terminal, macOS charges TCC to the terminal app and the grants you see are the terminal's.
+
 ## Dev signing identity
 
 macOS ties Screen Recording, Camera and Microphone grants (TCC) to the app's code signature. An ad-hoc signature changes on every build, so each rebuild looks like a new app and macOS asks again. A stable self-signed certificate keeps the grants across rebuilds.
