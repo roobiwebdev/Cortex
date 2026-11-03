@@ -240,6 +240,29 @@ pub fn set_window_capturable(window: &impl HasWindowHandle) {
     }
 }
 
+/**
+ * SOURCE OF TRUTH KEYWORDS: set_window_on_all_spaces, CanJoinAllSpaces, FullScreenAuxiliary, Spaces, debug front
+ * WHAT:  Shows an ordinary window on every Space, including over full-screen apps.
+ * WHY:   Measurement runs keep the main window (and so the live preview) on screen
+ *        while someone at the Mac switches Spaces; a Space switch otherwise moves the
+ *        window off screen and its occlusion state stops the preview.
+ * WHERE: Tauri shell, `CORTEX_DEBUG_FRONT=1`.
+ */
+pub fn set_window_on_all_spaces(window: &impl HasWindowHandle) {
+    if let Some(ns) = ns_window_of(window) {
+        let addr = ns as usize;
+        run_on_main(move |_mtm| {
+            // SAFETY: `addr` comes from the live window the caller still borrows; main thread.
+            let window: &NSWindow = unsafe { &*(addr as *const NSWindow) };
+            window.setCollectionBehavior(
+                window.collectionBehavior()
+                    | NSWindowCollectionBehavior::CanJoinAllSpaces
+                    | NSWindowCollectionBehavior::FullScreenAuxiliary,
+            );
+        });
+    }
+}
+
 /// Safe [`invalidate_shadow`] for a window handle.
 pub fn invalidate_window_shadow(window: &impl HasWindowHandle) {
     if let Some(ns) = ns_window_of(window) {

@@ -165,8 +165,9 @@ pub fn run() {
                 } else if debug.front {
                     let _ = main.set_always_on_top(true);
                     // A Space switch moves an ordinary window off screen, which rightly stops
-                    // the preview and spoiled idle perf runs. Follow the user to every Space.
-                    let _ = main.set_visible_on_all_workspaces(true);
+                    // the preview and spoiled idle perf runs. Follow the user to every Space,
+                    // full-screen ones included.
+                    rec_macos_ui::set_window_on_all_spaces(&main);
                     let _ = main.show();
                 }
             }
