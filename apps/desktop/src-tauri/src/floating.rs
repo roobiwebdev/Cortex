@@ -147,13 +147,17 @@ pub enum FloatingSurface {
  *        registers the global hotkeys. The windows themselves are built on demand.
  * WHY:   Hotkeys and the HUD rules must work before any floating window exists.
  * WHERE: `lib.rs` setup, after the shell is managed. Runs on the main thread.
+ *        `data_dir` is the settings folder (`CORTEX_DEBUG_DATA_DIR` in test runs, so they
+ *        never write the user's HUD positions).
  */
-pub fn init(app: &mut App, floating: Arc<Floating>, settings: &RecorderSettings, capturable: bool) {
-    let spots_path = app
-        .path()
-        .app_data_dir()
-        .ok()
-        .map(|d| d.join("hud-positions.json"));
+pub fn init(
+    app: &mut App,
+    floating: Arc<Floating>,
+    settings: &RecorderSettings,
+    data_dir: &std::path::Path,
+    capturable: bool,
+) {
+    let spots_path = Some(data_dir.join("hud-positions.json"));
     let hud_spots = spots_path
         .as_ref()
         .and_then(|p| std::fs::read(p).ok())
