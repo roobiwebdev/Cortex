@@ -5,6 +5,7 @@
 mod debug_live;
 mod floating;
 mod ipc;
+pub mod platform;
 mod preview;
 mod quit;
 pub mod shell;
@@ -13,7 +14,7 @@ mod windows;
 
 use std::sync::Arc;
 
-use rec_engine::engine::EngineOptions;
+use rec_core::platform::EngineOptions;
 use tauri::{Manager, RunEvent};
 
 use crate::shell::{Outbound, Shell};
@@ -159,7 +160,7 @@ fn debug_open(app: &tauri::AppHandle, what: &str) {
 pub fn run() {
     // A child started by `Shell::permission_report`: answer and exit before any UI starts.
     if std::env::args().nth(1).as_deref() == Some(shell::SCREEN_PREFLIGHT_ARG) {
-        let granted = rec_engine::tcc::screen_status() == rec_engine::tcc::Status::Granted;
+        let granted = platform::system().screen_capture_granted();
         std::process::exit(if granted { 0 } else { 1 });
     }
     let ipc = ipc::builder();
@@ -185,9 +186,9 @@ pub fn run() {
                 test_pattern: debug.test_pattern,
                 max_duration_secs: debug.record_secs,
                 withheld: debug.withheld.clone(),
+                // Our windows must never show up in a screen recording: fail instead.
+                require_self_exclusion: true,
             };
-            // Our windows must never show up in a screen recording: fail instead.
-            rec_engine::screen::require_self_exclusion(true);
             // Every outbound event also drives the floating windows (countdown, HUD).
             let floating = floating::Floating::new();
             let to_webviews = ipc::emitter(app.handle().clone());
@@ -278,7 +279,7 @@ pub fn run() {
                     // A Space switch moves an ordinary window off screen, which rightly stops
                     // the preview and spoiled idle perf runs. Follow the user to every Space,
                     // full-screen ones included.
-                    rec_macos_ui::set_window_on_all_spaces(&main);
+                    platform::chrome().set_on_all_spaces(&main);
                     let _ = main.show();
                 }
             }

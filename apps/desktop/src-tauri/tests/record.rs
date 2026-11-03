@@ -3,6 +3,7 @@
 //! the files with ffprobe and the events the webview would get.
 //!
 //! cargo test -p cortex-desktop --test record -- --nocapture
+#![cfg(target_os = "macos")]
 
 use std::path::PathBuf;
 use std::process::Command;
@@ -10,9 +11,9 @@ use std::sync::{Arc, mpsc};
 use std::time::{Duration, Instant};
 
 use cortex_desktop_lib::shell::{Outbound, Shell};
+use rec_core::platform::EngineOptions;
 use rec_core::settings::{Codec, Container, RecorderSettings, Resolution, Scene};
 use rec_core::state::{EngineStatus, Recording};
-use rec_engine::engine::EngineOptions;
 
 fn ffprobe(path: &str) -> std::collections::HashMap<String, String> {
     let out = Command::new("ffprobe")
@@ -81,6 +82,9 @@ fn records_the_test_pattern_through_the_shell() {
         test_pattern: true,
         // The writer cuts the file at exactly 3 s of recorded time.
         max_duration_secs: Some(3.0),
+        home: std::env::var_os("HOME")
+            .map(PathBuf::from)
+            .unwrap_or_default(),
         ..Default::default()
     };
     let shell = Shell::open(opts, dir.join("settings.json"), emit);

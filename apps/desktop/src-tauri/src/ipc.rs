@@ -334,7 +334,7 @@ async fn app_icon(bundle_id: String) -> Result<Option<String>, EngineError> {
     if !valid_bundle_id(&bundle_id) {
         return Err(EngineError::failed("Not a bundle identifier"));
     }
-    tauri::async_runtime::spawn_blocking(move || rec_engine::screen::app_icon(&bundle_id))
+    tauri::async_runtime::spawn_blocking(move || crate::platform::system().app_icon(&bundle_id))
         .await
         .map_err(|e| EngineError::failed(format!("The recorder stopped responding: {e}")))
 }

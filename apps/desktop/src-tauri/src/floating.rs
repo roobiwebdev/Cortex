@@ -4,8 +4,9 @@
 //!        display, sizes them to their web content, and registers the global hotkeys
 //!        (⇧⌘R record/stop, ⇧⌘S save replay, Esc during the countdown).
 //! WHY:   The engine is the source of truth for "are we recording", so the windows follow its
-//!        events in Rust instead of each webview guessing. Hotkeys use Carbon
-//!        (`rec_engine::hotkey`), which needs no Accessibility permission.
+//!        events in Rust instead of each webview guessing. Panels and hotkeys go through
+//!        `platform` (on macOS: `rec_macos_ui` panels and Carbon hotkeys, which need no
+//!        Accessibility permission).
 //! WHERE: `lib.rs` builds it in `setup` and feeds it every outbound event; `ipc.rs` exposes
 //!        the three commands; the floating surfaces call them through `app/tauri-window.tsx`.
 
@@ -16,11 +17,6 @@ use std::sync::{Arc, Mutex, MutexGuard};
 use rec_core::api::EngineError;
 use rec_core::settings::RecorderSettings;
 use rec_core::state::{EngineStatus, Recording};
-use rec_engine::hotkey;
-use rec_macos_ui::{
-    FloatingKind, configure_floating_window, invalidate_window_shadow,
-    set_window_ignores_mouse_events,
-};
 use serde::{Deserialize, Serialize};
 use specta::Type;
 use tauri::{
@@ -30,6 +26,7 @@ use tauri::{
 use tauri_specta::Event;
 
 use crate::ipc::{EngineErrorEvent, RecordingFinishedEvent, ReplaySavedEvent};
+use crate::platform::{self, FloatingKind, Hotkey, HotkeyKey};
 use crate::shell::{Outbound, Shell};
 use crate::windows::{self, MAIN, MENUBAR};
 
@@ -38,7 +35,7 @@ pub const TOASTS: &str = "toasts";
 pub const COUNTDOWN: &str = "countdown";
 pub const REGION: &str = "region";
 
-/// Every floating window and the AppKit behaviour it gets.
+/// Every floating window and the native behaviour it gets.
 const KINDS: [(&str, FloatingKind); 5] = [
     (MENUBAR, FloatingKind::MenubarPanel),
     (HUD, FloatingKind::Hud),
@@ -59,8 +56,6 @@ const MAX_SIDE: f64 = 8192.0;
 const HOTKEY_RECORD: u32 = 1;
 const HOTKEY_REPLAY: u32 = 2;
 const HOTKEY_ESCAPE: u32 = 3;
-/// kVK_Escape.
-const KEY_ESCAPE: u32 = 53;
 
 /// Toasts other windows send to the toasts window (`lib/engine.ts` listens for it).
 const TOAST_EVENT: &str = "ui://toast";
@@ -195,7 +190,7 @@ pub fn init(app: &mut App, floating: Arc<Floating>, settings: &RecorderSettings,
     }
 
     let h = handle.clone();
-    register_hotkey(HOTKEY_RECORD, hotkey::KEY_R, move || toggle_record(&h));
+    register_hotkey(HOTKEY_RECORD, HotkeyKey::R, move || toggle_record(&h));
     apply_settings(
         &handle,
         settings.show_hud,
@@ -217,12 +212,12 @@ pub(crate) fn on_created(app: &AppHandle, win: &WebviewWindow) {
     let Some(kind) = KINDS.iter().find(|(l, _)| *l == label).map(|(_, k)| *k) else {
         return;
     };
-    if configure_floating_window(win, kind).is_none() {
+    if !platform::chrome().configure_floating(win, kind) {
         eprintln!("cortex: could not configure the {label} window");
     }
     match label {
         // The countdown never takes clicks meant for the app being recorded.
-        COUNTDOWN => set_window_ignores_mouse_events(win, true),
+        COUNTDOWN => platform::chrome().set_ignores_mouse_events(win, true),
         HUD => {
             let (h, w) = (app.clone(), win.clone());
             win.on_window_event(move |e| {
@@ -243,7 +238,7 @@ pub(crate) fn on_created(app: &AppHandle, win: &WebviewWindow) {
     }
     #[cfg(debug_assertions)]
     if state(app).lock().capturable {
-        rec_macos_ui::panel::set_window_capturable(win);
+        platform::chrome().set_capturable(win);
     }
 }
 
@@ -387,9 +382,11 @@ fn on_status(app: &AppHandle, from: EngineStatus, to: EngineStatus) {
     if to == EngineStatus::Countdown {
         show_countdown(app);
         let a = app.clone();
-        register_hotkey(HOTKEY_ESCAPE, KEY_ESCAPE, move || cancel_countdown(&a));
+        register_hotkey(HOTKEY_ESCAPE, HotkeyKey::Escape, move || {
+            cancel_countdown(&a)
+        });
     } else if from == EngineStatus::Countdown {
-        hotkey::unregister(HOTKEY_ESCAPE);
+        platform::hotkeys().unregister(HOTKEY_ESCAPE);
         hide(app, COUNTDOWN);
     }
     refresh_hud(app);
@@ -407,9 +404,9 @@ fn apply_settings(app: &AppHandle, show_hud: bool, replay_enabled: bool, countdo
     if replay_changed {
         if replay_enabled {
             let a = app.clone();
-            register_hotkey(HOTKEY_REPLAY, hotkey::KEY_S, move || save_replay(&a));
+            register_hotkey(HOTKEY_REPLAY, HotkeyKey::S, move || save_replay(&a));
         } else {
-            hotkey::unregister(HOTKEY_REPLAY);
+            platform::hotkeys().unregister(HOTKEY_REPLAY);
         }
     }
     refresh_hud(app);
@@ -418,14 +415,14 @@ fn apply_settings(app: &AppHandle, show_hud: bool, replay_enabled: bool, countdo
     }
 }
 
-fn register_hotkey(id: u32, key: u32, f: impl Fn() + 'static) {
-    let modifiers = if id == HOTKEY_ESCAPE {
-        0
-    } else {
-        hotkey::CMD | hotkey::SHIFT
+/// ⇧⌘ (Ctrl+Shift off macOS) plus `key`; Esc alone.
+fn register_hotkey(id: u32, key: HotkeyKey, f: impl Fn() + 'static) {
+    let hotkey = Hotkey {
+        key,
+        primary_shift: id != HOTKEY_ESCAPE,
     };
-    if let Err(code) = hotkey::register(id, key, modifiers, f) {
-        eprintln!("cortex: hotkey {id} is taken by another app (Carbon error {code})");
+    if let Err(e) = platform::hotkeys().register(id, hotkey, Box::new(f)) {
+        eprintln!("cortex: hotkey {id} is taken by another app ({e})");
     }
 }
 
@@ -676,7 +673,7 @@ pub fn fit_floating(window: WebviewWindow, width: f64, height: f64) -> Result<()
             }
         }
     }
-    invalidate_window_shadow(&window);
+    platform::chrome().invalidate_shadow(&window);
     Ok(())
 }
 

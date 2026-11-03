@@ -1,6 +1,7 @@
 //! SOURCE OF TRUTH KEYWORDS: LivePreview, live preview, PreviewView, set_preview_rect, set_preview_enabled, transparent hole, occlusion
-//! WHAT:  The main window's live preview: a native `rec_macos_ui::PreviewView` under the
-//!        (transparent) webview, fed straight from `MacEngine`'s preview sink.
+//! WHAT:  The main window's live preview: the platform's native view under the (transparent)
+//!        webview (`rec_macos_ui::PreviewView` on macOS), fed straight from the engine's
+//!        preview sink (`platform::DesktopEngine::attach_preview`).
 //! WHY:   Video frames never enter the webview. React leaves a transparent hole and reports
 //!        its rect; this module places the native view there and runs the engine's preview
 //!        session only while the hole exists and the window can be seen.
@@ -10,10 +11,9 @@
 use std::sync::mpsc::{self, Sender};
 use std::sync::{Arc, Mutex};
 
-use rec_core::api::RecorderEngine;
-use rec_macos_ui::{PreviewView, make_window_webviews_transparent};
 use tauri::{App, Manager, WebviewWindow};
 
+use crate::platform::PreviewSurface;
 use crate::shell::Shell;
 
 const MAIN: &str = "main";
@@ -30,7 +30,7 @@ struct Wanted {
 }
 
 pub struct LivePreview {
-    view: PreviewView,
+    view: Box<dyn PreviewSurface>,
     window: WebviewWindow,
     shell: Arc<Shell>,
     wanted: Mutex<Wanted>,
@@ -49,13 +49,7 @@ impl LivePreview {
         let window = app
             .get_webview_window(MAIN)
             .ok_or_else(|| "no main window".to_string())?;
-        let view = PreviewView::attach_to(&window).map_err(|e| e.to_string())?;
-        if make_window_webviews_transparent(&window) == 0 {
-            eprintln!("cortex: could not make the main webview transparent");
-        }
-        let sink = view.sink();
-        let sink = if stats { counted(sink) } else { sink };
-        shell.engine().set_preview_sink(Some(sink));
+        let view = shell.engine().attach_preview(&window, stats)?;
 
         let (engine_tx, rx) = mpsc::channel::<bool>();
         let worker_shell = shell.clone();
@@ -87,7 +81,7 @@ impl LivePreview {
             trace: stats,
         });
         let p = preview.clone();
-        preview.view.on_window_visibility(move |visible| {
+        preview.view.on_window_visibility(Box::new(move |visible| {
             if p.trace {
                 // Main thread here, so the window getters do not block.
                 eprintln!(
@@ -98,7 +92,7 @@ impl LivePreview {
                 );
             }
             p.update("occlusion", |w| w.visible = visible);
-        });
+        }));
         Ok(preview)
     }
 
@@ -160,34 +154,6 @@ impl LivePreview {
  */
 fn should_preview(hole: bool, visible: bool) -> bool {
     hole && visible
-}
-
-/// Wraps a sink to print how many frames a second reach the view, and their size,
-/// every 5 s. A ticker thread prints, so a stalled preview shows up as 0 fps.
-fn counted(sink: rec_macos_ui::PreviewFn) -> rec_macos_ui::PreviewFn {
-    let count = Arc::new(Mutex::new((0u32, 0usize, 0usize)));
-    let c = count.clone();
-    let _ = std::thread::Builder::new()
-        .name("preview-stats".into())
-        .spawn(move || {
-            let mut t = std::time::Instant::now();
-            loop {
-                std::thread::sleep(std::time::Duration::from_secs(5));
-                let Ok(mut g) = c.lock() else { return };
-                let secs = t.elapsed().as_secs_f64();
-                let (n, w, h) = *g;
-                println!("cortex: preview {:.1} fps {w}x{h}", f64::from(n) / secs);
-                g.0 = 0;
-                t = std::time::Instant::now();
-            }
-        });
-    Arc::new(move |pb| {
-        let (w, h) = rec_macos_ui::frame_size(&pb);
-        if let Ok(mut g) = count.lock() {
-            *g = (g.0 + 1, w, h);
-        }
-        sink(pb)
-    })
 }
 
 #[cfg(test)]

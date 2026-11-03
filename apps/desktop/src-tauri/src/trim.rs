@@ -11,25 +11,25 @@
 
 use std::collections::HashMap;
 use std::io::{Read, Seek, SeekFrom};
-use std::os::unix::fs::MetadataExt;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex, MutexGuard};
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
-use rec_core::api::{EngineError, RecorderEngine};
+use rec_core::api::EngineError;
 use rec_core::library::{
     self, MAX_RECORDINGS, MAX_THUMBNAILS, MAX_WAVEFORM_BUCKETS, TrimOutput, TrimProgress,
     TrimRequest,
 };
+use rec_core::platform::{ExportOptions, MediaError, MediaInfo};
 use rec_core::state::Recording;
-use rec_engine::trim::{self as media, ExportOptions, MediaInfo};
 use serde::{Deserialize, Serialize};
 use specta::Type;
 use tauri::http::{Request, Response, StatusCode, header};
 use tauri::{AppHandle, Manager, Runtime, State, UriSchemeContext, UriSchemeResponder};
 use tauri_specta::Event;
 
+use crate::platform;
 use crate::shell::{Emit, Outbound, Shell};
 
 /// The recordings in the output folder, newest first. Sent after every rescan that changed it.
@@ -86,6 +86,18 @@ fn not_found() -> EngineError {
     EngineError::failed("That recording is no longer in the recordings folder")
 }
 
+/// The file's inode where there is one (Unix), so a renamed file keeps its cache entry.
+#[cfg(unix)]
+fn file_id(meta: &std::fs::Metadata) -> u64 {
+    std::os::unix::fs::MetadataExt::ino(meta)
+}
+
+/// Windows: no stable file id in std yet; size and time still key the caches.
+#[cfg(not(unix))]
+fn file_id(_meta: &std::fs::Metadata) -> u64 {
+    0
+}
+
 fn millis(t: SystemTime) -> f64 {
     t.duration_since(UNIX_EPOCH)
         .map_or(0.0, |d| d.as_millis() as f64)
@@ -132,14 +144,19 @@ impl Library {
             if skip_recent && now.duration_since(modified).is_ok_and(|d| d < IN_PROGRESS) {
                 continue;
             }
-            let key = format!("{}-{}-{}", meta.ino(), meta.len(), millis(modified) as u64);
+            let key = format!(
+                "{}-{}-{}",
+                file_id(&meta),
+                meta.len(),
+                millis(modified) as u64
+            );
             let stem = path
                 .file_stem()
                 .map(|s| s.to_string_lossy().into_owned())
                 .unwrap_or_default();
             let info = match known.get(&key) {
                 Some(e) => e.info.clone(),
-                None => match media::inspect(&path) {
+                None => match platform::media().inspect(&path) {
                     Ok(i) if i.duration_secs > 0.0 => i,
                     _ => continue,
                 },
@@ -313,7 +330,9 @@ pub async fn recording_thumbnails(
         let jpegs = match cached {
             Some(j) => j,
             None => {
-                let j = media::thumbnails(&e.path, count, THUMB_WIDTH).map_err(failed)?;
+                let j = platform::media()
+                    .thumbnails(&e.path, count, THUMB_WIDTH)
+                    .map_err(failed)?;
                 if std::fs::create_dir_all(&dir).is_ok() {
                     for (i, bytes) in j.iter().enumerate() {
                         let _ = std::fs::write(dir.join(format!("{i}.jpg")), bytes);
@@ -349,7 +368,9 @@ pub async fn recording_waveform(
         {
             return Ok(p);
         }
-        let peaks = media::waveform(&e.path, buckets).map_err(failed)?;
+        let peaks = platform::media()
+            .waveform(&e.path, buckets)
+            .map_err(failed)?;
         if let (Some(dir), Ok(json)) = (file.parent(), serde_json::to_vec(&peaks)) {
             let _ = std::fs::create_dir_all(dir).and_then(|_| std::fs::write(&file, json));
         }
@@ -466,19 +487,18 @@ fn run_trim(
         mode: request.mode,
         keep: request.keep,
     };
-    if let Err(err) = media::export(&opts, cancel, &mut progress) {
+    if let Err(err) = platform::media().export(&opts, cancel, &mut progress) {
         let _ = std::fs::remove_file(&t.write);
-        return Err(failed(if err.to_string() == "cancelled" {
-            "Export cancelled".to_string()
-        } else {
-            format!("Trim failed: {err:#}")
+        return Err(failed(match err {
+            MediaError::Cancelled => "Export cancelled".to_string(),
+            MediaError::Failed(m) => format!("Trim failed: {m}"),
         }));
     }
     if t.write != t.final_path {
         // Replace: the original goes to the Trash (recoverable), never deleted outright.
-        if let Err(err) = media::trash(&t.final_path) {
+        if let Err(err) = platform::media().trash(&t.final_path) {
             let _ = std::fs::remove_file(&t.write);
-            return Err(failed(format!("Could not replace the original: {err:#}")));
+            return Err(failed(format!("Could not replace the original: {err}")));
         }
         std::fs::rename(&t.write, &t.final_path).map_err(|err| {
             failed(format!(
