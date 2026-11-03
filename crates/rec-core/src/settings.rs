@@ -113,6 +113,22 @@ impl Default for CaptureTarget {
     }
 }
 
+/// Where recordings go by default: the platform's movies folder (`~/Movies` on macOS,
+/// `~/Videos` on Windows and Linux).
+pub const DEFAULT_OUTPUT_DIR: &str = if cfg!(target_os = "macos") {
+    "~/Movies/Cortex"
+} else {
+    "~/Videos/Cortex"
+};
+
+/// The default container: QuickTime on macOS; MP4 elsewhere, because Media Foundation
+/// and GStreamer's common muxers write MP4 (see `PlatformCapabilities::mov_container`).
+pub const DEFAULT_CONTAINER: Container = if cfg!(target_os = "macos") {
+    Container::Mov
+} else {
+    Container::Mp4
+};
+
 /// The last area chosen on one display, in points (as `CaptureTarget::Region`).
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[cfg_attr(feature = "specta", derive(specta::Type))]
@@ -249,8 +265,8 @@ impl Default for RecorderSettings {
             key_stored: false,
         };
         RecorderSettings {
-            output_dir: "~/Movies/Cortex".into(),
-            container: Container::Mov,
+            output_dir: DEFAULT_OUTPUT_DIR.into(),
+            container: DEFAULT_CONTAINER,
             codec: Codec::Auto,
             resolution: Resolution::R1080p,
             fps: 60,
@@ -532,7 +548,7 @@ impl RecorderSettings {
 
     pub fn output_dir_in(&self, home: &std::path::Path) -> std::path::PathBuf {
         match self.output_dir.strip_prefix('~') {
-            Some(rest) => home.join(rest.trim_start_matches('/')),
+            Some(rest) => home.join(rest.trim_start_matches(['/', '\\'])),
             None => std::path::PathBuf::from(&self.output_dir),
         }
     }

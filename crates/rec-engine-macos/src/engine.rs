@@ -1116,6 +1116,8 @@ pub fn mac_capabilities() -> PlatformCapabilities {
         live_streaming: true,
         replay_buffer: true,
         quick_trim: true,
+        mov_container: true,
+        camera_track: true,
     }
 }
 

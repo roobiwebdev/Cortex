@@ -111,6 +111,10 @@ pub struct PlatformCapabilities {
     pub replay_buffer: bool,
     /// The recordings library can inspect, thumbnail and trim files.
     pub quick_trim: bool,
+    /// QuickTime `.mov` files can be written (Media Foundation writes MP4 only).
+    pub mov_container: bool,
+    /// The raw camera can be saved as its own track or sidecar file (`cameraTrack`).
+    pub camera_track: bool,
 }
 
 impl PlatformCapabilities {
@@ -134,6 +138,8 @@ impl PlatformCapabilities {
             live_streaming: false,
             replay_buffer: false,
             quick_trim: false,
+            mov_container: false,
+            camera_track: false,
         }
     }
 }
@@ -266,6 +272,8 @@ mod tests {
         assert_eq!(v["preview"], "none");
         assert_eq!(v["prores"], false);
         assert_eq!(v["globalHotkeys"], false);
+        assert_eq!(v["movContainer"], false);
+        assert_eq!(v["cameraTrack"], false);
     }
 
     #[test]

@@ -441,6 +441,10 @@ export type PlatformCapabilities = {
 	replayBuffer: boolean,
 	/**  The recordings library can inspect, thumbnail and trim files. */
 	quickTrim: boolean,
+	/**  QuickTime `.mov` files can be written (Media Foundation writes MP4 only). */
+	movContainer: boolean,
+	/**  The raw camera can be saved as its own track or sidecar file (`cameraTrack`). */
+	cameraTrack: boolean,
 };
 
 /**  The operating system an engine runs on (UI copy: "Finder" vs "File Explorer"). */

@@ -155,6 +155,27 @@ pub fn unique_name(stem: &str, suffix: &str, ext: &str, exists: impl Fn(&str) ->
     }
 }
 
+/// A wall-clock time in the user's time zone, as the OS reports it.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct LocalTime {
+    pub year: u16,
+    pub month: u8,
+    pub day: u8,
+    pub hour: u8,
+    pub minute: u8,
+    pub second: u8,
+}
+
+/// `<prefix>-YYYY-MM-DD-HHMMSS.<ext>`: the name a new recording gets. The macOS engine
+/// formats the same name with `strftime` (`rec_engine::settings::timestamped`); engines
+/// without libc's local time (Windows) format it here.
+pub fn timestamped_name(prefix: &str, ext: &str, t: LocalTime) -> String {
+    format!(
+        "{prefix}-{:04}-{:02}-{:02}-{:02}{:02}{:02}.{ext}",
+        t.year, t.month, t.day, t.hour, t.minute, t.second
+    )
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -188,6 +209,22 @@ mod tests {
         assert!(trim_range(6.5, 7.0, 6.0).is_err());
         assert!(trim_range(f64::NAN, 1.0, 6.0).is_err());
         assert!(trim_range(0.0, 1.0, 0.0).is_err());
+    }
+
+    #[test]
+    fn timestamped_names_match_the_mac_format() {
+        let t = LocalTime {
+            year: 2026,
+            month: 3,
+            day: 7,
+            hour: 9,
+            minute: 5,
+            second: 2,
+        };
+        assert_eq!(
+            timestamped_name("rec", "mp4", t),
+            "rec-2026-03-07-090502.mp4"
+        );
     }
 
     #[test]
