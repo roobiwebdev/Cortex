@@ -2,9 +2,9 @@
 // gates Continue (on Screen Recording), and a stored step resumes only when it is valid.
 // Run with `pnpm --filter desktop test` (plain Node, no deps).
 import { gatedPermission, PLATFORM_FACTS, resumeIndex, TOUR_COPY, TOUR_STEPS } from "./steps.ts";
-import type { Platform } from "../../lib/types";
+import type { PlatformOs } from "../../lib/types";
 
-const PLATFORMS: readonly Platform[] = ["macos", "windows", "linux"];
+const PLATFORMS: readonly PlatformOs[] = ["macos", "windows", "linux"];
 let failures = 0;
 function check(ok: boolean, what: string) {
   if (!ok) {

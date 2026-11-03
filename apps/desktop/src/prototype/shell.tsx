@@ -8,7 +8,7 @@ import { cn } from "@starter/ui/lib/utils";
 import { engine, useEngineCalm } from "../lib/engine";
 import { catchHarnessHotkey } from "../lib/hotkey-practice";
 import { PLATFORMS, setHarnessPlatform, usePlatform } from "../lib/platform";
-import type { Platform, ThemePref } from "../lib/types";
+import type { PlatformOs, ThemePref } from "../lib/types";
 import { ACCENT_PRESETS, useStudioTheme } from "../lib/use-studio-theme";
 import { DesktopBackdrop } from "./desktop-backdrop";
 import { SURFACES, type SurfaceId } from "./surfaces";
@@ -103,7 +103,7 @@ export function PrototypeShell() {
         ))}
 
         <div className="mt-auto space-y-3 border-t pt-4">
-          <Segmented<Platform>
+          <Segmented<PlatformOs>
             aria-label="Platform"
             size="sm"
             className="w-full"
@@ -183,7 +183,7 @@ export function PrototypeShell() {
   );
 }
 
-const PLATFORM_LABEL: Record<Platform, string> = { macos: "macOS", windows: "Windows", linux: "Linux" };
+const PLATFORM_LABEL: Record<PlatformOs, string> = { macos: "macOS", windows: "Windows", linux: "Linux" };
 
 function readHash(): SurfaceId {
   const h = window.location.hash.slice(1);

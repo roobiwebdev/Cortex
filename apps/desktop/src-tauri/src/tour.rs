@@ -11,7 +11,7 @@
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 
-use rec_core::Platform;
+use rec_core::platform::PlatformOs;
 use rec_core::state::EngineStatus;
 use serde::{Deserialize, Serialize};
 use specta::Type;
@@ -49,8 +49,8 @@ pub(crate) struct Practice(AtomicBool);
 /// The platform this build runs on, for the screens that differ per platform.
 #[tauri::command]
 #[specta::specta]
-pub fn platform() -> Platform {
-    Platform::current()
+pub fn platform() -> PlatformOs {
+    PlatformOs::current()
 }
 
 /// Onboarding window only: while on, ⇧⌘R is sent to the tour (`tour://hotkey-pressed`)

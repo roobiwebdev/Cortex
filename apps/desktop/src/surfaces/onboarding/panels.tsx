@@ -27,7 +27,7 @@ import { Switch } from "@starter/ui/components/switch";
 import { cn } from "@starter/ui/lib/utils";
 
 import { engine } from "../../lib/engine";
-import type { EngineState, Permission, PipCorner, Platform } from "../../lib/types";
+import type { EngineState, Permission, PipCorner, PlatformOs } from "../../lib/types";
 import { PIP_SHAPES, ShapeGlyph } from "../main-window/shape-glyph";
 import { PermissionChip, type ChipState } from "./permission-chip";
 import type { CaptureMode } from "./stage";
@@ -60,7 +60,7 @@ export function StepHeader({ copy, kicker, titleId }: { copy: StepCopy; kicker: 
   );
 }
 
-export function WelcomeBody({ platform }: { platform: Platform }) {
+export function WelcomeBody({ platform }: { platform: PlatformOs }) {
   const points: Array<{ icon: React.ReactNode; text: string }> = [
     { icon: <Monitor className="size-3.5" />, text: "A display, a window, an app or any area, up to 4K at 60 fps." },
     { icon: <Layers className="size-3.5" />, text: "Camera, microphone and system audio each keep their own track." },
@@ -106,7 +106,7 @@ export function PermissionsBody({
   onOpenSettings,
   onRelaunch,
 }: {
-  platform: Platform;
+  platform: PlatformOs;
   chips: Record<Permission, ChipState>;
   onRequest: (p: Permission) => void;
   onOpenSettings: (p: Permission) => void;
@@ -374,7 +374,7 @@ export function CameraBody({ e }: { e: EngineState }) {
 }
 
 /** The shortcut step: the keys, and whether a real press arrived. */
-export function ShortcutBody({ platform, pressed }: { platform: Platform; pressed: boolean }) {
+export function ShortcutBody({ platform, pressed }: { platform: PlatformOs; pressed: boolean }) {
   const f = PLATFORM_FACTS[platform];
   return (
     <>
@@ -403,7 +403,7 @@ export function ShortcutBody({ platform, pressed }: { platform: Platform; presse
   );
 }
 
-export function FilesBody({ platform, outputDir }: { platform: Platform; outputDir: string }) {
+export function FilesBody({ platform, outputDir }: { platform: PlatformOs; outputDir: string }) {
   const f = PLATFORM_FACTS[platform];
   return (
     <>
@@ -462,7 +462,7 @@ export function ReplayLiveBody({
   onOpenLiveSettings,
 }: {
   e: EngineState;
-  platform: Platform;
+  platform: PlatformOs;
   onOpenLiveSettings: () => void;
 }) {
   const f = PLATFORM_FACTS[platform];
@@ -510,7 +510,7 @@ export function ReplayLiveBody({
   );
 }
 
-export function DoneBody({ platform, chips }: { platform: Platform; chips: Record<Permission, ChipState> }) {
+export function DoneBody({ platform, chips }: { platform: PlatformOs; chips: Record<Permission, ChipState> }) {
   const f = PLATFORM_FACTS[platform];
   return (
     <>

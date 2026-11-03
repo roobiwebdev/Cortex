@@ -34,7 +34,7 @@ export type {
   PipCorner,
   PipPlace,
   PipShape,
-  Platform,
+  PlatformOs,
   PlatformCapabilities,
   Recording,
   Resolution,

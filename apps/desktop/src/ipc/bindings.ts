@@ -87,6 +87,13 @@ export const commands = {
 	pushToast: (toast: UiToast_Deserialize) => typedError<null, EngineError>(__TAURI_INVOKE("push_toast", { toast })),
 	/**  Show (creating it if needed) and focus one of the app's normal windows. */
 	openWindow: (window: AppWindow) => typedError<null, EngineError>(__TAURI_INVOKE("open_window", { window })),
+	/**  The platform this build runs on, for the screens that differ per platform. */
+	platform: () => __TAURI_INVOKE<PlatformOs>("platform"),
+	/**
+	 *  Onboarding window only: while on, ⇧⌘R is sent to the tour (`tour://hotkey-pressed`)
+	 *  instead of starting a recording. Turned off when the step changes or the window goes.
+	 */
+	setHotkeyPractice: (on: boolean) => __TAURI_INVOKE<void>("set_hotkey_practice", { on }),
 	/**  Every recording in the output folder (.mov/.mp4), newest first, at most 200. */
 	listRecordings: () => typedError<Recording[], EngineError>(__TAURI_INVOKE("list_recordings")),
 	/**  Rename a recording's file (same folder, same extension). Returns it under its new name. */
@@ -114,6 +121,7 @@ export const events = {
 	engineState: makeEvent<EngineStateEvent_Serialize, EngineStateEvent_Deserialize>("engine://state"),
 	recordingsChanged: makeEvent<RecordingsChangedEvent, RecordingsChangedEvent>("recordings://changed"),
 	settingsChanged: makeEvent<SettingsChangedEvent_Serialize, SettingsChangedEvent_Deserialize>("settings://changed"),
+	tourHotkeyPressed: makeEvent<HotkeyPressedEvent, HotkeyPressedEvent>("tour://hotkey-pressed"),
 	trimProgress: makeEvent<TrimProgressEvent, TrimProgressEvent>("trim://progress"),
 };
 
@@ -174,6 +182,9 @@ export type CaptureWindow = {
 	displayId: number,
 	frame: Rect,
 };
+
+/**  A one-time coach mark, shown the first time its feature is opened. */
+export type CoachHint = "area-picker" | "quick-trim" | "go-live";
 
 /**  `Auto`: H.264 up to 1080p, HEVC above (Rec's rule). */
 export type Codec = "auto" | "h264" | "hevc" | "prores";
@@ -305,6 +316,11 @@ export type FloatingSurface =
 "region" | 
 /**  The recording HUD, after the user hid it. */
 "hud";
+
+/**  The user pressed a global shortcut while the tour was practising it. */
+export type HotkeyPressedEvent = {
+	hotkey: TourHotkey,
+};
 
 export type InputDevice = {
 	id: string,
@@ -486,6 +502,12 @@ export type RecorderSettings_Deserialize = {
 	showInDock?: boolean,
 	autoUpdate?: boolean,
 	accentHue?: number,
+	/**  The first-run tour was finished, skipped or closed. Until then it opens at launch. */
+	onboardingCompleted?: boolean,
+	/**  Coach marks already dismissed (each shows once). */
+	seenHints?: CoachHint[],
+	/**  Soft interface sounds (tour steps). Never played while capturing. */
+	sounds?: boolean,
 };
 
 export type RecorderSettings_Serialize = {
@@ -557,6 +579,12 @@ export type RecorderSettings_Serialize = {
 	showInDock: boolean,
 	autoUpdate: boolean,
 	accentHue: number,
+	/**  The first-run tour was finished, skipped or closed. Until then it opens at launch. */
+	onboardingCompleted: boolean,
+	/**  Coach marks already dismissed (each shows once). */
+	seenHints: CoachHint[],
+	/**  Soft interface sounds (tour steps). Never played while capturing. */
+	sounds: boolean,
 };
 
 /**  A finished recording. */
@@ -674,6 +702,11 @@ export type StreamStatus = {
 };
 
 export type ThemePref = "system" | "light" | "dark";
+
+/**  A global shortcut the tour can catch while it is practising. */
+export type TourHotkey = 
+/**  ⇧⌘R (start or stop recording). */
+"record";
 
 /**  Fast copies the original samples (passthrough, edit list); Exact re-encodes the video. */
 export type TrimMode = "fast" | "exact";

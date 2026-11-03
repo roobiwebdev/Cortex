@@ -1,4 +1,4 @@
-import type { Permission, Platform } from "../../lib/types";
+import type { Permission, PlatformOs } from "../../lib/types";
 
 /** The tour, in order. The same steps on every platform; their copy differs. */
 export const TOUR_STEPS = [
@@ -82,7 +82,7 @@ export interface PlatformFacts {
  *        compiler lists every string it is missing.
  * WHERE: OnboardingWindow and its panels and stage scenes.
  */
-export const PLATFORM_FACTS: Record<Platform, PlatformFacts> = {
+export const PLATFORM_FACTS: Record<PlatformOs, PlatformFacts> = {
   macos: {
     permissionModel: "tcc",
     permissions: [
@@ -230,7 +230,7 @@ const permissionsCopy: Record<PermissionModel, StepCopy> = {
   },
 };
 
-function copyFor(p: Platform): Record<TourStepId, StepCopy> {
+function copyFor(p: PlatformOs): Record<TourStepId, StepCopy> {
   const f = PLATFORM_FACTS[p];
   return {
     welcome: {
@@ -277,7 +277,7 @@ function copyFor(p: Platform): Record<TourStepId, StepCopy> {
   };
 }
 
-export const TOUR_COPY: Record<Platform, Record<TourStepId, StepCopy>> = {
+export const TOUR_COPY: Record<PlatformOs, Record<TourStepId, StepCopy>> = {
   macos: copyFor("macos"),
   windows: copyFor("windows"),
   linux: copyFor("linux"),
@@ -287,7 +287,7 @@ export const TOUR_COPY: Record<Platform, Record<TourStepId, StepCopy>> = {
  * Whether Continue must wait on this step: only macOS's Screen Recording grant gates the
  * tour, because nothing records without it.
  */
-export function gatedPermission(p: Platform, step: TourStepId): Permission | null {
+export function gatedPermission(p: PlatformOs, step: TourStepId): Permission | null {
   if (step !== "permissions") return null;
   const required = PLATFORM_FACTS[p].permissions.find((r) => r.need === "required");
   return PLATFORM_FACTS[p].permissionModel === "tcc" && required ? required.permission : null;

@@ -11,7 +11,7 @@ import { engine, useEngine } from "../lib/engine";
 import { useHotkeyPractice } from "../lib/hotkey-practice";
 import { PLATFORMS, setHarnessPlatform, usePlatform } from "../lib/platform";
 import { playBlip } from "../lib/sounds";
-import type { Permission, PermissionReport, Platform } from "../lib/types";
+import type { Permission, PermissionReport, PlatformOs } from "../lib/types";
 import { onPageShown } from "../lib/visibility";
 import type { SurfaceProps } from "../prototype/surfaces";
 import { TITLEBAR_H } from "../prototype/window-frame";
@@ -46,7 +46,7 @@ const SHOW_PROTOTYPE_CONTROLS =
 const POLL_MS = 1000;
 /** The step to come back to after a relaunch (Screen Recording may need one). */
 const STEP_KEY = "cortex.tour.step";
-const PLATFORM_LABEL: Record<Platform, string> = { macos: "macOS", windows: "Windows", linux: "Linux" };
+const PLATFORM_LABEL: Record<PlatformOs, string> = { macos: "macOS", windows: "Windows", linux: "Linux" };
 
 function readStoredStep(): string | null {
   try {
@@ -265,7 +265,7 @@ export function OnboardingWindow({ cameraStream, navigate }: SurfaceProps) {
           {/* Prototype-only controls; not part of the shipped window. */}
           {SHOW_PROTOTYPE_CONTROLS && (
             <div className="flex items-center gap-1 rounded-full border border-dashed px-1 py-0.5 text-[11px] text-muted-foreground">
-              <Segmented<Platform>
+              <Segmented<PlatformOs>
                 aria-label="Platform"
                 size="sm"
                 value={platform}
