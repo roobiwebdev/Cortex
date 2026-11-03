@@ -29,6 +29,7 @@ export function PreviewStage({
   cameraStream,
   onPipPlace,
   cameraBlocked,
+  nativePreview,
   children,
 }: {
   settings: RecorderSettings;
@@ -40,12 +41,17 @@ export function PreviewStage({
   onPipPlace: (place: PipPlace) => void;
   /** Shown where the camera overlay goes when the camera can't run (e.g. no permission). */
   cameraBlocked?: React.ReactNode;
+  /** The engine draws a native view under the page (`capabilities.preview === "native"`). */
+  nativePreview: boolean;
   children: React.ReactNode;
 }) {
   const stage = React.useRef<HTMLDivElement>(null);
   const outer = React.useRef<HTMLDivElement>(null);
   const frame = React.useRef<HTMLDivElement>(null);
-  const [native] = React.useState(hasNativePreview);
+  // Only the Tauri main window has a native view, and only where the engine provides one;
+  // elsewhere the slot (`children`) fills the stage.
+  const [inMainWindow] = React.useState(hasNativePreview);
+  const native = inMainWindow && nativePreview;
   const stageRect = useNativePreviewHole(native, frame, stage);
   const [box, setBox] = React.useState({ w: 0, h: 0 });
   const [drag, setDrag] = React.useState<{ x: number; y: number } | null>(null);

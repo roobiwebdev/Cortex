@@ -185,14 +185,18 @@ export function CameraSection({ e, locked }: { e: EngineState; locked: boolean }
         />
       )}
 
-      <MicroLabel>Recording</MicroLabel>
-      <SwitchRow
-        label="Save camera as separate track"
-        hint="Also writes the raw camera as its own video track, so you can reframe it later."
-        checked={s.cameraTrack}
-        onCheckedChange={(v) => engine.update({ cameraTrack: v })}
-        disabled={locked}
-      />
+      {e.capabilities.cameraTrack && (
+        <>
+          <MicroLabel>Recording</MicroLabel>
+          <SwitchRow
+            label="Save camera as separate track"
+            hint="Also writes the raw camera as its own video track, so you can reframe it later."
+            checked={s.cameraTrack}
+            onCheckedChange={(v) => engine.update({ cameraTrack: v })}
+            disabled={locked}
+          />
+        </>
+      )}
     </>
   );
 }

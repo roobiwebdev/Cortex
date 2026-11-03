@@ -129,21 +129,23 @@ export function RecordingSection() {
         <SettingsRow
           label="Container"
           hint={
-            proRes
-              ? "ProRes needs MOV."
-              : s.container === "mov"
-                ? "MOV keeps separate audio and camera tracks."
-                : "MP4 for sharing. Extra tracks become a side file."
+            !caps.movContainer
+              ? "This computer records MP4."
+              : proRes
+                ? "ProRes needs MOV."
+                : s.container === "mov"
+                  ? "MOV keeps separate audio and camera tracks."
+                  : "MP4 for sharing. Extra tracks become a side file."
           }
         >
           <Segmented<Container>
             aria-label="Container"
-            value={s.container}
+            value={caps.movContainer ? s.container : "mp4"}
             onValueChange={(container) => {
               if (!(proRes && container === "mp4")) engine.update({ container });
             }}
             options={[
-              { value: "mov", label: "MOV" },
+              ...(caps.movContainer ? [{ value: "mov" as const, label: "MOV" }] : []),
               { value: "mp4", label: "MP4", title: proRes ? "ProRes needs MOV" : undefined },
             ]}
           />
