@@ -11,7 +11,9 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
 /// Bump when the stored shape changes, and add a step to `migrate`.
-pub const SETTINGS_VERSION: u32 = 1;
+/// 2: `onboardingCompleted`, `seenHints` and `sounds` (files from version 1 count as
+/// onboarded, since their owner already used the app).
+pub const SETTINGS_VERSION: u32 = 2;
 
 /// The frame rates Rec's pacer supports (they divide 60000).
 pub const FPS_CHOICES: [u32; 5] = [24, 25, 30, 50, 60];
@@ -69,6 +71,10 @@ string_enum!(ThemePref { #[default] System = "system", Light = "light", Dark = "
 string_enum!(CameraResolution { R720p = "720p", #[default] R1080p = "1080p" });
 string_enum!(MicBackend { #[default] Sck = "sck", Avcapture = "avcapture" });
 string_enum!(StreamCodec { #[default] Auto = "auto", H264 = "h264", Hevc = "hevc" });
+string_enum!(
+    /// A one-time coach mark, shown the first time its feature is opened.
+    CoachHint { #[default] AreaPicker = "area-picker", QuickTrim = "quick-trim", GoLive = "go-live" }
+);
 
 /// What is being captured. `displayId` is the 1-based display number (`rec devices`).
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
@@ -224,6 +230,12 @@ pub struct RecorderSettings {
     pub show_in_dock: bool,
     pub auto_update: bool,
     pub accent_hue: f64,
+    /// The first-run tour was finished, skipped or closed. Until then it opens at launch.
+    pub onboarding_completed: bool,
+    /// Coach marks already dismissed (each shows once).
+    pub seen_hints: Vec<CoachHint>,
+    /// Soft interface sounds (tour steps). Never played while capturing.
+    pub sounds: bool,
 }
 
 impl Default for RecorderSettings {
@@ -293,6 +305,9 @@ impl Default for RecorderSettings {
             show_in_dock: true,
             auto_update: true,
             accent_hue: 188.0,
+            onboarding_completed: false,
+            seen_hints: vec![],
+            sounds: true,
         }
     }
 }
@@ -448,6 +463,16 @@ impl RecorderSettings {
             f.push("streamDests");
         }
         clamp_f64(&mut self.accent_hue, (0.0, 360.0), "accentHue", f);
+        let hints = self.seen_hints.len();
+        let mut seen = Vec::with_capacity(hints);
+        self.seen_hints.retain(|h| {
+            let first = !seen.contains(h);
+            seen.push(*h);
+            first
+        });
+        if self.seen_hints.len() != hints {
+            f.push("seenHints");
+        }
         if self.output_dir.trim().is_empty() {
             self.output_dir = RecorderSettings::default().output_dir;
             f.push("outputDir");
@@ -516,8 +541,8 @@ impl RecorderSettings {
 /// Turn any stored settings JSON into current settings.
 ///
 /// - A Rec `settings.json` (snake_case) is imported (`store::rec_value_to_settings`).
-/// - `version` older than `SETTINGS_VERSION` runs the migration steps (none yet:
-///   version 1 is the first stored shape).
+/// - `version` older than `SETTINGS_VERSION` runs the migration steps. A file without
+///   `version` was written before versioning and counts as version 1.
 /// - A newer `version` (a downgrade) keeps every field this build knows.
 /// - Unknown fields are dropped; a field with a bad value falls back to its default
 ///   on its own, without losing the others; then everything is `validate`d.
@@ -531,12 +556,12 @@ pub fn migrate(value: Value) -> RecorderSettings {
     {
         return crate::store::rec_value_to_settings(Value::Object(map));
     }
-    let version = map
-        .remove("version")
-        .and_then(|v| v.as_u64())
-        .unwrap_or(SETTINGS_VERSION as u64);
-    // Migration steps go here: `if version < 2 { ... }`.
-    let _ = version;
+    let version = map.remove("version").and_then(|v| v.as_u64()).unwrap_or(1);
+    if version < 2 {
+        // Whoever wrote this file has used Cortex already: no first-run tour.
+        map.entry("onboardingCompleted")
+            .or_insert(Value::Bool(true));
+    }
     lenient(map).validated()
 }
 
@@ -582,7 +607,7 @@ mod tests {
         assert_eq!(v["micBackend"], "sck");
         assert_eq!(
             v.as_object().unwrap().len(),
-            52,
+            55,
             "one key per types.ts field"
         );
     }
@@ -742,6 +767,33 @@ mod tests {
         assert_eq!(migrate(json!({"fps": 24})).fps, 24);
         assert_eq!(migrate(json!({"version": 99, "fps": 24})).fps, 24);
         assert_eq!(migrate(json!("garbage")), RecorderSettings::default());
+    }
+
+    #[test]
+    fn version_1_files_count_as_onboarded() {
+        // Existing users skip the first-run tour; new files keep what they stored.
+        assert!(migrate(json!({"version": 1, "fps": 30})).onboarding_completed);
+        assert!(migrate(json!({"fps": 30})).onboarding_completed);
+        assert!(!migrate(json!({"version": 2, "fps": 30})).onboarding_completed);
+        assert!(!migrate(json!({"version": 1, "onboardingCompleted": false})).onboarding_completed);
+        assert!(!RecorderSettings::default().onboarding_completed);
+    }
+
+    #[test]
+    fn seen_hints_round_trip_and_dedupe() {
+        let s = migrate(json!({
+            "version": 2,
+            "seenHints": ["go-live", "area-picker", "go-live"],
+            "sounds": false
+        }));
+        assert_eq!(s.seen_hints, vec![CoachHint::GoLive, CoachHint::AreaPicker]);
+        assert!(!s.sounds);
+        let v = serde_json::to_value(&s).unwrap();
+        assert_eq!(v["seenHints"], json!(["go-live", "area-picker"]));
+        // A hint this build does not know drops the list, never the other settings.
+        let s = migrate(json!({"version": 2, "seenHints": ["future"], "fps": 30}));
+        assert!(s.seen_hints.is_empty());
+        assert_eq!(s.fps, 30);
     }
 
     #[test]
