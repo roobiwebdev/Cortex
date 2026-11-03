@@ -126,6 +126,7 @@ With **Save camera as separate track** on (`cameraTrack`, Settings → Camera) a
 - **Encoding.** Same codec as the main track (ProRes main gives a ProRes camera track), at the camera's size, with a bitrate sized for 30 real frames (`writer::camera_video_spec`). Both files are fragmented every 2 s, so a crash leaves the camera playable up to the last fragment too.
 - **Resolution.** `cameraResolution` (720p or 1080p) caps the capture format. `camera::pick_format` takes the largest device format at or under that height (24 fps or faster), so a 720p-only camera falls back to 720p. The frames are delivered at exactly that size, and a running camera is reused for a recording only when it was opened at the same cap (the preview reopens when the setting changes).
 - **Camera-only scene.** The track is recorded there too: the scene can switch live, and the track keeps the camera's native size.
+- **Cost.** Measured 2026-11-03 on the FaceTime HD camera at 1080p, test pattern at 1080p60 H.264, 20 s window: 50.3% CPU with the track, 48.2% without (about +2 points), and about 9.5 Mb/s more file. `writer::tests::camera_track_follows_the_main_timeline` checks length, frame count and pause cuts for both the .mov track and the .mp4 sidecar.
 
 ## Floating windows
 
