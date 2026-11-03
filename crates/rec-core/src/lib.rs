@@ -6,6 +6,7 @@
 pub mod api;
 pub mod library;
 pub mod output;
+pub mod overlay;
 pub mod platform;
 pub mod settings;
 pub mod sources;
