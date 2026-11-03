@@ -4,6 +4,7 @@
 //!   cargo run -p rec-engine-linux --example probe -- secrets   # Secret Service round trip
 //!   cargo run -p rec-engine-linux --example probe -- audio 4   # 4 s: test video + real system audio + mic
 //!   cargo run -p rec-engine-linux --example probe -- portal 5  # 5 s of a portal-picked screen
+//!   cargo run -p rec-engine-linux --example probe -- engine 5  # LinuxEngine, test pattern, 5 s (0 = until killed)
 //!
 //! Recordings go to the current folder; check them with ffprobe.
 
@@ -137,6 +138,47 @@ fn main() {
             println!("file: {}", file.display());
             println!("stats: {stats:?}");
             println!("peak levels [system, mic]: {peak:?}");
+        }
+        Some("engine") => {
+            use rec_core::api::{EngineEvent, RecorderEngine};
+            use std::sync::Arc;
+            let home = std::env::current_dir().unwrap_or_default();
+            let s = RecorderSettings {
+                output_dir: home.display().to_string(),
+                countdown: 0,
+                fps: 30,
+                resolution: rec_core::settings::Resolution::R720p,
+                ..RecorderSettings::default()
+            };
+            let (tx, rx) = std::sync::mpsc::channel();
+            let tx = std::sync::Mutex::new(tx);
+            let events: rec_core::api::EventSink = Arc::new(move |e: EngineEvent| {
+                if !matches!(e, EngineEvent::Levels(_) | EngineEvent::Progress(_))
+                    && let Ok(t) = tx.lock()
+                {
+                    let _ = t.send(e);
+                }
+            });
+            let opts = rec_core::platform::EngineOptions {
+                home,
+                test_pattern: true,
+                max_duration_secs: (secs > 0).then_some(secs as f64),
+                ..Default::default()
+            };
+            let engine = rec_engine_linux::LinuxEngine::new(opts, s.clone(), events);
+            println!("capabilities: {:?}", engine.capabilities());
+            if let Err(e) = engine.start(&s) {
+                eprintln!("start: {e}");
+                std::process::exit(1);
+            }
+            println!("recording: {:?}", engine.state().status);
+            while let Ok(e) = rx.recv() {
+                println!("event: {e:?}");
+                if matches!(e, EngineEvent::RecordingFinished { .. }) {
+                    break;
+                }
+            }
+            engine.shutdown();
         }
         Some(other) => {
             eprintln!("unknown command {other}");
