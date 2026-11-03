@@ -45,15 +45,26 @@ pub struct WinBackend {
 
 impl WinBackend {
     /// Probe the PC. `fragmented`: write fragmented MP4 (crash-safe, unverified).
+    ///
+    /// The probe runs on its own thread: the shell may call this on the UI thread, whose
+    /// COM apartment (single-threaded, for WebView2) must not be touched.
     pub fn new(fragmented: bool) -> WinBackend {
-        util::com_init();
-        let _ = util::mf_startup();
+        let probe = std::thread::Builder::new()
+            .name("win-probe".into())
+            .spawn(|| {
+                util::com_init();
+                let _ = util::mf_startup();
+                Probe {
+                    build: util::windows_build(),
+                    capture: capture::Capture::supported(),
+                    hevc: encoder::hevc_encoder_available(),
+                }
+            })
+            .ok()
+            .and_then(|t| t.join().ok())
+            .unwrap_or_default();
         WinBackend {
-            probe: Probe {
-                build: util::windows_build(),
-                capture: capture::Capture::supported(),
-                hevc: encoder::hevc_encoder_available(),
-            },
+            probe,
             secrets: secrets::CredentialStore,
             fragmented,
         }
