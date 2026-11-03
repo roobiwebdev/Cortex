@@ -70,7 +70,7 @@ pub fn on_exit_requested(app: &AppHandle, code: Option<i32>, api: &ExitRequestAp
 /// instead of killing the process mid-write.
 pub fn watch_signals(app: &AppHandle) {
     let h = app.clone();
-    if let Err(e) = rec_macos_ui::signals::on_terminate(move || h.exit(0)) {
+    if let Err(e) = crate::platform::system().on_terminate(Box::new(move || h.exit(0))) {
         eprintln!("cortex: could not watch for SIGTERM: {e}");
     }
 }

@@ -1,6 +1,7 @@
-//! SOURCE OF TRUTH KEYWORDS: Shell, Outbound, Forwarder, settings store, MacEngine, open_system_settings, reveal_recording
-//! WHAT:  The desktop app's recorder core: the real `MacEngine`, the persisted settings and
-//!        the event forwarding (throttled state/levels, finished recordings, errors).
+//! SOURCE OF TRUTH KEYWORDS: Shell, Outbound, Forwarder, settings store, DesktopEngine, open_system_settings, reveal_recording
+//! WHAT:  The desktop app's recorder core: the platform's engine (`platform::open_engine`,
+//!        `MacEngine` on macOS), the persisted settings and the event forwarding (throttled
+//!        state/levels, finished recordings, errors).
 //! WHY:   Tauri commands in `ipc.rs` are one-line wrappers over these methods, so tests can
 //!        drive exactly what the webview drives without a window (see `tests/record.rs`).
 //!        Nothing here knows about Tauri: events leave through the `Emit` callback.
@@ -11,7 +12,8 @@ use std::process::Command;
 use std::sync::{Arc, Mutex, MutexGuard};
 use std::time::{Duration, Instant};
 
-use rec_core::api::{EngineError, EngineEvent, RecorderEngine};
+use rec_core::api::{EngineError, EngineEvent};
+use rec_core::platform::EngineOptions;
 use rec_core::settings::{RecorderSettings, StreamDest};
 use rec_core::sources::prompts_before_start;
 use rec_core::state::{
@@ -19,7 +21,8 @@ use rec_core::state::{
     Recording,
 };
 use rec_core::store::{self, DEFAULT_DEBOUNCE, SettingsStore};
-use rec_engine::engine::{EngineOptions, MacEngine};
+
+use crate::platform::{self, DesktopEngine};
 
 /// At most 10 state events a second from progress (status changes always go out).
 const STATE_INTERVAL: Duration = Duration::from_millis(95);
@@ -123,7 +126,7 @@ impl Forwarder {
 
 /// The recorder as the app sees it.
 pub struct Shell {
-    engine: MacEngine,
+    engine: Box<dyn DesktopEngine>,
     store: SettingsStore,
     settings: Mutex<RecorderSettings>,
     forwarder: Arc<Forwarder>,
@@ -158,7 +161,7 @@ impl Shell {
             Arc::new(move |e: EngineEvent| f.on_event(e))
         };
         let home = opts.home.clone();
-        let engine = MacEngine::new(opts, loaded.settings.clone(), sink);
+        let engine = platform::open_engine(opts, loaded.settings.clone(), sink);
         let settings = engine.with_key_status(loaded.settings);
         forwarder.cache().state = engine.state();
         Shell {
@@ -171,9 +174,9 @@ impl Shell {
         }
     }
 
-    /// The platform engine, for things outside the shared API (device watching).
-    pub fn engine(&self) -> &MacEngine {
-        &self.engine
+    /// The platform engine, for things outside the shell's own methods (preview, devices).
+    pub fn engine(&self) -> &dyn DesktopEngine {
+        self.engine.as_ref()
     }
 
     fn settings_lock(&self) -> MutexGuard<'_, RecorderSettings> {
@@ -349,13 +352,13 @@ impl Shell {
         let dir = self.output_dir();
         std::fs::create_dir_all(&dir)
             .map_err(|e| EngineError::failed(format!("Could not create {}: {e}", dir.display())))?;
-        open(&[dir.as_os_str()])
+        platform::system().open_folder(&dir)
     }
 
     /// Show a recording in Finder. Only files inside the output folder.
     pub fn reveal_recording(&self, path: &str) -> Result<(), EngineError> {
         let file = inside(&self.output_dir(), Path::new(path))?;
-        open(&["-R".as_ref(), file.as_os_str()])
+        platform::system().reveal(&file)
     }
 
     /// Flush settings and finalize any recording (quit).
@@ -399,35 +402,9 @@ fn inside(dir: &Path, path: &Path) -> Result<PathBuf, EngineError> {
     }
 }
 
-fn open(args: &[&std::ffi::OsStr]) -> Result<(), EngineError> {
-    let status = Command::new("/usr/bin/open")
-        .args(args)
-        .status()
-        .map_err(|e| EngineError::failed(format!("Could not open Finder: {e}")))?;
-    if status.success() {
-        Ok(())
-    } else {
-        Err(EngineError::failed("Could not open Finder"))
-    }
-}
-
-/// The System Settings privacy pane for a permission.
-pub fn privacy_pane_url(p: Permission) -> &'static str {
-    match p {
-        Permission::Screen => {
-            "x-apple.systempreferences:com.apple.preference.security?Privacy_ScreenCapture"
-        }
-        Permission::Microphone => {
-            "x-apple.systempreferences:com.apple.preference.security?Privacy_Microphone"
-        }
-        Permission::Camera => {
-            "x-apple.systempreferences:com.apple.preference.security?Privacy_Camera"
-        }
-    }
-}
-
+/// Open the system settings page where `p` is granted (System Settings' privacy pane on macOS).
 pub fn open_system_settings(p: Permission) -> Result<(), EngineError> {
-    open(&[privacy_pane_url(p).as_ref()])
+    platform::system().open_privacy_settings(p)
 }
 
 #[cfg(test)]

@@ -24,5 +24,9 @@ specta = { version = "=2.0.0-rc.26", features = ["derive"] }
 specta-typescript = "=0.0.13"
 tauri-specta = { version = "=2.0.0-rc.26", features = ["derive", "typescript"] }
 rec-core = { path = "../../../crates/rec-core", features = ["specta"] }
+
+# The macOS engine and window behaviour. Other targets build the stub in
+# src/platform/unsupported.rs (see docs/engineering/platforms.md).
+[target.'cfg(target_os = "macos")'.dependencies]
 rec-engine-macos = { path = "../../../crates/rec-engine-macos" }
 rec-macos-ui = { path = "../../../crates/rec-macos-ui" }

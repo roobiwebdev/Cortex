@@ -10,7 +10,6 @@
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
-use rec_core::api::RecorderEngine;
 use tauri::Manager;
 
 use crate::shell::Shell;
@@ -94,10 +93,13 @@ pub fn maybe_start(app: &tauri::AppHandle, shell: Arc<Shell>) {
             std::thread::sleep(Duration::from_millis(250));
         }
         std::thread::sleep(Duration::from_secs(2));
-        let dest = shell.settings().stream_dests.first().cloned();
-        let left = dest.as_ref().is_some_and(|d| {
-            rec_engine::live::keychain::get(&rec_engine::engine::dest_url(d)).is_some()
-        });
+        // Asks the secret store again (the Keychain on macOS), not the cached flag.
+        let left = shell
+            .engine()
+            .with_key_status(shell.settings())
+            .stream_dests
+            .first()
+            .is_some_and(|d| d.key_stored);
         println!("cortex-live: done (went live: {was_live}; key still in Keychain: {left})");
         app.exit(0);
     });
