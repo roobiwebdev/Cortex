@@ -128,6 +128,12 @@ export const FEATURES: ReadonlyArray<{
   linux: boolean | string;
 }> = [
   { name: "Record a display, a window or an area", mac: true, windows: true, linux: "Picked in the system dialog" },
+  {
+    name: "True 4K (3840 pixels wide, 60 fps)",
+    mac: true,
+    windows: "Beta, depends on the graphics card",
+    linux: "Beta, depends on the graphics card",
+  },
   { name: "Every window of one app", mac: true, windows: false, linux: "No (Wayland)" },
   { name: "Camera overlay, mic and system audio", mac: true, windows: true, linux: true },
   { name: "Camera on its own track", mac: true, windows: false, linux: true },
