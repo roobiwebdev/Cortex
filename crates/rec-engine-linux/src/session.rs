@@ -423,9 +423,14 @@ impl Drop for Session {
 /// The longest `Session::finish` waits for late branches to reach the stop.
 const CATCH_UP: Duration = Duration::from_secs(10);
 
-/// How far behind the clock the composed picture may fall, beyond the compositor's own
-/// latency, before the video gate asks it to skip frames.
-const VIDEO_LAG_ALLOWED_NS: u64 = 100_000_000;
+/// How far behind the clock a picture may fall, beyond its branch's own latency, before the
+/// video gate asks upstream to skip frames. Generous on purpose: the lag at the gate also
+/// holds normal work (composing, converting, videorate holding a frame), which on a busy
+/// CPU can take well over 100 ms a frame without the branch losing ground. Only a picture
+/// that keeps falling behind passes a second, and then the frames skipped are the ones it
+/// could not have made in time. The audio queues before the muxer hold 10 s, and
+/// `Session::finish` waits for late branches, so a second of lag costs nothing.
+const VIDEO_LAG_ALLOWED_NS: u64 = 1_000_000_000;
 
 /// The video gate's lateness report to the compositor: the compositor's latency, asked once.
 #[derive(Default)]
@@ -592,6 +597,8 @@ mod tests {
         // On time: within the compositor's latency plus the allowed lag.
         assert_eq!(frames_late_by(1000 * MS, 1000 * MS, latency), None);
         assert_eq!(frames_late_by(1000 * MS, 1140 * MS, latency), None);
+        // A busy CPU taking 400 ms a frame is slow, not late: nothing is skipped.
+        assert_eq!(frames_late_by(1000 * MS, 1400 * MS, latency), None);
         assert_eq!(frames_late_by(1000 * MS, 900 * MS, latency), None, "early");
         // A picture 2 s behind the clock is late by that minus the slack.
         assert_eq!(
