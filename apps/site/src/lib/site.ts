@@ -17,7 +17,7 @@ export const SITE_URL = "https://cortex.roobi.dev";
 export const VERSION = "0.1.0";
 
 // The release DMG is universal (`lipo -archs` prints x86_64 arm64): every M-series Mac and Intel Macs.
-export const ARCH = "Apple Silicon and Intel";
+export const ARCH = "Apple Silicon (M1 and newer) and Intel";
 
 // tauri.conf.json bundle.macOS.minimumSystemVersion and .cargo/config.toml MACOSX_DEPLOYMENT_TARGET.
 export const MIN_MACOS = "15";
