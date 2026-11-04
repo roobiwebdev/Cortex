@@ -235,7 +235,7 @@ pub fn rescan_later<R: Runtime>(app: &AppHandle<R>) {
     let app = app.clone();
     std::thread::spawn(move || {
         if let Err(e) = rescan(&app) {
-            eprintln!("cortex: recordings scan failed: {e}");
+            log_line!("recordings scan failed: {e}");
         }
     });
 }

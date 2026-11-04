@@ -221,7 +221,7 @@ pub fn emitter<R: Runtime>(app: AppHandle<R>) -> Emit {
             Outbound::Settings(s) => SettingsChangedEvent(s).emit(&app),
         };
         if let Err(err) = r {
-            eprintln!("cortex: failed to emit an event: {err}");
+            log_line!("failed to emit an event: {err}");
         }
     })
 }
@@ -402,6 +402,15 @@ fn open_recordings_folder(shell: Shared<'_>) -> Result<(), EngineError> {
     shell.open_recordings_folder()
 }
 
+/// Open the folder holding `cortex.log` and the previous log (Settings › Advanced).
+#[tauri::command]
+#[specta::specta]
+fn open_log_folder() -> Result<(), EngineError> {
+    let dir = crate::logfile::dir()
+        .ok_or_else(|| EngineError::failed("Cortex could not open its log folder"))?;
+    crate::platform::system().open_folder(&dir)
+}
+
 /// Save a destination's stream key in the Keychain. The key never comes back to the
 /// webview; the returned settings only say `keyStored`.
 #[tauri::command]
@@ -478,6 +487,7 @@ pub fn builder() -> tauri_specta::Builder<tauri::Wry> {
             open_system_settings,
             reveal_recording,
             open_recordings_folder,
+            open_log_folder,
             open_link,
             set_stream_key,
             remove_stream_key,

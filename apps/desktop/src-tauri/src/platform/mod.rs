@@ -129,6 +129,9 @@ pub trait SystemIntegration: Sync {
     fn screen_capture_granted(&self) -> bool;
     /// Call `f` on SIGTERM/SIGINT (or the platform's equivalent) instead of dying mid-write.
     fn on_terminate(&self, f: Box<dyn Fn() + Send>) -> std::io::Result<()>;
+    /// The OS name and version for the log ("macOS 15.1 (24B83)"). May start a process,
+    /// so call it off the main thread.
+    fn os_version(&self) -> String;
 }
 
 /// Start this platform's engine with `settings`; events go to `events`.

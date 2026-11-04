@@ -54,7 +54,7 @@ impl DesktopEngine for MacEngine {
     ) -> Result<Box<dyn PreviewSurface>, String> {
         let view = PreviewView::attach_to(window).map_err(|e| e.to_string())?;
         if make_window_webviews_transparent(window) == 0 {
-            eprintln!("cortex: could not make the main webview transparent");
+            log_line!("could not make the main webview transparent");
         }
         let sink = view.sink();
         let sink = if stats { counted(sink) } else { sink };
@@ -187,6 +187,24 @@ impl SystemIntegration for System {
     fn on_terminate(&self, f: Box<dyn Fn() + Send>) -> std::io::Result<()> {
         rec_macos_ui::signals::on_terminate(f)
     }
+    fn os_version(&self) -> String {
+        let plist = std::fs::read_to_string("/System/Library/CoreServices/SystemVersion.plist")
+            .unwrap_or_default();
+        let value = |key: &str| plist_string(&plist, key).unwrap_or("?");
+        format!(
+            "macOS {} ({})",
+            value("ProductVersion"),
+            value("ProductBuildVersion")
+        )
+    }
+}
+
+/// `<key>KEY</key><string>VALUE</string>` in an XML plist.
+fn plist_string<'a>(plist: &'a str, key: &str) -> Option<&'a str> {
+    let after = &plist[plist.find(&format!("<key>{key}</key>"))?..];
+    let start = after.find("<string>")? + "<string>".len();
+    let len = after[start..].find("</string>")?;
+    Some(after[start..start + len].trim())
 }
 
 fn open(args: &[&std::ffi::OsStr]) -> Result<(), EngineError> {

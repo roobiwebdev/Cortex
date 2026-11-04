@@ -1,0 +1,7 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "troubleshooting",
+  "description": "Settings › Advanced › Troubleshooting: only the Settings window may open the log folder in the file manager. The webview never reads the log; the shell opens the folder it writes to (src/logfile.rs).",
+  "windows": ["settings"],
+  "permissions": ["allow-open-log-folder"]
+}

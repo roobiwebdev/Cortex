@@ -47,6 +47,8 @@ export const commands = {
 	/**  Show a recording in Finder (only files inside the recordings folder). */
 	revealRecording: (path: string) => typedError<null, EngineError>(__TAURI_INVOKE("reveal_recording", { path })),
 	openRecordingsFolder: () => typedError<null, EngineError>(__TAURI_INVOKE("open_recordings_folder")),
+	/**  Open the folder holding `cortex.log` and the previous log (Settings › Advanced). */
+	openLogFolder: () => typedError<null, EngineError>(__TAURI_INVOKE("open_log_folder")),
 	/**  Open one of the app's fixed web links in the default browser. */
 	openLink: (link: ExternalLink) => typedError<null, EngineError>(__TAURI_INVOKE("open_link", { link })),
 	/**

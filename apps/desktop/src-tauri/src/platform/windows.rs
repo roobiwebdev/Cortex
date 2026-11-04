@@ -64,7 +64,7 @@ impl DesktopEngine for WindowsEngine {
             && let Some(h) = raw(window)
             && let Err(e) = shell::exclude_from_capture(h)
         {
-            eprintln!("cortex: {e}");
+            log_line!("{e}");
         }
         Err("there is no native preview on Windows yet".into())
     }
@@ -91,7 +91,7 @@ impl WindowChrome for Chrome {
             .into_iter()
             .filter_map(|r| r.as_ref().err())
         {
-            eprintln!("cortex: {e}");
+            log_line!("{e}");
         }
         floating.is_ok() && hidden.is_ok()
     }
@@ -162,6 +162,18 @@ impl SystemIntegration for System {
     }
     fn on_terminate(&self, f: Box<dyn Fn() + Send>) -> std::io::Result<()> {
         shell::on_terminate(f)
+    }
+    fn os_version(&self) -> String {
+        // "Microsoft Windows [Version 10.0.26100.2033]" (Windows 11 builds are 22000 and up).
+        const CREATE_NO_WINDOW: u32 = 0x0800_0000;
+        Command::new("cmd")
+            .args(["/d", "/c", "ver"])
+            .creation_flags(CREATE_NO_WINDOW)
+            .output()
+            .ok()
+            .map(|o| String::from_utf8_lossy(&o.stdout).trim().to_string())
+            .filter(|v| !v.is_empty())
+            .unwrap_or_else(|| "Windows (version unknown)".into())
     }
 }
 
