@@ -38,16 +38,16 @@ export function PrototypeShell() {
     setActive(id);
   }, []);
 
-  // Global shortcuts, mirroring the app: ⇧⌘R record/stop, ⇧⌘S save replay, Esc cancels countdown.
+  // Global shortcuts, mirroring the app (lib/shortcuts): record/stop, save replay, Esc cancels countdown.
   React.useEffect(() => {
     const onKey = (ev: KeyboardEvent) => {
-      // Windows and Linux use Ctrl where macOS uses ⌘.
+      // Either modifier, so a reviewer on a Mac can try the Windows and Linux screens.
       const mod = ev.metaKey || ev.ctrlKey;
       if (mod && ev.shiftKey && ev.key.toLowerCase() === "r") {
         ev.preventDefault();
         // The tour's shortcut step takes the press instead of recording.
         if (!catchHarnessHotkey()) engine.toggleRecord();
-      } else if (ev.metaKey && ev.shiftKey && ev.key.toLowerCase() === "s") {
+      } else if (mod && ev.shiftKey && ev.key.toLowerCase() === "s") {
         ev.preventDefault();
         engine.saveReplay();
       } else if (ev.key === "Escape") engine.cancelCountdown();

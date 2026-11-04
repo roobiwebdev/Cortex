@@ -2,13 +2,14 @@ import * as React from "react";
 import { KeyRound, Lock, Plus, X } from "lucide-react";
 
 import { Button } from "@starter/ui/components/button";
-import { Kbd } from "@starter/ui/components/kbd";
 import { Segmented } from "@starter/ui/components/segmented";
 import { Slider } from "@starter/ui/components/slider";
 import { Switch } from "@starter/ui/components/switch";
 import { cn } from "@starter/ui/lib/utils";
 
+import { ShortcutKbd } from "../../components/shortcut-kbd";
 import { engine, useEngine } from "../../lib/engine";
+import { usePlatformWords } from "../../lib/platform";
 import { isWhip } from "../../lib/streaming";
 import type { Resolution, StreamDest, StreamService } from "../../lib/types";
 import { ChoiceSelect, Readout, SettingsGroup, SettingsPage, SettingsRow } from "./parts";
@@ -48,6 +49,7 @@ function presetKbps(dests: StreamDest[], res: Resolution) {
 /** Live & Replay: replay buffer, destinations with Keychain keys, live encode. Matrix SET-K30..39, STR-01..05/07/14/24/27..34, FLG-33..41, ENV-05. */
 export function LiveSection() {
   const e = useEngine();
+  const words = usePlatformWords();
   const s = e.settings;
   const locked = e.live;
   const enabled = s.streamDests.filter((d) => d.enabled);
@@ -70,7 +72,7 @@ export function LiveSection() {
           htmlFor="set-replay"
           hint={
             <>
-              Keeps the last {s.replaySecs} s in memory. Press <Kbd>⇧⌘S</Kbd> to save it as an MP4.
+              Keeps the last {s.replaySecs} s in memory. Press <ShortcutKbd action="replay" /> to save it as an MP4.
             </>
           }
         >
@@ -121,7 +123,7 @@ export function LiveSection() {
         footer={
           locked
             ? "Stop streaming to change destinations."
-            : "Stream keys are stored in your macOS Keychain, never in settings files or logs."
+            : `Stream keys are stored in ${words.keyStore}, never in settings files or logs.`
         }
       >
         {s.streamDests.map((d, i) => (

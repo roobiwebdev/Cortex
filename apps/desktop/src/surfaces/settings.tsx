@@ -15,6 +15,7 @@ import {
 
 import { cn } from "@starter/ui/lib/utils";
 
+import { useEngine } from "../lib/engine";
 import { TITLEBAR_H } from "../prototype/window-frame";
 import type { SurfaceProps } from "../prototype/surfaces";
 import { AboutSection } from "./settings/about";
@@ -129,9 +130,12 @@ export function SettingsWindow({ cameraStream, navigate }: SurfaceProps) {
   const [scrolled, setScrolled] = React.useState(false);
   const paneRef = React.useRef<HTMLDivElement>(null);
 
+  // Live & Replay only where the engine streams or keeps a replay buffer.
+  const hasLive = useEngine((e) => e.capabilities.liveStreaming || e.capabilities.replayBuffer);
+  const sections = hasLive ? SECTIONS : SECTIONS.filter((s) => s.id !== "live");
   const q = query.trim().toLowerCase();
-  const visible = q ? SECTIONS.filter((s) => `${s.label} ${s.keywords}`.toLowerCase().includes(q)) : SECTIONS;
-  const current = SECTIONS.find((s) => s.id === active) ?? SECTIONS[0];
+  const visible = q ? sections.filter((s) => `${s.label} ${s.keywords}`.toLowerCase().includes(q)) : sections;
+  const current = sections.find((s) => s.id === active) ?? sections[0];
 
   function open(id: SectionId) {
     setActive(id);

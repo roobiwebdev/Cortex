@@ -5,6 +5,7 @@ import { Button } from "@starter/ui/components/button";
 import { cn } from "@starter/ui/lib/utils";
 
 import { engine, useEngine } from "../lib/engine";
+import { usePlatformWords } from "../lib/platform";
 import { useWindowed } from "../lib/floating";
 import type { Toast, ToastKind } from "../lib/types";
 import { MENUBAR_H } from "../prototype/desktop-backdrop";
@@ -85,8 +86,8 @@ export function ToastStack({ navigate }: SurfaceProps) {
               </>
             }
           >
-            When a recording or replay is saved, a card slides in under the menu bar. It is left out of the recording,
-            pauses while you hover it and clears itself after 8 seconds. Up to three stack, newest on top.
+            When a recording or replay is saved, a card slides in near the corner of the screen. It is left out of the
+            recording, pauses while you hover it and clears itself after 8 seconds. Up to three stack, newest on top.
           </PrototypeNote>
         </div>
       )}
@@ -95,6 +96,7 @@ export function ToastStack({ navigate }: SurfaceProps) {
 }
 
 function ToastCard({ toast, navigate }: { toast: Toast; navigate: SurfaceProps["navigate"] }) {
+  const words = usePlatformWords();
   const e = useEngine();
   const kind = KIND[toast.kind];
   const recording = toast.recordingId ? e.recordings.find((r) => r.id === toast.recordingId) : undefined;
@@ -125,7 +127,7 @@ function ToastCard({ toast, navigate }: { toast: Toast; navigate: SurfaceProps["
     return () => cancelAnimationFrame(frame);
   }, [close]);
 
-  const path = recording?.path ?? `~/Movies/Cortex/replay-${toast.id}.mp4`;
+  const path = recording?.path ?? `${words.defaultFolder}/replay-${toast.id}.mp4`;
 
   return (
     <FloatingCard
@@ -171,7 +173,12 @@ function ToastCard({ toast, navigate }: { toast: Toast; navigate: SurfaceProps["
               </Button>
             ) : (
               <>
-                <Button variant="soft" size="xs" onClick={() => flash("reveal")} title={`Show ${path} in Finder`}>
+                <Button
+                  variant="soft"
+                  size="xs"
+                  onClick={() => flash("reveal")}
+                  title={`Show ${path} in ${words.fileManager}`}
+                >
                   {flashed === "reveal" ? <Check /> : <FolderOpen />}
                   {flashed === "reveal" ? "Shown" : "Reveal"}
                 </Button>
@@ -187,10 +194,12 @@ function ToastCard({ toast, navigate }: { toast: Toast; navigate: SurfaceProps["
                   {flashed === "copy" ? <Check /> : <Copy />}
                   {flashed === "copy" ? "Copied" : "Copy"}
                 </Button>
-                <Button variant="soft" size="xs" onClick={() => navigate("trim")}>
-                  <Scissors />
-                  Trim
-                </Button>
+                {e.capabilities.quickTrim && (
+                  <Button variant="soft" size="xs" onClick={() => navigate("trim")}>
+                    <Scissors />
+                    Trim
+                  </Button>
+                )}
               </>
             )}
           </div>

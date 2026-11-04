@@ -5,6 +5,7 @@ import { Button } from "@starter/ui/components/button";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@starter/ui/components/dialog";
 
 import { BrandMark } from "../../components/brand-mark";
+import { usePlatformWords } from "../../lib/platform";
 import { APP_VERSION } from "./general";
 import { SettingsGroup, SettingsRow } from "./parts";
 
@@ -21,6 +22,7 @@ const NOTICES: ReadonlyArray<{ name: string; license: string; use: string }> = [
 
 /** About: name, version, credits and licences. */
 export function AboutSection() {
+  const words = usePlatformWords();
   const [open, setOpen] = React.useState(false);
   return (
     <div className="mx-auto w-full max-w-[580px] px-8 pb-10">
@@ -29,7 +31,9 @@ export function AboutSection() {
           <BrandMark className="size-12" />
         </div>
         <h1 className="mt-4 font-display text-[30px] leading-none font-bold tracking-[-0.015em]">Cortex</h1>
-        <p className="tabular mt-2 text-[13px] text-muted-foreground">Version {APP_VERSION} · macOS 15 or later</p>
+        <p className="tabular mt-2 text-[13px] text-muted-foreground">
+          Version {APP_VERSION} · {words.requirement}
+        </p>
       </div>
 
       <div className="space-y-6">

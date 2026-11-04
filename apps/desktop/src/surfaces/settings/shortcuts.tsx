@@ -5,6 +5,9 @@ import { Button } from "@starter/ui/components/button";
 import { Kbd } from "@starter/ui/components/kbd";
 import { cn } from "@starter/ui/lib/utils";
 
+import { useEngine } from "../../lib/engine";
+import { usePlatform } from "../../lib/platform";
+import type { PlatformOs } from "../../lib/types";
 import { SettingsGroup, SettingsPage } from "./parts";
 
 /** A shortcut as modifier flags plus one key, so it can be compared and drawn as glyphs. */
@@ -50,8 +53,19 @@ const ACTIONS: ReadonlyArray<{ id: ActionId; label: string; hint: string; combo:
   { id: "hud", label: "Show HUD", hint: "Brings the floating timer back.", combo: c("H", { alt: true, meta: true }) },
 ];
 
+/** The defaults are written with ⌘ (`meta`); Windows and Linux use Ctrl in its place. */
+function onPlatform(k: Combo, platform: PlatformOs): Combo {
+  return platform === "macos" || !k.meta ? k : { ...k, meta: false, ctrl: true };
+}
+
 /** System and common app shortcuts we refuse, with the reason shown inline. */
-const RESERVED: ReadonlyArray<{ combo: Combo; owner: string }> = [
+const RESERVED_PC: ReadonlyArray<{ combo: Combo; owner: string }> = [
+  { combo: c("F4", { alt: true }), owner: "Close Window" },
+  { combo: c("Tab", { alt: true }), owner: "App Switcher" },
+  { combo: c("S", { shift: true, meta: true }), owner: "Snipping Tool" },
+  { combo: c("Q", { ctrl: true }), owner: "Quit" },
+];
+const RESERVED_MAC: ReadonlyArray<{ combo: Combo; owner: string }> = [
   { combo: c("Q", { meta: true }), owner: "Quit" },
   { combo: c("W", { meta: true }), owner: "Close Window" },
   { combo: c("3", { shift: true, meta: true }), owner: "macOS Screenshot" },
@@ -64,9 +78,17 @@ const RESERVED: ReadonlyArray<{ combo: Combo; owner: string }> = [
 const same = (a: Combo, b: Combo) =>
   a.key === b.key && a.ctrl === b.ctrl && a.alt === b.alt && a.shift === b.shift && a.meta === b.meta;
 
-/** Glyphs in Apple's order: ⌃ ⌥ ⇧ ⌘ then the key. */
-function glyphs(k: Combo) {
+/** Key caps: Apple's glyphs in Apple's order (⌃ ⌥ ⇧ ⌘), or Ctrl Alt Shift Win on Windows and Linux. */
+function glyphs(k: Combo, platform: PlatformOs) {
   const out: string[] = [];
+  if (platform !== "macos") {
+    if (k.ctrl) out.push("Ctrl");
+    if (k.alt) out.push("Alt");
+    if (k.shift) out.push("Shift");
+    if (k.meta) out.push(platform === "windows" ? "Win" : "Super");
+    out.push(k.key === " " ? "Space" : k.key);
+    return out;
+  }
   if (k.ctrl) out.push("⌃");
   if (k.alt) out.push("⌥");
   if (k.shift) out.push("⇧");
@@ -95,6 +117,14 @@ function keyName(e: React.KeyboardEvent) {
 
 /** Shortcuts: global hotkeys with a recorder. Custom hotkeys are deferred in Rec; this recorder is prototype-local. */
 export function ShortcutsSection() {
+  const platform = usePlatform();
+  // Save replay only where the engine keeps a replay buffer.
+  const replay = useEngine((e) => e.capabilities.replayBuffer);
+  const actions = ACTIONS.filter((a) => replay || a.id !== "replay").map((a) => ({
+    ...a,
+    combo: a.combo && onPlatform(a.combo, platform),
+  }));
+  const reserved = platform === "macos" ? RESERVED_MAC : RESERVED_PC;
   // prototype-local: needs a `shortcuts: Record<ActionId, Combo | null>` setting and global hotkey registration.
   const [map, setMap] = React.useState<Record<ActionId, Combo | null>>(() => {
     const m: Record<ActionId, Combo | null> = {
@@ -105,7 +135,7 @@ export function ShortcutsSection() {
       mic: null,
       hud: null,
     };
-    for (const a of ACTIONS) m[a.id] = a.combo;
+    for (const a of ACTIONS) m[a.id] = a.combo && onPlatform(a.combo, platform);
     return m;
   });
   const [recording, setRecording] = React.useState<ActionId | null>(null);
@@ -123,11 +153,22 @@ export function ShortcutsSection() {
     if (!key) return; // modifiers alone: keep waiting
     const combo: Combo = { ctrl: e.ctrlKey, alt: e.altKey, shift: e.shiftKey, meta: e.metaKey, key };
     if (!combo.ctrl && !combo.alt && !combo.meta) {
-      return setError({ id, text: "Add ⌘, ⌥ or ⌃ so typing in other apps isn't hijacked." });
+      return setError({
+        id,
+        text:
+          platform === "macos"
+            ? "Add ⌘, ⌥ or ⌃ so typing in other apps isn't hijacked."
+            : "Add Ctrl or Alt so typing in other apps isn't hijacked.",
+      });
     }
-    const reserved = RESERVED.find((r) => same(r.combo, combo));
-    if (reserved) return setError({ id, text: `${glyphs(combo).join("")} is used by ${reserved.owner}.` });
-    const clash = ACTIONS.find((a) => a.id !== id && map[a.id] && same(map[a.id] ?? combo, combo));
+    const taken = reserved.find((r) => same(r.combo, combo));
+    if (taken) {
+      return setError({
+        id,
+        text: `${glyphs(combo, platform).join(platform === "macos" ? "" : "+")} is used by ${taken.owner}.`,
+      });
+    }
+    const clash = actions.find((a) => a.id !== id && map[a.id] && same(map[a.id] ?? combo, combo));
     if (clash) return setError({ id, text: `Already used for “${clash.label}”.` });
     setError(null);
     setMap((m) => ({ ...m, [id]: combo }));
@@ -140,7 +181,7 @@ export function ShortcutsSection() {
         title="Recording"
         footer="Click a shortcut, then type the new keys. Esc cancels, Delete clears. Saved in this prototype only."
       >
-        {ACTIONS.map((a) => {
+        {actions.map((a) => {
           const combo = map[a.id];
           const active = recording === a.id;
           const err = error?.id === a.id ? error.text : null;
@@ -169,7 +210,7 @@ export function ShortcutsSection() {
               )}
               <button
                 type="button"
-                aria-label={`${a.label} shortcut: ${combo ? glyphs(combo).join(" ") : "none"}. Click to change.`}
+                aria-label={`${a.label} shortcut: ${combo ? glyphs(combo, platform).join(" ") : "none"}. Click to change.`}
                 onClick={() => {
                   setError(null);
                   setRecording(active ? null : a.id);
@@ -185,7 +226,7 @@ export function ShortcutsSection() {
                 {active ? (
                   <span className="font-medium">Type shortcut…</span>
                 ) : combo ? (
-                  glyphs(combo).map((g, i) => <Kbd key={i}>{g}</Kbd>)
+                  glyphs(combo, platform).map((g, i) => <Kbd key={i}>{g}</Kbd>)
                 ) : (
                   <span className="text-muted-foreground">Record shortcut</span>
                 )}

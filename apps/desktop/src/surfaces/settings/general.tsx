@@ -7,6 +7,7 @@ import { Switch } from "@starter/ui/components/switch";
 import { cn } from "@starter/ui/lib/utils";
 
 import { engine, useEngine } from "../../lib/engine";
+import { usePlatform, usePlatformWords } from "../../lib/platform";
 import { formatAgo } from "../../lib/format";
 import type { ThemePref } from "../../lib/types";
 import { APP_VERSION, checkForUpdates, installUpdate, useUpdates, type UpdateState } from "../../lib/updates";
@@ -19,10 +20,12 @@ export { APP_VERSION };
 /** General: appearance, app presence (login, Dock, HUD), help and updates. Matrix UI-04, UPD-02/03. */
 export function GeneralSection({ navigate }: { navigate: (id: SurfaceId) => void }) {
   const s = useEngine().settings;
+  const platform = usePlatform();
+  const words = usePlatformWords();
   return (
-    <SettingsPage title="General" subtitle="How Cortex looks and where it lives on your Mac.">
+    <SettingsPage title="General" subtitle={`How Cortex looks and where it lives on your ${words.computer}.`}>
       <SettingsGroup title="Appearance">
-        <SettingsRow label="Appearance" hint="System follows your Mac's light or dark setting.">
+        <SettingsRow label="Appearance" hint={`System follows your ${words.computer}’s light or dark setting.`}>
           <Segmented<ThemePref>
             aria-label="Appearance"
             value={s.theme}
@@ -84,28 +87,35 @@ export function GeneralSection({ navigate }: { navigate: (id: SurfaceId) => void
       </SettingsGroup>
 
       <SettingsGroup title="App">
-        <SettingsRow label="Open at login" hint="Cortex starts in the menu bar when you log in." htmlFor="set-login">
+        <SettingsRow
+          label="Open at login"
+          hint={`Cortex starts in the ${words.trayPlace} when you log in.`}
+          htmlFor="set-login"
+        >
           <Switch
             id="set-login"
             checked={s.openAtLogin}
             onCheckedChange={(openAtLogin) => engine.update({ openAtLogin })}
           />
         </SettingsRow>
-        <SettingsRow
-          label="Show in Dock"
-          hint={
-            s.showInDock
-              ? "Cortex has a Dock icon and app menu."
-              : "Menu bar only. Open windows from the menu bar icon."
-          }
-          htmlFor="set-dock"
-        >
-          <Switch
-            id="set-dock"
-            checked={s.showInDock}
-            onCheckedChange={(showInDock) => engine.update({ showInDock })}
-          />
-        </SettingsRow>
+        {/* The Dock is macOS only. */}
+        {platform === "macos" && (
+          <SettingsRow
+            label="Show in Dock"
+            hint={
+              s.showInDock
+                ? "Cortex has a Dock icon and app menu."
+                : "Menu bar only. Open windows from the menu bar icon."
+            }
+            htmlFor="set-dock"
+          >
+            <Switch
+              id="set-dock"
+              checked={s.showInDock}
+              onCheckedChange={(showInDock) => engine.update({ showInDock })}
+            />
+          </SettingsRow>
+        )}
         <SettingsRow
           label="Show HUD while recording"
           hint="A small floating timer with stop and pause. It never appears in the recording."

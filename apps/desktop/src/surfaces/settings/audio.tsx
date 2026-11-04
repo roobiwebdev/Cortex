@@ -10,6 +10,7 @@ import { cn } from "@starter/ui/lib/utils";
 
 import { ALLOW_ACCESS, allowAccessItem, askPermission } from "../../components/permission-ask";
 import { engine, micLevels, systemLevels, useEngine } from "../../lib/engine";
+import { usePlatformWords } from "../../lib/platform";
 import type { AudioTracks, InputDevice } from "../../lib/types";
 import { ChoiceSelect, NumberField, Readout, SettingsGroup, SettingsPage, SettingsRow } from "./parts";
 
@@ -43,6 +44,7 @@ export const fromDeviceValue = (v: string) => (v === DEFAULT_ID ? null : v);
 /** Audio: sources, backend, track layout, gain, sync offsets. Matrix AUD-02/03/04/05/07/09/11/16/18/19/23/24, FLG-10..14/30..32/42..44, SET-K10..18. */
 export function AudioSection() {
   const e = useEngine();
+  const words = usePlatformWords();
   const s = e.settings;
   const [advanced, setAdvanced] = React.useState(false);
 
@@ -51,7 +53,7 @@ export function AudioSection() {
       <SettingsGroup title="Sources">
         <SettingsRow
           label="Record system audio"
-          hint="Sound from apps on this Mac. Cortex's own sounds are left out."
+          hint={`Sound from apps on this ${words.computer}. Cortex's own sounds are left out.`}
           htmlFor="set-sys"
         >
           <Switch

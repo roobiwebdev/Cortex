@@ -37,7 +37,9 @@ import { cn } from "@starter/ui/lib/utils";
 import { BrandMark } from "../components/brand-mark";
 import { BytesWritten, DroppedFrames, ElapsedClock } from "../components/progress-text";
 import { formatAgo, formatBytes, formatClock } from "../lib/format";
+import { ShortcutKbd, useShortcut } from "../components/shortcut-kbd";
 import { engine, micLevels, systemLevels, useEngineCalm } from "../lib/engine";
+import { usePlatformWords } from "../lib/platform";
 import type { EngineState } from "../lib/types";
 import { checkForUpdates, useUpdates } from "../lib/updates";
 import { MENUBAR_H } from "../prototype/desktop-backdrop";
@@ -58,6 +60,7 @@ type QuickTarget = "screen" | "window" | "area";
  * WHERE: Prototype surface "menubar"; later a non-activating NSPanel anchored to the status item.
  */
 export function MenuBarPanel({ navigate }: SurfaceProps) {
+  const quitKeys = useShortcut("quit");
   const e = useEngineCalm();
   const capturing = isCapturing(e.status);
 
@@ -90,7 +93,7 @@ export function MenuBarPanel({ navigate }: SurfaceProps) {
         <Button variant="ghost" size="sm" onClick={() => navigate("settings")}>
           <Settings />
           Settings
-          <Kbd className="ml-0.5 h-4 min-w-4 px-1 text-[10px] shadow-none">⌘,</Kbd>
+          <ShortcutKbd action="settings" className="ml-0.5 h-4 min-w-4 px-1 text-[10px] shadow-none" />
         </Button>
         <Button
           variant="ghost"
@@ -98,7 +101,7 @@ export function MenuBarPanel({ navigate }: SurfaceProps) {
           className="ml-auto text-muted-foreground"
           // Quit finalizes an active recording first (KEY-05); the prototype stops it.
           onClick={() => engine.stop()}
-          title="Quit Cortex (⌘Q). Saves an active recording first."
+          title={`Quit Cortex (${quitKeys}). Saves an active recording first.`}
         >
           Quit
         </Button>
@@ -110,6 +113,7 @@ export function MenuBarPanel({ navigate }: SurfaceProps) {
 /* ── Idle ─────────────────────────────────────────────────────────────── */
 
 function IdleBody({ e, navigate }: { e: EngineState; navigate: SurfaceProps["navigate"] }) {
+  const words = usePlatformWords();
   const s = e.settings;
   const target: QuickTarget = s.target.kind === "display" ? "screen" : s.target.kind === "region" ? "area" : "window";
   const last = e.recordings[0];
@@ -188,7 +192,7 @@ function IdleBody({ e, navigate }: { e: EngineState; navigate: SurfaceProps["nav
           <TriangleAlert className="mt-0.5 size-4 shrink-0 text-warn" aria-hidden />
           <div className="min-w-0 flex-1">
             <div className="font-medium">Screen Recording is off</div>
-            <div className="text-xs text-muted-foreground">Allow Cortex in System Settings to record.</div>
+            <div className="text-xs text-muted-foreground">Allow Cortex in {words.settingsApp} to record.</div>
           </div>
           <Button variant="outline" size="xs" onClick={() => navigate("onboarding")}>
             Allow…
@@ -208,7 +212,7 @@ function IdleBody({ e, navigate }: { e: EngineState; navigate: SurfaceProps["nav
             <span className="size-2 rounded-full bg-rec-fg" />
           </span>
           Start recording
-          <Kbd className="ml-auto border-transparent bg-rec-fg/15 text-rec-fg shadow-none">⇧⌘R</Kbd>
+          <ShortcutKbd action="record" className="ml-auto border-transparent bg-rec-fg/15 text-rec-fg shadow-none" />
         </Button>
         <div className="mt-1.5 px-1 text-xs text-muted-foreground tabular">
           {s.countdown > 0 ? `${s.countdown} s countdown · ` : ""}
@@ -263,6 +267,7 @@ function ToggleRow({
 }
 
 function LastRecording({ e, navigate }: { e: EngineState; navigate: SurfaceProps["navigate"] }) {
+  const words = usePlatformWords();
   const [flashed, flash] = useFlash();
   const last = e.recordings[0];
   if (!last) return null;
@@ -281,14 +286,21 @@ function LastRecording({ e, navigate }: { e: EngineState; navigate: SurfaceProps
             {formatClock(last.durationSecs)} · {formatBytes(last.bytes)} · {formatAgo(last.createdAt)}
           </div>
           <div className="mt-1.5 flex gap-1">
-            <Button variant="soft" size="xs" onClick={() => flash("reveal")} title={`Show ${last.path} in Finder`}>
+            <Button
+              variant="soft"
+              size="xs"
+              onClick={() => flash("reveal")}
+              title={`Show ${last.path} in ${words.fileManager}`}
+            >
               {flashed === "reveal" ? <Check /> : <FolderOpen />}
               {flashed === "reveal" ? "Shown" : "Reveal"}
             </Button>
-            <Button variant="soft" size="xs" onClick={() => navigate("trim")}>
-              <Scissors />
-              Trim
-            </Button>
+            {e.capabilities.quickTrim && (
+              <Button variant="soft" size="xs" onClick={() => navigate("trim")}>
+                <Scissors />
+                Trim
+              </Button>
+            )}
           </div>
         </div>
       </div>
@@ -320,6 +332,8 @@ function CountdownBody({ left }: { left: number }) {
 }
 
 function RecordingBody({ e }: { e: EngineState }) {
+  const recordKeys = useShortcut("record");
+  const replayKeys = useShortcut("replay");
   const s = e.settings;
   const paused = e.status === "paused";
   const saving = e.status === "finalizing";
@@ -361,15 +375,15 @@ function RecordingBody({ e }: { e: EngineState }) {
             {paused ? <Play /> : <Pause />}
             {paused ? "Resume" : "Pause"}
           </Button>
-          <Button variant="record" size="xl" onClick={() => engine.stop()} title="Stop and save (⇧⌘R)">
+          <Button variant="record" size="xl" onClick={() => engine.stop()} title={`Stop and save (${recordKeys})`}>
             <Square className="fill-current" />
             Stop
-            <Kbd className="border-transparent bg-rec-fg/15 text-rec-fg shadow-none">⇧⌘R</Kbd>
+            <ShortcutKbd action="record" className="border-transparent bg-rec-fg/15 text-rec-fg shadow-none" />
           </Button>
         </div>
       )}
 
-      {s.replayEnabled && !saving ? (
+      {s.replayEnabled && e.capabilities.replayBuffer && !saving ? (
         <div className="flex items-center gap-2.5 rounded-[14px] border px-3 py-2">
           <History className="size-4 shrink-0 text-muted-foreground" aria-hidden />
           <div className="min-w-0 flex-1 text-xs text-muted-foreground">
@@ -379,7 +393,7 @@ function RecordingBody({ e }: { e: EngineState }) {
             variant="soft"
             size="xs"
             onClick={() => engine.saveReplay()}
-            title="Save the buffer to an MP4 without stopping (⇧⌘S)"
+            title={`Save the buffer to an MP4 without stopping (${replayKeys})`}
           >
             Save last {s.replaySecs}s
           </Button>
@@ -414,6 +428,9 @@ function MeterLine({
 /* ── Overflow menu: the remaining status-menu items (MNU-02…10) ───────── */
 
 function PanelMenu({ e, navigate }: { e: EngineState; navigate: SurfaceProps["navigate"] }) {
+  const recordKeys = useShortcut("record");
+  const replayKeys = useShortcut("replay");
+  const settingsKeys = useShortcut("settings");
   const capturing = isCapturing(e.status);
   const update = useUpdates().available;
   return (
@@ -431,7 +448,7 @@ function PanelMenu({ e, navigate }: { e: EngineState; navigate: SurfaceProps["na
           onClick={() => engine.toggleRecord()}
         >
           {e.status === "idle" ? "Start recording" : e.status === "countdown" ? "Cancel countdown" : "Stop recording"}
-          <DropdownMenuShortcut>⇧⌘R</DropdownMenuShortcut>
+          <DropdownMenuShortcut>{recordKeys}</DropdownMenuShortcut>
         </DropdownMenuItem>
         <DropdownMenuItem className={MENU_ITEM} disabled={!capturing} onClick={() => engine.togglePause()}>
           {e.status === "paused" ? "Resume" : "Pause"}
@@ -439,18 +456,22 @@ function PanelMenu({ e, navigate }: { e: EngineState; navigate: SurfaceProps["na
         <DropdownMenuItem className={MENU_ITEM} disabled={!capturing} onClick={() => navigate("hud")}>
           Show recording HUD
         </DropdownMenuItem>
-        <DropdownMenuItem
-          className={MENU_ITEM}
-          disabled={!e.settings.replayEnabled}
-          onClick={() => engine.saveReplay()}
-        >
-          Save replay
-          <DropdownMenuShortcut>⇧⌘S</DropdownMenuShortcut>
-        </DropdownMenuItem>
-        <DropdownMenuItem className={MENU_ITEM} onClick={() => engine.toggleLive()}>
-          <Radio />
-          {e.live ? "Stop streaming" : "Go live"}
-        </DropdownMenuItem>
+        {e.capabilities.replayBuffer && (
+          <DropdownMenuItem
+            className={MENU_ITEM}
+            disabled={!e.settings.replayEnabled}
+            onClick={() => engine.saveReplay()}
+          >
+            Save replay
+            <DropdownMenuShortcut>{replayKeys}</DropdownMenuShortcut>
+          </DropdownMenuItem>
+        )}
+        {e.capabilities.liveStreaming && (
+          <DropdownMenuItem className={MENU_ITEM} onClick={() => engine.toggleLive()}>
+            <Radio />
+            {e.live ? "Stop streaming" : "Go live"}
+          </DropdownMenuItem>
+        )}
         <DropdownMenuSeparator className="mx-1 my-1" />
         <DropdownMenuItem className={MENU_ITEM} disabled={e.recordings.length === 0}>
           Reveal last recording
@@ -458,7 +479,7 @@ function PanelMenu({ e, navigate }: { e: EngineState; navigate: SurfaceProps["na
         <DropdownMenuItem className={MENU_ITEM}>Open recordings folder</DropdownMenuItem>
         <DropdownMenuItem className={MENU_ITEM} onClick={() => navigate("settings")}>
           Settings…
-          <DropdownMenuShortcut>⌘,</DropdownMenuShortcut>
+          <DropdownMenuShortcut>{settingsKeys}</DropdownMenuShortcut>
         </DropdownMenuItem>
         <DropdownMenuItem
           className={MENU_ITEM}
@@ -472,7 +493,7 @@ function PanelMenu({ e, navigate }: { e: EngineState; navigate: SurfaceProps["na
         </DropdownMenuItem>
         <DropdownMenuSeparator className="mx-1 my-1" />
         <DropdownMenuItem className={cn(MENU_ITEM, "text-xs")} disabled>
-          Global shortcut: ⇧⌘R
+          Global shortcut: {recordKeys}
         </DropdownMenuItem>
       </DropdownMenuContent>
     </DropdownMenu>

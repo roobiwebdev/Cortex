@@ -4,6 +4,8 @@ import { Check, FolderOpen } from "lucide-react";
 import { Button } from "@starter/ui/components/button";
 import { Segmented } from "@starter/ui/components/segmented";
 
+import { usePlatformWords } from "../../lib/platform";
+
 /** Fast = passthrough (NEW-TR-04), Exact = re-encode (NEW-TR-05). */
 export type ExportMode = "fast" | "exact";
 export type ExportOutput = "copy" | "replace";
@@ -54,6 +56,7 @@ export function TrimExportBar({
   onReveal: () => void;
   onDone: () => void;
 }) {
+  const words = usePlatformWords();
   if (phase.kind === "exporting") {
     const pct = Math.round(phase.progress * 100);
     return (
@@ -107,7 +110,7 @@ export function TrimExportBar({
         </div>
         <Button variant="soft" size="lg" onClick={onReveal}>
           <FolderOpen />
-          Reveal in Finder
+          {words.revealLabel}
         </Button>
         <Button variant="tactile" size="lg" className="px-5" onClick={onDone}>
           Done

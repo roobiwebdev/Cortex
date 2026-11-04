@@ -4,6 +4,7 @@ import { Slider } from "@starter/ui/components/slider";
 import { engine } from "../../lib/engine";
 import type { EngineState, Scene } from "../../lib/types";
 import type { SurfaceId } from "../../prototype/surfaces";
+import { useShortcut } from "../../components/shortcut-kbd";
 import { CameraSection } from "./camera-section";
 import { CaptureSection } from "./capture-section";
 import { FieldRow, SIDEBAR_SLIDER, SidebarSection, SwitchRow } from "./parts";
@@ -23,6 +24,7 @@ export function SourcesSidebar({ e, navigate }: { e: EngineState; navigate: (id:
   const s = e.settings;
   const locked = e.status !== "idle";
   const lockNote = locked ? "Locked while recording" : undefined;
+  const replayKeys = useShortcut("replay");
 
   return (
     <aside
@@ -78,13 +80,15 @@ export function SourcesSidebar({ e, navigate }: { e: EngineState; navigate: (id:
               ]}
             />
           </div>
-          <SwitchRow
-            label="Replay buffer"
-            hint="Keeps recent footage in memory so you can save it after it happens (⇧⌘S)."
-            checked={s.replayEnabled}
-            onCheckedChange={(v) => engine.update({ replayEnabled: v })}
-          />
-          {s.replayEnabled && (
+          {e.capabilities.replayBuffer && (
+            <SwitchRow
+              label="Replay buffer"
+              hint={`Keeps recent footage in memory so you can save it after it happens (${replayKeys}).`}
+              checked={s.replayEnabled}
+              onCheckedChange={(v) => engine.update({ replayEnabled: v })}
+            />
+          )}
+          {s.replayEnabled && e.capabilities.replayBuffer && (
             <FieldRow
               label="Keep the last"
               value={`${s.replaySecs} s · ~${Math.round((s.replaySecs * REPLAY_BYTES_PER_SEC) / 1e6)} MB`}

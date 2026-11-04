@@ -181,7 +181,7 @@ function ChipRow({ e, navigate }: { e: EngineState; navigate: (id: SurfaceId) =>
           Camera track
         </span>
       )}
-      {s.replayEnabled && (
+      {s.replayEnabled && e.capabilities.replayBuffer && (
         <span className={chip}>
           <History aria-hidden />
           Replay {s.replaySecs}s

@@ -6,6 +6,7 @@ import { Kbd } from "@starter/ui/components/kbd";
 import { cn } from "@starter/ui/lib/utils";
 
 import { BytesWritten, ElapsedClock } from "../../components/progress-text";
+import { ShortcutKbd, useShortcut } from "../../components/shortcut-kbd";
 import { formatClock } from "../../lib/format";
 import { engine } from "../../lib/engine";
 import type { EngineState } from "../../lib/types";
@@ -13,7 +14,7 @@ import type { SurfaceId } from "../../prototype/surfaces";
 import { GoLiveButton } from "./go-live";
 import { Tip } from "./parts";
 
-// Space must never start or stop a take (KEY-10); ⇧⌘R and clicks still work.
+// Space must never start or stop a take (KEY-10); the record shortcut and clicks still work.
 function blockSpace(ev: React.KeyboardEvent) {
   if (ev.key === " ") ev.preventDefault();
 }
@@ -28,6 +29,7 @@ function blockSpace(ev: React.KeyboardEvent) {
  */
 export function RecordBar({ e, navigate }: { e: EngineState; navigate: (id: SurfaceId) => void }) {
   const st = e.status;
+  const replayKeys = useShortcut("replay");
   const active = st === "recording" || st === "paused";
   const s = e.settings;
 
@@ -83,16 +85,16 @@ export function RecordBar({ e, navigate }: { e: EngineState; navigate: (id: Surf
       </div>
 
       <div className="flex items-center justify-end gap-2">
-        {s.replayEnabled && (
-          <Tip label="Save the buffer to an MP4 without stopping (⇧⌘S)">
+        {s.replayEnabled && e.capabilities.replayBuffer && (
+          <Tip label={`Save the buffer to an MP4 without stopping (${replayKeys})`}>
             <Button variant="soft" size="lg" onClick={() => engine.saveReplay()}>
               <History />
               Save replay
-              <Kbd className="ml-0.5 shadow-none">⇧⌘S</Kbd>
+              <ShortcutKbd action="replay" className="ml-0.5 shadow-none" />
             </Button>
           </Tip>
         )}
-        <GoLiveButton e={e} navigate={navigate} />
+        {e.capabilities.liveStreaming && <GoLiveButton e={e} navigate={navigate} />}
       </div>
     </div>
   );
@@ -100,6 +102,7 @@ export function RecordBar({ e, navigate }: { e: EngineState; navigate: (id: Surf
 
 function RecordButton({ e }: { e: EngineState }) {
   const st = e.status;
+  const recordKeys = useShortcut("record");
   if (st === "finalizing") {
     return (
       <Button variant="soft" size="xl" disabled className="w-[164px]">
@@ -133,15 +136,15 @@ function RecordButton({ e }: { e: EngineState }) {
         blocked
           ? "Turn on Screen Recording to record your screen"
           : stop
-            ? "Stop and save the recording (⇧⌘R)"
-            : "Start recording (⇧⌘R)"
+            ? `Stop and save the recording (${recordKeys})`
+            : `Start recording (${recordKeys})`
       }
     >
       <span>
         <Button
           variant="record"
           size="xl"
-          className="w-[164px]"
+          className="min-w-[164px]"
           disabled={blocked}
           onClick={() => engine.toggleRecord()}
           onKeyDown={blockSpace}
@@ -149,7 +152,7 @@ function RecordButton({ e }: { e: EngineState }) {
         >
           {stop ? <Square className="fill-current" /> : <Circle className="fill-current" />}
           {stop ? "Stop" : "Record"}
-          <Kbd className="border-transparent bg-rec-fg/20 text-rec-fg shadow-none">⇧⌘R</Kbd>
+          <ShortcutKbd action="record" className="border-transparent bg-rec-fg/20 text-rec-fg shadow-none" />
         </Button>
       </span>
     </Tip>

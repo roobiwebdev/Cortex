@@ -3,6 +3,7 @@ import { Scissors, Settings } from "lucide-react";
 import { Button } from "@starter/ui/components/button";
 
 import { ElapsedClock } from "../../components/progress-text";
+import { useShortcut } from "../../components/shortcut-kbd";
 import type { EngineState } from "../../lib/types";
 import type { SurfaceId } from "../../prototype/surfaces";
 import { Tip } from "./parts";
@@ -17,6 +18,7 @@ import { Tip } from "./parts";
  * WHERE: main window, top.
  */
 export function MainTitleBar({ e, navigate }: { e: EngineState; navigate: (id: SurfaceId) => void }) {
+  const settingsKeys = useShortcut("settings");
   const st = e.status;
   const hasRecording = e.recordings.length > 0;
   return (
@@ -53,20 +55,22 @@ export function MainTitleBar({ e, navigate }: { e: EngineState; navigate: (id: S
       </div>
 
       <div className="pointer-events-auto ml-auto flex items-center gap-0.5 pr-3">
-        <Tip label={hasRecording ? "Quick trim the last recording" : "No recordings to trim yet"} side="bottom">
-          <span>
-            <Button
-              variant="ghost"
-              size="icon-sm"
-              aria-label="Quick trim last recording"
-              disabled={!hasRecording}
-              onClick={() => navigate("trim")}
-            >
-              <Scissors />
-            </Button>
-          </span>
-        </Tip>
-        <Tip label="Settings: output, codec, audio, shortcuts (⌘,)" side="bottom">
+        {e.capabilities.quickTrim && (
+          <Tip label={hasRecording ? "Quick trim the last recording" : "No recordings to trim yet"} side="bottom">
+            <span>
+              <Button
+                variant="ghost"
+                size="icon-sm"
+                aria-label="Quick trim last recording"
+                disabled={!hasRecording}
+                onClick={() => navigate("trim")}
+              >
+                <Scissors />
+              </Button>
+            </span>
+          </Tip>
+        )}
+        <Tip label={`Settings: output, codec, audio, shortcuts (${settingsKeys})`} side="bottom">
           <Button variant="ghost" size="icon-sm" aria-label="Settings" onClick={() => navigate("settings")}>
             <Settings />
           </Button>
