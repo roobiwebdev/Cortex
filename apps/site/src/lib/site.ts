@@ -89,6 +89,9 @@ export type LinuxArch = keyof typeof DOWNLOADS.linux;
 /** The Mac DMG: the fallback for `/download` and the prerendered hero button. */
 export const DOWNLOAD_URL = DOWNLOADS.mac.universal.dmg.url;
 
+/** False until the Linux arm64 build ships: arm64 visitors see "coming soon" instead of a dead link. */
+export const LINUX_ARM64_READY = false;
+
 /** Shown as "arm64" or "x86_64" next to Linux downloads. */
 export const LINUX_ARCH_LABEL: Record<LinuxArch, string> = { x86_64: "x86_64", aarch64: "arm64" };
 
