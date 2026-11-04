@@ -137,9 +137,11 @@ fn records_screen_camera_and_three_audio_tracks_with_a_pause() {
         "GStreamer encoders found"
     );
     r.engine.start(&settings).expect("start");
+    let started = Instant::now();
     assert_eq!(r.engine.state().status, EngineStatus::Recording);
     std::thread::sleep(Duration::from_millis(2000));
     r.engine.pause().expect("pause");
+    let paused = Instant::now();
     assert_eq!(r.engine.state().status, EngineStatus::Paused);
     let at_pause = r.engine.state().elapsed_secs;
     std::thread::sleep(Duration::from_millis(1500));
@@ -149,9 +151,18 @@ fn records_screen_camera_and_three_audio_tracks_with_a_pause() {
         "clock frozen while paused: {at_pause} -> {during}"
     );
     r.engine.resume().expect("resume");
+    let resumed = Instant::now();
     std::thread::sleep(Duration::from_millis(2000));
     r.engine.stop().expect("stop");
+    let stopped = Instant::now();
     let rec = wait_finished(&r.events, Duration::from_secs(30));
+    // What this thread did, to tell a slow test from a wrong engine.
+    println!(
+        "recorded {:.3} s, paused {:.3} s, recorded {:.3} s",
+        (paused - started).as_secs_f64(),
+        (resumed - paused).as_secs_f64(),
+        (stopped - resumed).as_secs_f64()
+    );
     println!("recording: {rec:?}");
     assert_eq!((rec.width, rec.height), (1280, 720));
     assert_eq!(rec.audio_tracks, 3);
@@ -177,6 +188,12 @@ fn records_screen_camera_and_three_audio_tracks_with_a_pause() {
     assert!(
         (3.4..=4.8).contains(&info.duration_secs),
         "file duration {}",
+        info.duration_secs
+    );
+    assert!(
+        (rec.duration_secs - info.duration_secs).abs() < 0.1,
+        "reported {} s, the file holds {} s",
+        rec.duration_secs,
         info.duration_secs
     );
     assert!(!info.hevc);

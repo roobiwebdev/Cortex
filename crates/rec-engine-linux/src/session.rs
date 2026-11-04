@@ -42,6 +42,8 @@ struct Shared {
     eos_cv: Condvar,
     /// Frames that passed the video gate (the file's frames).
     video_frames: AtomicU64,
+    /// Frames that reached the video gate, kept or not: the pipeline is running.
+    video_arrived: AtomicU64,
 }
 
 /// The overlay's shape, applied to every camera frame.
@@ -123,6 +125,7 @@ fn apply_mask(data: &mut [u8], stride: usize, m: &MaskCache) {
 #[derive(Clone, Copy, Debug, Default, PartialEq)]
 pub struct Stats {
     pub video_frames: u64,
+    /// The file's length: where the last kept buffer ends, pauses cut.
     pub recorded_secs: f64,
 }
 
@@ -280,12 +283,14 @@ impl Session {
                 session.stop_now();
                 return Err(e);
             }
-            if session.shared.video_frames.load(Ordering::Relaxed) > 0 {
+            if session.shared.video_arrived.load(Ordering::Relaxed) > 0 {
+                session.begin();
                 return Ok(session);
             }
             std::thread::sleep(Duration::from_millis(20));
         }
         // No frame yet but no error: a still screen may send nothing; keep recording.
+        session.begin();
         Ok(session)
     }
 
@@ -302,6 +307,13 @@ impl Session {
         lock(&self.shared.error).clone()
     }
 
+    /// The recording starts now, when the engine reports it: what the sources captured
+    /// while the pipeline warmed up is dropped, on every track alike.
+    fn begin(&self) {
+        let now = running_time(&self.pipeline);
+        lock(&self.timeline).begin(now);
+    }
+
     pub fn has_frames(&self) -> bool {
         lock(&self.timeline).has_started()
     }
@@ -310,7 +322,7 @@ impl Session {
         self.shared.video_frames.load(Ordering::Relaxed)
     }
 
-    /// Recorded seconds without the pauses.
+    /// Recorded seconds without the pauses: the live clock.
     pub fn recorded_secs(&self) -> f64 {
         let now = running_time(&self.pipeline);
         lock(&self.timeline).recorded_ns(now) as f64 / 1e9
@@ -359,13 +371,10 @@ impl Session {
 
     /// Stop and finalize the file: end the timeline now, let every branch pass that time,
     /// then EOS through every branch so the muxer writes its index, and shut down. A timeout
-    /// still leaves a playable fragmented file.
+    /// still leaves a playable fragmented file. The length reported is the file's: where the
+    /// last kept buffer ends.
     pub fn finish(self) -> Result<Stats, String> {
-        let (end, secs) = {
-            let mut tl = lock(&self.timeline);
-            let end = tl.end(running_time(&self.pipeline));
-            (end, tl.recorded_ns(end) as f64 / 1e9)
-        };
+        let end = lock(&self.timeline).end(running_time(&self.pipeline));
         // EOS stops the sources at once. On a slow machine a branch can still be working
         // on frames from before the stop; wait for it so every track ends at the stop.
         let deadline = Instant::now() + CATCH_UP;
@@ -394,6 +403,8 @@ impl Session {
         let err = self.error();
         let frames = self.video_frames();
         self.stop_now();
+        // After EOS (or the pipeline stopped) no gate passes anything more.
+        let secs = lock(&self.timeline).kept_ns() as f64 / 1e9;
         match (eos, err) {
             (true, _) | (false, None) if frames > 0 => Ok(Stats {
                 video_frames: frames,
@@ -513,17 +524,15 @@ fn gate_probe(
         .unwrap_or(pts)
         .nseconds();
     seen.fetch_max(rt, Ordering::Relaxed);
+    if let Some(s) = counter {
+        s.video_arrived.fetch_add(1, Ordering::Relaxed);
+    }
     if let Some(qos) = qos {
         report_late(pad, qos, rt);
     }
-    let mapped = {
-        let mut tl = lock(timeline);
-        let m = tl.map(rt);
-        if m.is_some() {
-            tl.mark_origin(rt);
-        }
-        m
-    };
+    // Kept or dropped by when it was captured, however late it arrives.
+    let duration = buffer.duration().map_or(0, |d| d.nseconds());
+    let mapped = lock(timeline).keep(rt, duration);
     let Some(mapped) = mapped else {
         return gst::PadProbeReturn::Drop;
     };
