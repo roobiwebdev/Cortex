@@ -196,7 +196,7 @@
   "plugins": {
     "updater": {
       "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDkzQjVCQjZBQ0JGMzdEQzUKUldURmZmUExhcnUxazhzdThad1dSalF6eVgxTVFud1FwbnZhMUVidG9SbFIxeEd0OWFRSGJDOWQK",
-      "endpoints": ["https://cortex.example/updates/latest.json"],
+      "endpoints": ["https://github.com/roobiwebdev/cortex-releases/releases/latest/download/latest.json"],
       "requireSignedVersion": true
     }
   }

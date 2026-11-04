@@ -1,19 +1,25 @@
 #!/usr/bin/env bash
-# Builds a Cortex release for macOS into dist/desktop/<version>/. It never uploads anything.
+# Builds the macOS part of a Cortex release into dist/release/<version>/macos/. It never
+# uploads anything. scripts/release/assemble.sh adds the Windows and Linux files and writes
+# the multi-platform feed; see docs/engineering/releasing.md.
 #
-#   scripts/desktop/release-macos.sh [--notes TEXT | --notes-file FILE] [--skip-clean] [--local-test-feed]
+#   scripts/desktop/release-macos.sh [--notes TEXT | --notes-file FILE] [--skip-clean]
+#                                    [--arm64-only] [--local-test-feed]
 #
-# Steps: clean release build, code signing (hardened runtime), DMG, updater bundle
-# (.app.tar.gz + minisign .sig), latest.json update manifest, SHA-256 sums. With Apple
-# notarization credentials in the environment it also notarizes and staples the app (via
-# the Tauri bundler) and the DMG. See docs/engineering/desktop.md, "Releasing".
+# Steps: clean universal (Apple Silicon + Intel) release build, code signing (hardened
+# runtime), DMG, updater bundle (.app.tar.gz + minisign .sig), a macOS-only latest.json (for
+# the local updater test), SHA-256 sums. Files use the stable release names
+# (Cortex-macOS.dmg, Cortex-macOS.app.tar.gz). With Apple notarization credentials in the
+# environment it also notarizes and staples the app (via the Tauri bundler) and the DMG.
+# --arm64-only builds for Apple Silicon alone (faster, half the disk).
 #
 # Environment (all optional):
 #   CORTEX_SIGNING_IDENTITY   code-signing identity (default "Cortex Dev Signing"; a
 #                             "Developer ID Application: ..." identity once the Apple
 #                             membership exists)
-#   CORTEX_UPDATE_BASE_URL    where the release folders will be served from; latest.json
-#                             points at <base>/<version>/<bundle>. TODO: the real public URL.
+#   CORTEX_UPDATE_BASE_URL    where release assets are downloaded from; latest.json points at
+#                             <base>/v<version>/<asset> (default: the GitHub releases of
+#                             roobiwebdev/cortex-releases)
 #   CORTEX_UPDATER_KEY        updater private key (default ~/.config/cortex/updater.key)
 #   TAURI_SIGNING_PRIVATE_KEY_PASSWORD   its password (default: Keychain item
 #                             "cortex-updater-key")
@@ -24,7 +30,7 @@
 #
 # --local-test-feed builds a copy that accepts a plain-HTTP update feed (for the local
 # updater test with CORTEX_DEBUG_UPDATE_URL). Never publish it; it goes to
-# dist/desktop/<version>-localtest/.
+# dist/release/<version>-localtest/macos/.
 set -euo pipefail
 
 die() {
@@ -41,13 +47,15 @@ cd "$root"
 notes=""
 clean=1
 local_feed=0
+universal=1
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --notes) notes="${2:?--notes needs text}"; shift 2 ;;
     --notes-file) notes="$(cat "${2:?--notes-file needs a path}")"; shift 2 ;;
     --skip-clean) clean=0; shift ;;
     --local-test-feed) local_feed=1; shift ;;
-    -h | --help) sed -n '2,27p' "$0"; exit 0 ;;
+    --arm64-only) universal=0; shift ;;
+    -h | --help) sed -n '2,33p' "$0"; exit 0 ;;
     *) die "unknown option $1 (see --help)" ;;
   esac
 done
@@ -60,12 +68,22 @@ cargo_version="$(sed -n 's/^version = "\(.*\)"/\1/p' apps/desktop/src-tauri/Carg
   die "versions differ (tauri.conf.json $version, package.json $pkg_version, Cargo.toml $cargo_version); run scripts/desktop/bump-version.sh"
 [[ -n "$notes" ]] || notes="Cortex $version"
 
-case "$(uname -m)" in
-  arm64) arch=aarch64 ;;
-  x86_64) arch=x86_64 ;;
-  *) die "unsupported architecture $(uname -m)" ;;
-esac
-platform="darwin-$arch"
+# A universal app serves both darwin-aarch64 and darwin-x86_64 in the feed.
+if [[ $universal == 1 ]]; then
+  target=universal-apple-darwin
+  arches=(aarch64 x86_64)
+  rust_targets=(aarch64-apple-darwin x86_64-apple-darwin)
+  installed_targets="$(rustup target list --installed)"
+  for t in "${rust_targets[@]}"; do
+    grep -qx "$t" <<<"$installed_targets" || die "Rust target $t missing: rustup target add $t"
+  done
+else
+  [[ "$(uname -m)" == arm64 ]] || die "--arm64-only needs an Apple Silicon Mac"
+  target=aarch64-apple-darwin
+  arches=(aarch64)
+  rust_targets=(aarch64-apple-darwin)
+fi
+platform="darwin-$(IFS=+; echo "${arches[*]}")"
 
 # --- Signing: code signing identity and updater key ---
 identity="${CORTEX_SIGNING_IDENTITY:-Cortex Dev Signing}"
@@ -103,19 +121,18 @@ if [[ $notarize == 1 ]]; then
   [[ $local_feed == 0 ]] || die "--local-test-feed builds are never notarized"
 fi
 
-# TODO(hosting): replace the placeholder with the public URL the release folders are served from.
-base_url="${CORTEX_UPDATE_BASE_URL:-https://cortex.example/updates}"
-base_url="${base_url%/}"
+base_url="${CORTEX_UPDATE_BASE_URL:-https://github.com/roobiwebdev/cortex-releases/releases/download}"
+base_url="${base_url%/}/v$version"
 
-out="dist/desktop/$version"
+out="dist/release/$version/macos"
 build_config='{"bundle":{"createUpdaterArtifacts":true}}'
 if [[ $local_feed == 1 ]]; then
-  out="dist/desktop/$version-localtest"
+  out="dist/release/$version-localtest/macos"
   build_config='{"bundle":{"createUpdaterArtifacts":true},"plugins":{"updater":{"dangerousInsecureTransportProtocol":true}}}'
   echo "release: --local-test-feed: this build accepts plain-HTTP update feeds. Never publish it."
 fi
 
-bundle_dir="target/release/bundle"
+bundle_dir="target/$target/release/bundle"
 app="$bundle_dir/macos/Cortex.app"
 lsregister=/System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister
 
@@ -125,7 +142,7 @@ step "Cortex $version ($platform), signed by \"$identity\", notarize: $([[ $nota
 if [[ $clean == 1 ]]; then
   step "Cleaning the previous build"
   rm -rf apps/desktop/dist "$bundle_dir"
-  cargo clean --release -p cortex-desktop
+  for t in "${rust_targets[@]}"; do cargo clean --release -p cortex-desktop --target "$t"; done
 fi
 
 step "Building, signing and bundling (app and updater bundle)"
@@ -133,7 +150,7 @@ step "Building, signing and bundling (app and updater bundle)"
   export APPLE_SIGNING_IDENTITY="$identity"
   # Without complete credentials the bundler must not try to notarize.
   if [[ $notarize == 0 ]]; then unset "${apple_vars[@]}"; fi
-  pnpm --filter desktop tauri build --bundles app --config "$build_config"
+  pnpm --filter desktop tauri build --target "$target" --bundles app --config "$build_config"
 )
 
 tarball="$bundle_dir/macos/Cortex.app.tar.gz"
@@ -154,6 +171,12 @@ if [[ "$identity" == "Cortex Dev Signing" ]]; then
 fi
 sig_info="$(codesign -dv "$app" 2>&1)"
 grep -q 'flags=0x10000(runtime)' <<<"$sig_info" || die "hardened runtime is off"
+binary_arches="$(lipo -archs "$app/Contents/MacOS/cortex-desktop")"
+echo "architectures: $binary_arches"
+for a in "${arches[@]}"; do
+  [[ "$a" == aarch64 ]] && a=arm64
+  grep -qw "$a" <<<"$binary_arches" || die "the app binary has no $a slice"
+done
 
 # The updater refuses bundles whose signature does not name this version (requireSignedVersion).
 sig_text="$(base64 -d <"$tarball.sig")"
@@ -172,7 +195,7 @@ if [[ ! -x "$venv/bin/dmgbuild" ]]; then
   "$venv/bin/pip" install --quiet "dmgbuild==1.6.7"
 fi
 mkdir -p "$bundle_dir/dmg"
-dmg="$bundle_dir/dmg/Cortex_${version}_${arch}.dmg"
+dmg="$bundle_dir/dmg/Cortex-macOS.dmg"
 rm -f "$dmg"
 dmg_dir="apps/desktop/src-tauri/dmg"
 "$venv/bin/dmgbuild" -s "$dmg_dir/dmgbuild-settings.py" -D app="$app" -D background="$dmg_dir/background.png" \
@@ -214,40 +237,41 @@ codesign --verify --deep --strict "$copy/Cortex.app"
 cleanup
 trap - EXIT
 
-# --- 5. Release folder: DMG, updater bundle, manifest, sums ---
+# --- 5. Release folder: DMG, updater bundle, manifest, sums (stable asset names) ---
 step "Writing $out"
 rm -rf "$out"
 mkdir -p "$out"
-bundle_name="Cortex_${version}_${arch}.app.tar.gz"
-cp "$dmg" "$out/Cortex_${version}_${arch}.dmg"
+bundle_name="Cortex-macOS.app.tar.gz"
+cp "$dmg" "$out/Cortex-macOS.dmg"
 cp "$tarball" "$out/$bundle_name"
 cp "$tarball.sig" "$out/$bundle_name.sig"
 
-VERSION="$version" NOTES="$notes" PLATFORM="$platform" URL="$base_url/$version/$bundle_name" \
-  SIG_FILE="$out/$bundle_name.sig" node -e '
-    const fs = require("node:fs");
-    const e = process.env;
-    const manifest = {
-      version: e.VERSION,
-      notes: e.NOTES,
-      pub_date: new Date().toISOString().replace(/\.\d{3}Z$/, "Z"),
-      platforms: { [e.PLATFORM]: { signature: fs.readFileSync(e.SIG_FILE, "utf8").trim(), url: e.URL } },
-    };
-    fs.writeFileSync(process.argv[1], JSON.stringify(manifest, null, 2) + "\n");
-  ' "$out/latest.json"
+# The bundler named the tarball Cortex.app.tar.gz when it signed it; the signature covers the
+# bytes and the version, not the name. Check it like the app will.
+notes_file="$(mktemp -t cortex-notes)"
+printf '%s\n' "$notes" >"$notes_file"
+manifest_args=(--dir "$out" --version "$version" --base-url "$base_url" --notes-file "$notes_file"
+  --darwin-arches "$(IFS=,; echo "${arches[*]}")" --require macos)
+node scripts/release/updater-manifest.mjs write "${manifest_args[@]}"
+rm -f "$notes_file"
+check_args=(--dir "$out" --version "$version")
+[[ $local_feed == 1 || "$base_url" == http:* ]] && check_args+=(--allow-http 1)
+node scripts/release/updater-manifest.mjs check "${check_args[@]}"
 
 {
   echo "Cortex $version ($platform)"
+  echo "arches:      ${arches[*]}"
   echo "commit:      $(git rev-parse HEAD)$([[ -n "$(git status --porcelain)" ]] && echo ' (uncommitted changes)')"
   echo "built:       $(date -u +%Y-%m-%dT%H:%M:%SZ)"
   echo "signed by:   $identity"
   echo "requirement: $requirement"
   echo "notarized:   $([[ $notarize == 1 ]] && echo yes || echo no)"
-  echo "update feed: latest.json -> $base_url/$version/$bundle_name"
+  echo "update feed: latest.json -> $base_url/$bundle_name"
   [[ $local_feed == 1 ]] && echo "LOCAL TEST BUILD: accepts plain-HTTP feeds. Do not publish."
 } >"$out/BUILD.txt"
 
 (cd "$out" && shasum -a 256 ./*.dmg ./*.tar.gz ./*.sig latest.json | sed 's#  \./#  #' >SHA256SUMS)
+echo "$version" >"$out/VERSION"
 
 # Launch Services must not pick the build folder's app over the installed one.
 "$lsregister" -u "$PWD/$app" 2>/dev/null || true
@@ -260,7 +284,5 @@ if [[ $local_feed == 1 ]]; then
 fi
 cat <<EOF
 
-To publish (by hand, once hosting exists):
-  - put $(basename "$out")/ at $base_url/$version/ (the DMG and the .app.tar.gz),
-  - then replace $base_url/latest.json with $out/latest.json. Installed apps update from it.
+Next: scripts/release/assemble.sh $version   (adds Windows and Linux, writes the full feed)
 EOF
