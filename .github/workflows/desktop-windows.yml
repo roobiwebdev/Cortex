@@ -1,15 +1,24 @@
-# Windows checks for the desktop recorder (crates/rec-engine-windows, apps/desktop).
-# See docs/engineering/platforms.md.
+# Windows checks and installers for the desktop recorder (crates/rec-engine-windows,
+# apps/desktop). See docs/engineering/platforms.md and docs/engineering/releasing.md.
 #
-# Hosted Windows runners have a GPU-less VM: Windows.Graphics.Capture, the hardware
-# encoders and audio devices may be missing, so this job proves the build, the unit tests,
-# clippy and the installers. Real capture is checked on a Windows PC with the test script
-# in docs/engineering/platforms.md.
+# Two ways in:
+#   - push / pull_request: CI. Proves fmt, clippy, the unit tests and the NSIS + MSI build.
+#   - workflow_call from release.yml: the same checks, then the release installers under the
+#     stable asset names, as an artifact the assemble script downloads.
+#
+# Hosted Windows runners have a GPU-less VM: Windows.Graphics.Capture, the hardware encoders
+# and audio devices may be missing. Real capture is checked on a Windows PC with
+# docs/engineering/windows-testing.md.
+#
+# Installers are not code-signed (no certificate yet, see releasing.md) and carry no updater
+# signature: the updater key stays on the release Mac, and scripts/release/assemble.sh signs
+# the files after downloading them.
 name: Desktop (Windows)
 
 on:
   push:
-    branches: [main]
+    # agent/desktop-recorder-4c1e9 is the default branch of roobiwebdev/cortex.
+    branches: [main, agent/desktop-recorder-4c1e9]
     paths:
       - "crates/rec-core/**"
       - "crates/rec-engine-windows/**"
@@ -18,6 +27,7 @@ on:
       - "Cargo.toml"
       - "Cargo.lock"
       - "rust-toolchain.toml"
+      - "scripts/release/stage.sh"
       - ".github/workflows/desktop-windows.yml"
   pull_request:
     paths:
@@ -28,27 +38,46 @@ on:
       - "Cargo.toml"
       - "Cargo.lock"
       - "rust-toolchain.toml"
+      - "scripts/release/stage.sh"
       - ".github/workflows/desktop-windows.yml"
+  workflow_call:
+    inputs:
+      version:
+        description: Release version; must match tauri.conf.json
+        type: string
+        required: true
 
-concurrency:
-  group: desktop-windows-${{ github.ref }}
-  cancel-in-progress: true
+permissions:
+  contents: read
 
 jobs:
   windows:
+    name: windows (windows-x64)
     runs-on: windows-latest
-    timeout-minutes: 60
+    timeout-minutes: 75
+    concurrency:
+      group: desktop-windows-${{ github.workflow }}-${{ github.ref }}
+      cancel-in-progress: ${{ inputs.version == '' || inputs.version == null }}
     defaults:
       run:
         shell: pwsh
+    env:
+      VERSION: ${{ inputs.version }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
-      - uses: pnpm/action-setup@v4
-      - uses: actions/setup-node@v4
+      - uses: pnpm/action-setup@73e46992e05b19abd31f2f3c20e0e7370d762115 # v6.1.1
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: 24
           cache: pnpm
+
+      - name: Check the release version
+        if: env.VERSION != ''
+        shell: bash
+        run: |
+          conf="$(node -p 'require("./apps/desktop/src-tauri/tauri.conf.json").version')"
+          [ "$conf" = "$VERSION" ] || { echo "::error::tauri.conf.json is $conf, the release is $VERSION (run scripts/desktop/bump-version.sh)"; exit 1; }
 
       # rust-toolchain.toml pins the channel; rustup adds the host target
       # (x86_64-pc-windows-msvc) on its own.
@@ -58,12 +87,17 @@ jobs:
           rustc --version
           cargo --version
 
-      - uses: Swatinem/rust-cache@v2
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
 
       # rec-engine-macos and rec-cli are macOS-only workspace members, so every cargo
       # command names the crates that build on Windows.
       - name: cargo fmt
         run: cargo fmt --check -p rec-core -p rec-engine-windows -p cortex-desktop
+
+      - run: pnpm install --frozen-lockfile
+
+      # tauri::generate_context! needs the built web assets.
+      - run: pnpm --filter desktop build
 
       - name: cargo clippy
         run: cargo clippy --locked --no-deps -p rec-core -p rec-engine-windows -p cortex-desktop --all-targets -- -D warnings
@@ -71,21 +105,22 @@ jobs:
       - name: cargo test
         run: cargo test --locked -p rec-core -p rec-engine-windows -p cortex-desktop
 
-      - run: pnpm install --frozen-lockfile
-
       - run: pnpm --filter desktop check-types
 
       - run: pnpm --filter desktop test
 
-      # NSIS and MSI from tauri.windows.conf.json. Unsigned: no certificate is configured.
+      # NSIS and MSI from tauri.windows.conf.json. The MSI (WiX) needs a numeric-only
+      # pre-release suffix, e.g. 0.2.0-1, not 0.2.0-beta.1.
       - name: Installers
         run: pnpm --filter desktop tauri build --bundles nsis,msi
 
-      - uses: actions/upload-artifact@v4
+      - name: Stage under the release names
+        shell: bash
+        run: bash scripts/release/stage.sh windows-x64 target/release/bundle dist/stage "${VERSION:-*}"
+
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
-          name: cortex-windows-installers
-          path: |
-            target/release/bundle/nsis/*.exe
-            target/release/bundle/msi/*.msi
+          name: cortex-windows-x64
+          path: dist/stage/*
           if-no-files-found: error
           retention-days: 7
