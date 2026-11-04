@@ -104,7 +104,7 @@ export const INSTALL_COMMANDS: Record<DownloadOs, string> = {
 };
 
 /** Which Linux builds are published. An unpublished one shows "coming soon" instead of a dead link. */
-export const LINUX_READY: Record<LinuxArch, boolean> = { x86_64: false, aarch64: false };
+export const LINUX_READY: Record<LinuxArch, boolean> = { x86_64: true, aarch64: true };
 
 /** Shown as "arm64" or "x86_64" next to Linux downloads. */
 export const LINUX_ARCH_LABEL: Record<LinuxArch, string> = { x86_64: "x86_64", aarch64: "arm64" };
@@ -127,7 +127,7 @@ export const REQUIREMENTS: Record<DownloadOs, readonly string[]> = {
     "WebKitGTK 4.1 and GStreamer (the .deb and .rpm install them)",
   ],
 };
-export const LINUX_DISTROS = "Ubuntu 24.04, Fedora 40, Debian 13 or newer";
+export const LINUX_DISTROS = "Ubuntu 24.04, Fedora 40, Debian 13 or newer, and Arch-based systems such as Omarchy";
 
 /**
  * What each platform can do, from each engine's PlatformCapabilities

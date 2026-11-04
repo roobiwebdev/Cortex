@@ -225,6 +225,27 @@ has_fuse2() {
   return 1
 }
 
+# True on Arch and its derivatives (Omarchy, EndeavourOS, Manjaro, CachyOS...).
+is_arch_family() {
+  [ -r /etc/os-release ] || return 1
+  osid=$(sed -n 's/^ID=//p' /etc/os-release | sed 's/"//g')
+  oslike=$(sed -n 's/^ID_LIKE=//p' /etc/os-release | sed 's/"//g')
+  case " $osid $oslike " in
+    *" arch "*) return 0 ;;
+  esac
+  return 1
+}
+
+# Arch installs no GStreamer plugins or screen-sharing portal by default; Cortex needs both.
+arch_hint() {
+  is_arch_family || return 0
+  say ""
+  say "Arch-based system detected. If recording fails, install what Cortex uses:"
+  say "    sudo pacman -S --needed fuse2 gst-plugins-base gst-plugins-good gst-plugins-bad gst-plugins-ugly gst-libav gst-plugin-pipewire xdg-desktop-portal"
+  say "  plus your desktop's portal backend (Hyprland: xdg-desktop-portal-hyprland,"
+  say "  GNOME: xdg-desktop-portal-gnome, KDE: xdg-desktop-portal-kde)."
+}
+
 fuse_hint() {
   id=""
   version=""
@@ -246,6 +267,11 @@ fuse_hint() {
       ;;
     fedora | rhel | centos | rocky | almalinux) say "    sudo dnf install fuse-libs" ;;
     *)
+      if is_arch_family; then
+        say "    sudo pacman -S --needed fuse2"
+        say "    Without it, start Cortex with: $1 --appimage-extract-and-run"
+        return 0
+      fi
       say "    Ubuntu 22.04 and older:  sudo apt install libfuse2"
       say "    Ubuntu 24.04 and newer:  sudo apt install libfuse2t64"
       say "    Fedora:                  sudo dnf install fuse-libs"
@@ -357,6 +383,7 @@ EOF
     fuse_ok=0
     fuse_hint "$target"
   fi
+  arch_hint
 
   case ":${PATH}:" in
     *":$bin_dir:"*) ;;
