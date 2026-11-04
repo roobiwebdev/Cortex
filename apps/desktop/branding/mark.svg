@@ -1,0 +1,5 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="212 212 600 600">
+  <!-- Cortex mark: the "C" ring and record dot without the tile, for the site and the app UI. -->
+  <path d="M664.6 342.6A228 228 0 1 0 664.6 681.4" fill="none" stroke="#2794a5" stroke-width="128" stroke-linecap="round"/>
+  <circle cx="512" cy="512" r="92" fill="#e2383e"/>
+</svg>

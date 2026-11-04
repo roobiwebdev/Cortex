@@ -1,0 +1,27 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024">
+  <!-- Alternative concept C: a camera aperture ring with one blade missing, so it reads as a "C".
+       To switch: copy this over ../icon.svg, adapt icon-full-bleed.svg, mark.svg and tray-template.svg,
+       then run ../render.sh. -->
+  <defs>
+  <linearGradient id="bg" x1="0" y1="0" x2="0" y2="1">
+    <stop offset="0" stop-color="#263039"/><stop offset="1" stop-color="#10151a"/>
+  </linearGradient>
+  <linearGradient id="teal" x1="0" y1="0" x2="0" y2="1">
+    <stop offset="0" stop-color="#61d8e5"/><stop offset="1" stop-color="#28a0b8"/>
+  </linearGradient>
+  <radialGradient id="red" cx="0.4" cy="0.35" r="0.75">
+    <stop offset="0" stop-color="#ff7175"/><stop offset="1" stop-color="#e2383e"/>
+  </radialGradient>
+  <radialGradient id="glow" cx="0.5" cy="0.45" r="0.6">
+    <stop offset="0" stop-color="#1fb5cc" stop-opacity="0.22"/><stop offset="1" stop-color="#1fb5cc" stop-opacity="0"/>
+  </radialGradient>
+  </defs>
+  <rect x="100" y="100" width="824" height="824" rx="185" fill="url(#bg)"/>
+  <rect x="100" y="100" width="824" height="824" rx="185" fill="url(#glow)"/>
+  <rect x="102" y="102" width="820" height="820" rx="183" fill="none" stroke="#fff" stroke-opacity="0.08" stroke-width="4"/>
+  <mask id="cm" maskUnits="userSpaceOnUse" x="0" y="0" width="1024" height="1024"><rect width="1024" height="1024" fill="#fff"/>
+    <path d="M591.0 648.8L227.3 858.8M433.0 648.8L69.3 438.8M354.0 512.0L354.0 92.0M433.0 375.2L796.7 165.2M591.0 375.2L954.7 585.2" stroke="#000" stroke-width="26"/>
+  </mask>
+  <path d="M697.3 377.4A229.0 229.0 0 1 0 697.3 646.6" fill="none" stroke="url(#teal)" stroke-width="142" mask="url(#cm)"/>
+  <circle cx="512" cy="512" r="100" fill="url(#red)"/>
+</svg>
