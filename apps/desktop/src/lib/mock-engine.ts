@@ -6,6 +6,7 @@ import { harnessPlatform, subscribePlatform } from "./platform";
 import { PLATFORM_WORDS } from "./platform-words";
 import { errorToast, pushToastTo, replayToast, savedToast } from "./toasts";
 import type {
+  ExternalLink,
   EngineState,
   Levels,
   Permission,
@@ -481,6 +482,7 @@ export const engine = {
   // Native-only actions; the prototype has nothing to open.
   revealRecording(_id: string) {},
   openRecordingsFolder() {},
+  openLink(_link: ExternalLink) {},
   openSystemSettings(_p: Permission) {},
   toggleLive() {
     set({ live: !state.live });

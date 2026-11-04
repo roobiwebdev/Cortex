@@ -382,6 +382,13 @@ fn open_system_settings(permission: Permission) -> Result<(), EngineError> {
     shell::open_system_settings(permission)
 }
 
+/// Open one of the app's fixed web links in the default browser.
+#[tauri::command]
+#[specta::specta]
+fn open_link(link: shell::ExternalLink) -> Result<(), EngineError> {
+    shell::open_link(link)
+}
+
 /// Show a recording in Finder (only files inside the recordings folder).
 #[tauri::command]
 #[specta::specta]
@@ -471,6 +478,7 @@ pub fn builder() -> tauri_specta::Builder<tauri::Wry> {
             open_system_settings,
             reveal_recording,
             open_recordings_folder,
+            open_link,
             set_stream_key,
             remove_stream_key,
             import_rec_settings,

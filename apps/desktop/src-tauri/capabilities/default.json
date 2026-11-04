@@ -24,6 +24,7 @@
     "allow-open-system-settings",
     "allow-reveal-recording",
     "allow-open-recordings-folder",
+    "allow-open-link",
     "allow-set-stream-key",
     "allow-remove-stream-key",
     "allow-import-rec-settings",

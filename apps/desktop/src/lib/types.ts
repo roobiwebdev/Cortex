@@ -24,6 +24,7 @@ export type {
   Display,
   EngineError,
   EngineStatus,
+  ExternalLink,
   InputDevice,
   Levels,
   MicBackend,

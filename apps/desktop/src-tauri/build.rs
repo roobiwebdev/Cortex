@@ -22,6 +22,7 @@ const COMMANDS: &[&str] = &[
     "open_system_settings",
     "reveal_recording",
     "open_recordings_folder",
+    "open_link",
     "set_stream_key",
     "remove_stream_key",
     "import_rec_settings",

@@ -144,6 +144,9 @@ impl SystemIntegration for System {
     fn open_privacy_settings(&self, permission: Permission) -> Result<(), EngineError> {
         shell::open_uri(privacy_uri(permission)).map_err(EngineError::failed)
     }
+    fn open_url(&self, url: &str) -> Result<(), EngineError> {
+        shell::open_uri(url).map_err(EngineError::failed)
+    }
     fn app_icon(&self, _app_id: &str) -> Option<String> {
         // Not built yet: the app list shows names without icons.
         None
