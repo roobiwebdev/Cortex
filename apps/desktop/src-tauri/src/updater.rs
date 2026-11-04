@@ -471,6 +471,9 @@ pub fn relaunch_after_exit(app: &AppHandle) {
         eprintln!("cortex: not running from an app bundle; reopen Cortex to finish the update");
         return;
     };
+    // The new copy must not find this one still holding the single-instance lock (it is
+    // only released after this handler returns), or it would just focus us and quit.
+    tauri_plugin_single_instance::destroy(app);
     let mut cmd = std::process::Command::new("/usr/bin/open");
     cmd.arg("-n").arg(&bundle);
     for (k, v) in std::env::vars() {

@@ -21,6 +21,7 @@ Workspace crates are left out. Rec and apple-cryptokit-rs are credited in the ro
 | arboard | 3.6.1 | MIT OR Apache-2.0 |
 | arrayvec | 0.7.8 | MIT OR Apache-2.0 |
 | ash | 0.38.0+1.3.281 | MIT OR Apache-2.0 |
+| atomic-waker | 1.1.2 | Apache-2.0 OR MIT |
 | autocfg | 1.5.1 | Apache-2.0 OR MIT |
 | base16ct | 0.2.0 | Apache-2.0 OR MIT |
 | base64 | 0.21.7 | MIT OR Apache-2.0 |
@@ -125,6 +126,7 @@ Workspace crates are left out. Rec and apple-cryptokit-rs are credited in the ro
 | fax | 0.2.7 | MIT |
 | fdeflate | 0.3.7 | MIT OR Apache-2.0 |
 | fearless_simd | 0.4.1 | Apache-2.0 OR MIT |
+| filetime | 0.2.29 | MIT/Apache-2.0 |
 | find-msvc-tools | 0.1.14 | MIT OR Apache-2.0 |
 | flagset | 0.4.7 | Apache-2.0 |
 | flate2 | 1.1.10 | MIT OR Apache-2.0 |
@@ -135,6 +137,13 @@ Workspace crates are left out. Rec and apple-cryptokit-rs are credited in the ro
 | foreign-types-macros | 0.2.4 | MIT/Apache-2.0 |
 | foreign-types-shared | 0.3.1 | MIT/Apache-2.0 |
 | form_urlencoded | 1.2.2 | MIT OR Apache-2.0 |
+| futures-channel | 0.3.34 | MIT OR Apache-2.0 |
+| futures-core | 0.3.34 | MIT OR Apache-2.0 |
+| futures-io | 0.3.34 | MIT OR Apache-2.0 |
+| futures-macro | 0.3.34 | MIT OR Apache-2.0 |
+| futures-sink | 0.3.34 | MIT OR Apache-2.0 |
+| futures-task | 0.3.34 | MIT OR Apache-2.0 |
+| futures-util | 0.3.34 | MIT OR Apache-2.0 |
 | generic-array | 0.14.9 | MIT |
 | getrandom | 0.3.4 | MIT OR Apache-2.0 |
 | getrandom | 0.4.3 | MIT OR Apache-2.0 |
@@ -152,7 +161,12 @@ Workspace crates are left out. Rec and apple-cryptokit-rs are credited in the ro
 | hex | 0.4.3 | MIT OR Apache-2.0 |
 | html5ever | 0.39.0 | MIT OR Apache-2.0 |
 | http | 1.5.0 | MIT OR Apache-2.0 |
+| http-body | 1.1.0 | MIT |
+| http-body-util | 0.1.5 | MIT |
 | httparse | 1.10.1 | MIT OR Apache-2.0 |
+| hyper | 1.12.0 | MIT |
+| hyper-tls | 0.6.0 | MIT/Apache-2.0 |
+| hyper-util | 0.1.21 | MIT |
 | iana-time-zone | 0.1.65 | MIT OR Apache-2.0 |
 | ico | 0.6.0 | MIT |
 | icu_collections | 2.3.0 | Unicode-3.0 |
@@ -170,6 +184,7 @@ Workspace crates are left out. Rec and apple-cryptokit-rs are credited in the ro
 | indexmap | 2.14.2 | Apache-2.0 OR MIT |
 | infer | 0.22.0 | MIT |
 | Inflector | 0.11.4 | BSD-2-Clause |
+| ipnet | 2.12.2 | MIT OR Apache-2.0 |
 | is | 0.11.1 | MIT OR Apache-2.0 |
 | is_terminal_polyfill | 1.70.2 | MIT OR Apache-2.0 |
 | itertools | 0.15.0 | MIT OR Apache-2.0 |
@@ -193,6 +208,7 @@ Workspace crates are left out. Rec and apple-cryptokit-rs are credited in the ro
 | markup5ever | 0.39.0 | MIT OR Apache-2.0 |
 | memchr | 2.8.3 | Unlicense OR MIT |
 | mime | 0.3.17 | MIT OR Apache-2.0 |
+| minisign-verify | 0.3.0 | MIT |
 | miniz_oxide | 0.8.9 | MIT OR Zlib OR Apache-2.0 |
 | miniz_oxide | 0.9.1 | MIT OR Zlib OR Apache-2.0 |
 | mio | 1.2.4 | MIT |
@@ -236,6 +252,7 @@ Workspace crates are left out. Rec and apple-cryptokit-rs are credited in the ro
 | objc2-metal | 0.2.2 | MIT |
 | objc2-metal | 0.3.2 | Zlib OR Apache-2.0 OR MIT |
 | objc2-metal-performance-shaders | 0.3.2 | Zlib OR Apache-2.0 OR MIT |
+| objc2-osa-kit | 0.3.2 | Zlib OR Apache-2.0 OR MIT |
 | objc2-quartz-core | 0.2.2 | MIT |
 | objc2-quartz-core | 0.3.2 | Zlib OR Apache-2.0 OR MIT |
 | objc2-screen-capture-kit | 0.3.2 | Zlib OR Apache-2.0 OR MIT |
@@ -245,6 +262,7 @@ Workspace crates are left out. Rec and apple-cryptokit-rs are credited in the ro
 | once_cell | 1.21.4 | MIT OR Apache-2.0 |
 | option-ext | 0.2.0 | MPL-2.0 |
 | ordered-float | 5.5.0 | MIT |
+| osakit | 0.3.1 | MIT OR Apache-2.0 |
 | parking_lot | 0.12.5 | MIT OR Apache-2.0 |
 | parking_lot_core | 0.9.12 | MIT OR Apache-2.0 |
 | paste | 1.0.15 | MIT OR Apache-2.0 |
@@ -287,6 +305,7 @@ Workspace crates are left out. Rec and apple-cryptokit-rs are credited in the ro
 | regex-automata | 0.4.18 | MIT OR Apache-2.0 |
 | regex-syntax | 0.8.11 | MIT OR Apache-2.0 |
 | renderdoc-sys | 1.1.0 | MIT OR Apache-2.0 |
+| reqwest | 0.13.5 | MIT OR Apache-2.0 |
 | rfd | 0.17.2 | MIT |
 | rustc_version | 0.4.1 | MIT OR Apache-2.0 |
 | rustc-hash | 1.1.0 | Apache-2.0/MIT |
@@ -348,12 +367,19 @@ Workspace crates are left out. Rec and apple-cryptokit-rs are credited in the ro
 | swift-rs | 1.0.9 | MIT OR Apache-2.0 |
 | syn | 2.0.119 | MIT OR Apache-2.0 |
 | syn | 3.0.7 | MIT OR Apache-2.0 |
+| sync_wrapper | 1.0.2 | Apache-2.0 |
 | synstructure | 0.14.0 | MIT |
+| system-configuration | 0.7.0 | MIT OR Apache-2.0 |
+| system-configuration-sys | 0.6.0 | MIT OR Apache-2.0 |
 | tao | 0.37.2 | Apache-2.0 |
+| tar | 0.4.46 | MIT OR Apache-2.0 |
 | tauri | 2.12.5 | Apache-2.0 OR MIT |
 | tauri-build | 2.7.4 | Apache-2.0 OR MIT |
 | tauri-codegen | 2.7.4 | Apache-2.0 OR MIT |
 | tauri-macros | 2.7.4 | Apache-2.0 OR MIT |
+| tauri-plugin | 2.7.2 | Apache-2.0 OR MIT |
+| tauri-plugin-single-instance | 2.5.5 | Apache-2.0 OR MIT |
+| tauri-plugin-updater | 2.14.1 | Apache-2.0 OR MIT |
 | tauri-runtime | 2.12.2 | Apache-2.0 OR MIT |
 | tauri-runtime-wry | 2.12.3 | Apache-2.0 OR MIT |
 | tauri-specta | 2.0.0-rc.26 | MIT |
@@ -372,14 +398,21 @@ Workspace crates are left out. Rec and apple-cryptokit-rs are credited in the ro
 | tinystr | 0.8.4 | Unicode-3.0 |
 | tinyvec | 1.13.3 | Zlib OR Apache-2.0 OR MIT |
 | tokio | 1.53.2 | MIT |
+| tokio-native-tls | 0.3.1 | MIT |
+| tokio-util | 0.7.20 | MIT |
 | toml | 1.1.8+spec-1.1.0 | MIT OR Apache-2.0 |
 | toml_datetime | 1.1.2+spec-1.1.0 | MIT OR Apache-2.0 |
 | toml_parser | 1.1.5+spec-1.1.0 | MIT OR Apache-2.0 |
 | toml_writer | 1.1.3+spec-1.1.0 | MIT OR Apache-2.0 |
+| tower | 0.5.3 | MIT |
+| tower-http | 0.6.11 | MIT |
+| tower-layer | 0.3.3 | MIT |
+| tower-service | 0.3.3 | MIT |
 | tracing | 0.1.44 | MIT |
 | tracing-attributes | 0.1.31 | MIT |
 | tracing-core | 0.1.36 | MIT |
 | tray-icon | 0.25.1 | MIT OR Apache-2.0 |
+| try-lock | 0.2.5 | MIT |
 | type-map | 0.5.1 | MIT/Apache-2.0 |
 | typeid | 1.0.3 | MIT OR Apache-2.0 |
 | typenum | 1.20.1 | MIT OR Apache-2.0 |
@@ -399,6 +432,7 @@ Workspace crates are left out. Rec and apple-cryptokit-rs are credited in the ro
 | vello_cpu | 0.1.0 | Apache-2.0 OR MIT |
 | version_check | 0.9.5 | MIT/Apache-2.0 |
 | walkdir | 2.5.0 | Unlicense/MIT |
+| want | 0.3.2 | MIT |
 | wayland-sys | 0.31.11 | MIT |
 | web_atoms | 0.2.6 | MIT OR Apache-2.0 |
 | web-time | 1.1.0 | MIT OR Apache-2.0 |
@@ -416,6 +450,7 @@ Workspace crates are left out. Rec and apple-cryptokit-rs are credited in the ro
 | writeable | 0.6.4 | Unicode-3.0 |
 | wry | 0.57.1 | Apache-2.0 OR MIT |
 | x509-cert | 0.2.5 | Apache-2.0 OR MIT |
+| xattr | 1.6.1 | MIT OR Apache-2.0 |
 | yoke | 0.8.3 | Unicode-3.0 |
 | yoke-derive | 0.8.4 | Unicode-3.0 |
 | zerocopy | 0.8.62 | BSD-2-Clause OR Apache-2.0 OR MIT |
@@ -423,6 +458,7 @@ Workspace crates are left out. Rec and apple-cryptokit-rs are credited in the ro
 | zerofrom | 0.1.8 | Unicode-3.0 |
 | zerofrom-derive | 0.1.8 | Unicode-3.0 |
 | zeroize | 1.9.1 | Apache-2.0 OR MIT |
+| zeroize_derive | 1.5.0 | Apache-2.0 OR MIT |
 | zerotrie | 0.2.5 | Unicode-3.0 |
 | zerovec | 0.11.8 | Unicode-3.0 |
 | zerovec-derive | 0.11.6 | Unicode-3.0 |
