@@ -14,6 +14,14 @@
 //!        - a fragmented MP4/MOV, so a crash leaves a playable file.
 //!        Gates sit after the aggregators (compositor, audiomixer): those are live elements
 //!        that would drop buffers whose timestamps moved back by a pause.
+//!        A slow machine must not cost audio. The muxer interleaves by time and waits for
+//!        its slowest track; when the CPU can't compose and encode the picture in real time,
+//!        that held back every audio track, stalled the live sources, and the live
+//!        audiomixer (past its deadline) mixed silence and dropped its late input. So video
+//!        drops frames rather than fall behind (a leaky queue in front of each video encoder,
+//!        and the video gates' QoS reports, `session::frames_late_by`, make the compositor
+//!        and the camera track's converters skip frames), and each audio track may run
+//!        `AUDIO_AHEAD_SECS` ahead of the picture in the queue before the muxer.
 //! WHERE: `session::Session::start`.
 
 use rec_core::settings::AudioTracks;
@@ -44,6 +52,8 @@ pub const AUDIO_CAPS: &str = "audio/x-raw,format=F32LE,rate=48000,channels=2,lay
 pub const CAMERA_TRACK_FPS: u32 = 30;
 /// Fragment length of the crash-safe MP4/MOV.
 pub const FRAGMENT_MS: u32 = 1000;
+/// How far the audio tracks may run ahead of a late picture before the muxer holds them back.
+pub const AUDIO_AHEAD_SECS: u64 = 10;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub enum AudioRole {
@@ -254,7 +264,7 @@ fn compositor(plan: &PipelinePlan) -> String {
     }
     let (w, h) = plan.out;
     s.push_str(&format!(
-        " ! video/x-raw,width={w},height={h},framerate={}/1 ! identity name={} silent=true ! videoconvert ! queue ! {} ! {} ! queue ! {}.video_0",
+        " ! video/x-raw,width={w},height={h},framerate={}/1 ! identity name={} silent=true ! queue max-size-buffers=3 leaky=downstream ! videoconvert ! {} ! {} ! queue ! {}.video_0",
         plan.fps,
         names::VIDEO_GATE,
         plan.video_encoder.0,
@@ -313,7 +323,7 @@ fn camera_branches(cam: &CameraPlan, plan: &PipelinePlan) -> Vec<String> {
                 "camtee. ! queue max-size-buffers=3 leaky=downstream{picture}"
             ));
             out.push(format!(
-                "camtee. ! queue ! videoconvert ! videoscale ! video/x-raw,width={w},height={h},pixel-aspect-ratio=1/1 ! videorate ! video/x-raw,framerate={}/1 ! identity name={} silent=true ! queue ! {enc} ! {parse} ! queue ! {}.video_1",
+                "camtee. ! queue max-size-buffers=3 leaky=downstream ! videoconvert ! videoscale ! video/x-raw,width={w},height={h},pixel-aspect-ratio=1/1 ! videorate ! video/x-raw,framerate={}/1 ! identity name={} silent=true ! queue max-size-buffers=3 leaky=downstream ! {enc} ! {parse} ! queue ! {}.video_1",
                 CAMERA_TRACK_FPS,
                 names::CAMERA_GATE,
                 names::MUX
@@ -343,11 +353,21 @@ fn audio_input(a: &AudioInput) -> String {
     s
 }
 
+/// The queue between each AAC encoder and the muxer: up to `AUDIO_AHEAD_SECS` of encoded
+/// audio (a few hundred KB), however many buffers or bytes that is.
+fn audio_mux_queue() -> String {
+    format!(
+        "queue max-size-time={} max-size-bytes=0 max-size-buffers=0",
+        AUDIO_AHEAD_SECS * 1_000_000_000
+    )
+}
+
 fn audio_track(n: usize, kind: TrackKind, plan: &PipelinePlan) -> Vec<String> {
     let tail = format!(
-        "identity name={} silent=true ! audioconvert ! {} ! queue ! {}.audio_{n}",
+        "identity name={} silent=true ! audioconvert ! {} ! {} ! {}.audio_{n}",
         names::audio_gate(n),
         plan.aac,
+        audio_mux_queue(),
         names::MUX
     );
     match kind {
@@ -472,7 +492,7 @@ mod tests {
     fn three_audio_tracks_in_order() {
         let d = describe(&plan());
         assert!(d.starts_with("mp4mux name=mux fragment-duration=1000 ! filesink name=sink"));
-        assert!(d.contains("audiomixer name=amix start-time-selection=first ! audio/x-raw,format=F32LE,rate=48000,channels=2,layout=interleaved ! identity name=gate_a0 silent=true ! audioconvert ! avenc_aac bitrate=192000 ! queue ! mux.audio_0"));
+        assert!(d.contains("audiomixer name=amix start-time-selection=first ! audio/x-raw,format=F32LE,rate=48000,channels=2,layout=interleaved ! identity name=gate_a0 silent=true ! audioconvert ! avenc_aac bitrate=192000 ! queue max-size-time=10000000000 max-size-bytes=0 max-size-buffers=0 ! mux.audio_0"));
         assert!(d.contains("t_sys. ! queue ! identity name=gate_a1"));
         assert!(d.contains("t_mic. ! queue ! identity name=gate_a2"));
         assert!(d.contains("volume name=vol_mic volume=0.5 mute=true ! level name=lvl_mic"));
@@ -509,7 +529,7 @@ mod tests {
         let d = describe(&p);
         assert!(d.starts_with("qtmux name=mux"));
         assert!(d.contains("pipewiresrc fd=7 path=42 ! queue max-size-buffers=3 leaky=downstream ! videocrop left=100 right=20 top=0 bottom=40 ! videoconvert ! videoscale ! video/x-raw,width=1920,height=1080,pixel-aspect-ratio=1/1 ! comp.sink_0"));
-        assert!(d.contains("compositor name=comp background=black start-time-selection=first ! video/x-raw,width=1920,height=1080,framerate=60/1 ! identity name=gate_v silent=true ! videoconvert ! queue ! x264enc ! h264parse ! queue ! mux.video_0"));
+        assert!(d.contains("compositor name=comp background=black start-time-selection=first ! video/x-raw,width=1920,height=1080,framerate=60/1 ! identity name=gate_v silent=true ! queue max-size-buffers=3 leaky=downstream ! videoconvert ! x264enc ! h264parse ! queue ! mux.video_0"));
     }
 
     #[test]
@@ -526,7 +546,7 @@ mod tests {
         assert!(d.contains("compositor name=comp background=black start-time-selection=first sink_1::xpos=1460 sink_1::ypos=806 sink_1::zorder=1"));
         assert!(d.contains("tee name=camtee"));
         assert!(d.contains("aspectratiocrop aspect-ratio=422/238 ! videoscale ! video/x-raw,width=422,height=238,pixel-aspect-ratio=1/1 ! videoflip method=horizontal-flip ! videoconvert ! video/x-raw,format=BGRA ! identity name=cammask ! comp.sink_1"));
-        assert!(d.contains("framerate=30/1 ! identity name=gate_c silent=true ! queue ! x264enc ! h264parse ! queue ! mux.video_1"));
+        assert!(d.contains("framerate=30/1 ! identity name=gate_c silent=true ! queue max-size-buffers=3 leaky=downstream ! x264enc ! h264parse ! queue ! mux.video_1"));
         assert_eq!(gate_names(&p)[1], "gate_c");
     }
 

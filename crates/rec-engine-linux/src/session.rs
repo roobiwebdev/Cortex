@@ -206,8 +206,10 @@ impl Session {
                 .ok_or_else(|| format!("{gate} has no src pad"))?;
             let tl = timeline.clone();
             let counter = (gate == names::VIDEO_GATE).then(|| shared.clone());
+            let video = gate == names::VIDEO_GATE || gate == names::CAMERA_GATE;
+            let qos = video.then(Qos::default);
             pad.add_probe(gst::PadProbeType::BUFFER, move |pad, info| {
-                gate_probe(pad, info, &tl, counter.as_deref())
+                gate_probe(pad, info, &tl, counter.as_deref(), qos.as_ref())
             });
         }
         let mask = Arc::new(Mutex::new(mask));
@@ -397,12 +399,75 @@ impl Drop for Session {
     }
 }
 
+/// How far behind the clock the composed picture may fall, beyond the compositor's own
+/// latency, before the video gate asks it to skip frames.
+const VIDEO_LAG_ALLOWED_NS: u64 = 100_000_000;
+
+/// The video gate's lateness report to the compositor: the compositor's latency, asked once.
+#[derive(Default)]
+struct Qos {
+    latency_ns: std::sync::OnceLock<u64>,
+}
+
+/**
+ * SOURCE OF TRUTH KEYWORDS: frames_late_by, QoS, compositor lag, slow machine, skip frames, backpressure
+ * WHAT:  How late (ns) a composed frame stamped `rt` is when it reaches the video gate at
+ *        clock running time `now`, past the compositor's `latency` and `VIDEO_LAG_ALLOWED_NS`.
+ *        None when it is on time.
+ * WHY:   When the CPU can't compose and encode in real time, the live compositor keeps
+ *        making every frame and falls further behind the clock. The muxer interleaves by
+ *        time, so it then holds the audio back too: the audio queues fill, the tees block,
+ *        the sources stall and the live audiomixer, past its deadline, mixes silence and
+ *        drops its late input. A sink with `sync=true` would report the lateness as a QoS
+ *        event; the file sink can't (it must not sync), so the gate does, and the
+ *        compositor skips frames to catch up instead.
+ * WHERE: `gate_probe` on the video gate.
+ */
+fn frames_late_by(rt: u64, now: u64, latency: u64) -> Option<u64> {
+    let due = rt
+        .saturating_add(latency)
+        .saturating_add(VIDEO_LAG_ALLOWED_NS);
+    now.checked_sub(due).filter(|late| *late > 0)
+}
+
+/// Tell the compositor that the frame stamped `rt` came `late` ns too late, so it drops its
+/// frames until it is back on time (`videoaggregator` skips output older than `rt + late`).
+fn report_late(pad: &gst::Pad, qos: &Qos, rt: u64) {
+    let Some(element) = pad.parent_element() else {
+        return;
+    };
+    let Some(now) = element.current_running_time() else {
+        return;
+    };
+    let latency = *qos.latency_ns.get_or_init(|| {
+        let mut q = gst::query::Latency::new();
+        element
+            .static_pad("sink")
+            .filter(|sink| sink.peer_query(&mut q))
+            .map(|_| q.result().1.nseconds())
+            .unwrap_or(0)
+    });
+    let Some(late) = frames_late_by(rt, now.nseconds(), latency) else {
+        return;
+    };
+    let diff = i64::try_from(late).unwrap_or(i64::MAX);
+    let ev = gst::event::Qos::new(
+        gst::QOSType::Underflow,
+        1.0,
+        diff,
+        gst::ClockTime::from_nseconds(rt),
+    );
+    pad.send_event(ev);
+}
+
 /// The pause gate: drop buffers inside a pause, move later ones back by the paused time.
+/// On the video gate (`qos`) it also reports frames that arrive late, see `frames_late_by`.
 fn gate_probe(
     pad: &gst::Pad,
     info: &mut gst::PadProbeInfo,
     timeline: &Mutex<Timeline>,
     counter: Option<&Shared>,
+    qos: Option<&Qos>,
 ) -> gst::PadProbeReturn {
     let Some(gst::PadProbeData::Buffer(buffer)) = &mut info.data else {
         return gst::PadProbeReturn::Ok;
@@ -417,6 +482,9 @@ fn gate_probe(
         .and_then(|s| s.to_running_time(pts))
         .unwrap_or(pts)
         .nseconds();
+    if let Some(qos) = qos {
+        report_late(pad, qos, rt);
+    }
     let mapped = {
         let mut tl = lock(timeline);
         let m = tl.map(rt);
@@ -490,6 +558,26 @@ fn on_message(sh: &Shared, msg: &gst::Message) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn frames_count_as_late_only_past_latency_and_slack() {
+        const MS: u64 = 1_000_000;
+        let latency = 40 * MS;
+        // On time: within the compositor's latency plus the allowed lag.
+        assert_eq!(frames_late_by(1000 * MS, 1000 * MS, latency), None);
+        assert_eq!(frames_late_by(1000 * MS, 1140 * MS, latency), None);
+        assert_eq!(frames_late_by(1000 * MS, 900 * MS, latency), None, "early");
+        // A picture 2 s behind the clock is late by that minus the slack.
+        assert_eq!(
+            frames_late_by(1000 * MS, 3000 * MS, latency),
+            Some(2000 * MS - latency - VIDEO_LAG_ALLOWED_NS)
+        );
+        assert_eq!(
+            frames_late_by(u64::MAX - 1, 5, latency),
+            None,
+            "no overflow"
+        );
+    }
 
     #[test]
     fn mask_clears_corners_and_paints_the_border() {
