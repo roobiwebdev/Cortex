@@ -110,7 +110,7 @@ const SECTIONS: ReadonlyArray<{
     label: "About",
     icon: Info,
     tile: "bg-muted-foreground text-background",
-    keywords: "version licence license credits notices rec",
+    keywords: "version licence license credits notices",
     group: 2,
   },
 ];

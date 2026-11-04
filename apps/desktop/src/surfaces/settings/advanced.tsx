@@ -1,5 +1,5 @@
 import * as React from "react";
-import { Check, ClipboardCopy, Download } from "lucide-react";
+import { Check, ClipboardCopy } from "lucide-react";
 
 import {
   AlertDialog,
@@ -51,7 +51,6 @@ export function AdvancedSection() {
   firstSeen ??= e.settings;
   const [copied, setCopied] = React.useState(false);
   const [permsReset, setPermsReset] = React.useState(false);
-  const [imported, setImported] = React.useState(false);
 
   async function copyReport() {
     try {
@@ -76,23 +75,6 @@ export function AdvancedSection() {
             checked={e.settings.previewLowPower}
             onCheckedChange={(previewLowPower) => engine.update({ previewLowPower })}
           />
-        </SettingsRow>
-      </SettingsGroup>
-
-      <SettingsGroup title="Migrate">
-        <SettingsRow
-          label="Import settings from Rec"
-          badge="new"
-          hint={
-            imported
-              ? "Imported. Stream keys stay in Keychain; re-enter them if Cortex asks."
-              : "Found ~/Library/Application Support/rec-rs/settings.json"
-          }
-        >
-          <Button variant="soft" size="sm" disabled={imported} onClick={() => setImported(true)}>
-            {imported ? <Check /> : <Download />}
-            {imported ? "Imported" : "Import…"}
-          </Button>
         </SettingsRow>
       </SettingsGroup>
 
