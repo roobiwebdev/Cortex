@@ -19,6 +19,7 @@
 	import {
 		ARCH,
 		AUTHOR,
+		AUTHOR_URL,
 		BETA,
 		DESCRIPTION,
 		DOWNLOADS,
@@ -57,7 +58,7 @@
 		applicationCategory: 'MultimediaApplication',
 		downloadUrl: `${SITE_URL}/download`,
 		softwareVersion: VERSION,
-		author: { '@type': 'Person', name: AUTHOR }
+		author: { '@type': 'Person', name: AUTHOR, url: AUTHOR_URL }
 	}).replaceAll('<', '\\u003c');
 	// A literal closing tag here would end this <script> block, so it is split in two.
 	const jsonLd = `<script type="application/ld+json">${app}<` + `/script>`;
@@ -284,6 +285,8 @@
 <svelte:head>
 	<title>{TITLE}</title>
 	<meta name="description" content={DESCRIPTION} />
+	<meta name="author" content={AUTHOR} />
+	<link rel="author" href={AUTHOR_URL} />
 	<link rel="canonical" href={url} />
 	<meta property="og:type" content="website" />
 	<meta property="og:url" content={url} />
@@ -602,7 +605,7 @@
 		<img src={icon} width="20" height="20" alt="" />
 		<span>{NAME}</span>
 	</div>
-	<p>Built by {AUTHOR}.</p>
+	<p>Built by <a href={AUTHOR_URL}>{AUTHOR}</a>.</p>
 	<a class="link" href={GITHUB_URL}>
 		{@render github()}
 		{NAME} on GitHub
@@ -1298,6 +1301,16 @@
 		margin: 0;
 		color: var(--muted);
 		font-size: 13px;
+	}
+
+	.footer p a {
+		color: inherit;
+		text-underline-offset: 2px;
+		transition: color 0.15s;
+	}
+
+	.footer p a:hover {
+		color: var(--fg);
 	}
 
 	.footer .licenses {
