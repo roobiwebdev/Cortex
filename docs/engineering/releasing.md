@@ -97,6 +97,98 @@ Every signature names its version (`tauri signer sign --app-version`, and `tauri
 
 **Do not mark a release as a pre-release.** GitHub's `releases/latest` is the newest release that is neither a draft nor a pre-release, so a pre-release would be invisible to both the site and the updater. The beta status is said in the notes and on the site instead. To pull a broken release, publish a fixed higher version; deleting the release makes `latest` fall back to the previous one, but apps that already updated stay on the broken version (the updater never downgrades).
 
+## Install with one command
+
+Two scripts on the site install the latest release without the first-launch warnings:
+
+```powershell
+# Windows (PowerShell)
+irm https://cortex.roobi.dev/install.ps1 | iex
+```
+
+```sh
+# macOS and Linux
+curl -fsSL https://cortex.roobi.dev/install.sh | sh
+```
+
+They live in `apps/site/static/`, so SvelteKit copies them unchanged to the site root on every deploy. Edit them there and nowhere else. [tester-message.md](tester-message.md) is a short message with both commands to send testers.
+
+### Why there are no warnings
+
+Browsers tag downloads. Windows adds a Mark of the Web (the `Zone.Identifier` stream), and SmartScreen checks marked files that are not code-signed. macOS adds `com.apple.quarantine`, and Gatekeeper blocks quarantined apps that are not notarized. `Invoke-WebRequest` and `curl` add neither, so the installer and the app they put on disk start without a prompt. The macOS app is still signed with Cortex Dev Signing, which Apple Silicon needs to run it at all. The Tauri updater downloads with its own HTTP client, so updates arrive unmarked too.
+
+This is not a way around signing for people who use the download buttons. They still see the warnings until the Windows build is Authenticode-signed and the Mac build is notarized ([Before leaving beta](#before-leaving-beta)).
+
+### What each script does
+
+Both read the release from the GitHub API (`releases/latest`, or `releases/tags/<tag>`) and pick the asset by the end of its file name, so they follow the [file names](#the-files-of-a-release) and never hold a version. Neither uses `jq`; `install.sh` parses the JSON with `grep` and `sed`. When the API cannot be read (GitHub allows 60 anonymous requests an hour per IP), they warn and fall back to the stable `releases/latest/download/<file>` link.
+
+`install.ps1` (Windows PowerShell 5.1 and PowerShell 7):
+
+1. Turns on TLS 1.2, refuses 32-bit Windows, and on ARM64 says that the x64 build runs under Windows 11's emulation, then carries on.
+2. Downloads `*-Windows-x64-Setup.exe` to `%TEMP%` with the progress bar off. In 5.1 the bar makes downloads many times slower.
+3. Closes a running Cortex (`cortex-desktop` process): asks its window to close, waits 10 seconds, then kills it.
+4. Runs the NSIS installer with `/S`. The installer is per user (`installMode: currentUser`), so it needs no admin. It checks the exit code and deletes the setup file.
+5. Starts `%LOCALAPPDATA%\Cortex\cortex-desktop.exe`. The exe keeps the cargo binary name because `tauri.conf.json` sets no `mainBinaryName`; the 0.1.0 installer holds `cortex-desktop.exe` (`7zz l Cortex-Windows-x64-Setup.exe`), and Tauri's NSIS template (`tauri-bundler`, `installer.nsi`) installs it as `$LOCALAPPDATA\${PRODUCTNAME}\${MAINBINARYNAME}.exe`. The script also reads `InstallLocation` from `HKCU\...\Uninstall\Cortex`, because NSIS reuses an earlier install folder.
+
+Everything runs inside one function and errors are thrown, never `exit`, so `iex` does not change the caller's session or close their window.
+
+`install.sh` (POSIX `sh`, tested with `dash`):
+
+- **macOS.** Refuses macOS older than 15. Downloads `Cortex-macOS.dmg` into a `mktemp -d` folder and mounts it with `hdiutil attach -nobrowse -readonly -noautoopen` inside that folder. Quits a running Cortex (`osascript` quit, then `pkill -x cortex-desktop`). Copies the app with `ditto` next to the target and swaps it in, then detaches. It installs into `/Applications`, or `~/Applications` when `/Applications` is not writable, and says so. It clears `com.apple.quarantine` anyway and opens the app. A `trap` detaches the image and removes the temp folder on any exit.
+- **Linux.** Maps `uname -m` to `Cortex-Linux-x86_64.AppImage` or `Cortex-Linux-aarch64.AppImage`. Installs the AppImage as one file, `~/.local/bin/cortex`, with no symlink, so the updater replaces the file the app runs from. It takes the icon out of the AppImage with `--appimage-extract` (that runs the image's own runtime and needs no FUSE) into `~/.local/share/icons/hicolor/256x256/apps/cortex.png`, and writes `~/.local/share/applications/cortex.desktop`. It warns when FUSE 2 or `~/.local/bin` on `PATH` is missing, then starts the app with `nohup` in the background. A release without the AppImage for this machine stops with "Linux build not published yet".
+
+### Overrides
+
+Both scripts read the same variables:
+
+| Variable         | Meaning                                                                                                                                       |
+| ---------------- | --------------------------------------------------------------------------------------------------------------------------------------------- |
+| `CORTEX_VERSION` | Release tag to install, `v0.1.0` or `0.1.0`. Default: the latest release.                                                                     |
+| `INSTALL_DIR`    | macOS: folder for `Cortex.app` (default `/Applications`). Linux: folder for `cortex` (default `~/.local/bin`). Windows: passed as NSIS `/D=`. |
+| `NO_OPEN`        | `1` installs without starting Cortex.                                                                                                         |
+| `CORTEX_API_URL` | Test only. A release JSON URL read instead of the GitHub API, for a fake release served locally.                                              |
+
+Put the variables after the pipe, on `sh`. Before `curl` they only reach `curl`.
+
+```sh
+curl -fsSL https://cortex.roobi.dev/install.sh | CORTEX_VERSION=v0.1.0 NO_OPEN=1 sh
+```
+
+```powershell
+$env:CORTEX_VERSION = 'v0.1.0'; $env:NO_OPEN = '1'; irm https://cortex.roobi.dev/install.ps1 | iex
+```
+
+Installing an older version over a newer one fails on Windows: the NSIS installer refuses downgrades in silent mode and returns a non-zero code. Uninstall first.
+
+### When it still fails
+
+- **Mac account without admin rights.** `/Applications` is not writable, so the app goes into `~/Applications`. Spotlight and Launchpad find it there.
+- **Smart App Control in enforcement mode, or a managed company PC.** Smart App Control checks every unsigned program, marked or not, so it can still block the installer or the app. So can AppLocker, WDAC or an antivirus policy. Only Authenticode signing fixes this; until then, such users need their admin or a PC without the policy.
+- **Linux without FUSE 2.** The AppImage does not start. The script still installs and prints the package to add: `sudo apt install libfuse2` (Ubuntu 22.04 and older), `sudo apt install libfuse2t64` (Ubuntu 24.04 and newer), `sudo dnf install fuse-libs` (Fedora). `~/.local/bin/cortex --appimage-extract-and-run` works without it.
+- **Linux on other architectures.** Only x86_64 and aarch64 builds exist; anything else stops with a message.
+- **Linux media packages.** The AppImage leaves out GStreamer (`bundleMediaFramework: false`), so recording needs the distribution's GStreamer plugins, as listed in the `.deb` depends in `tauri.linux.conf.json`.
+
+### Testing the scripts
+
+- **CI.** `.github/workflows/install-test.yml` (run by hand) runs each script on `windows-latest` (PowerShell 5.1 and 7), `macos-latest` and `ubuntu-22.04` exactly as users do, then checks the install, the missing quarantine flag on macOS and the missing Mark of the Web on Windows, and that the app stays up for 10 seconds (Xvfb on Linux). The Linux job skips with a notice while the release has no Linux AppImage. Inputs: `version`, and `script_url`, the folder the scripts are fetched from (default `https://cortex.roobi.dev`), to test them from another public URL before a site deploy.
+
+  ```sh
+  gh workflow run install-test.yml --repo roobiwebdev/cortex -f version=v0.1.0
+  ```
+
+- **macOS, without touching `/Applications`.**
+
+  ```sh
+  dir=$(mktemp -d); INSTALL_DIR=$dir NO_OPEN=1 sh apps/site/static/install.sh
+  codesign --verify --deep --strict "$dir/Cortex.app"; xattr -l "$dir/Cortex.app"
+  /System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister -u "$dir/Cortex.app"
+  rm -rf "$dir"
+  ```
+
+- **Linux in Docker**, against a fake release: serve a folder holding a `release.json` (with `browser_download_url` entries) and a stand-in `Cortex-Linux-x86_64.AppImage` with `python3 -m http.server`, then run the script with `CORTEX_API_URL=http://host.docker.internal:8000/release.json`.
+- **Syntax.** `shellcheck -s sh apps/site/static/install.sh` and `dash -n`; for PowerShell, `[System.Management.Automation.Language.Parser]::ParseFile` in `pwsh`.
+
 ## One-time setup (the user)
 
 1. **Source repository.** From the main checkout, on the branch that becomes the default:
