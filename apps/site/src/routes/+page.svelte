@@ -426,8 +426,8 @@
 		<img class="logo" src={icon} width="112" height="112" alt="{NAME} app icon" />
 		<h1>One key. One file.</h1>
 		<p class="lede">
-			{NAME} records a display, a window or just an area, with your camera, mic and system audio, into one file for
-			your editor. On Mac, Windows and Linux. Press {recordKeys} from any app to start.
+			{NAME} records a display, a window or just an area in up to true 4K, with your camera, mic and system audio, into
+			one file for your editor. On Mac, Windows and Linux. Press {recordKeys} from any app to start.
 		</p>
 		<div class="cta">
 			{@render heroDownload()}
