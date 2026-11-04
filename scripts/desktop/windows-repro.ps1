@@ -131,6 +131,13 @@ function Start-Cortex($name, [hashtable] $envs) {
   $psi.RedirectStandardOutput = $true
   $psi.RedirectStandardError = $true
   foreach ($k in $envs.Keys) { $psi.Environment[$k] = [string]$envs[$k] }
+  # Skip the first-run tour so the main window (and its Settings gear) is in front.
+  $dataDir = $envs["CORTEX_DEBUG_DATA_DIR"]
+  if ($dataDir) {
+    New-Item -ItemType Directory -Force -Path $dataDir | Out-Null
+    $settingsFile = Join-Path $dataDir "settings.json"
+    if (-not (Test-Path $settingsFile)) { Set-Content $settingsFile '{"version":2,"onboardingCompleted":true}' }
+  }
   if ($script:WebviewArgs) { $psi.Environment["WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS"] = $script:WebviewArgs }
   $p = [System.Diagnostics.Process]::Start($psi)
   # Async reads so a full pipe never blocks the app.
