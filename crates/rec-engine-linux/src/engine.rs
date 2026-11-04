@@ -581,11 +581,13 @@ impl LinuxEngine {
                     _ => None,
                 };
                 // At the recording's own rate: a faster pattern is generated only to be dropped by
-                // videorate, which starves software-encoded runs on small CI machines.
+                // videorate, which starves software-encoded runs on small CI machines. In BGRx,
+                // the format PipeWire screen casts come in: left open, videotestsrc picks
+                // 16-bit A444_16LE, 16 MB a 1080p frame to draw and convert.
                 let fps = s.fps.max(1);
                 sources.screen = Some(ScreenSource {
                     src: format!(
-                        "videotestsrc is-live=true pattern=smpte ! video/x-raw,width={w},height={h},framerate={fps}/1"
+                        "videotestsrc is-live=true pattern=smpte ! video/x-raw,format=BGRx,width={w},height={h},framerate={fps}/1"
                     ),
                     size: (w, h),
                     crop,
@@ -650,8 +652,9 @@ impl LinuxEngine {
         if plan.camera {
             let (w, h) = camera_size(s.camera_resolution);
             sources.camera = if test {
+                // YUY2, a webcam's raw format (and not videotestsrc's 16-bit default).
                 Some(format!(
-                    "videotestsrc is-live=true pattern=ball ! video/x-raw,width={w},height={h},framerate=30/1"
+                    "videotestsrc is-live=true pattern=ball ! video/x-raw,format=YUY2,width={w},height={h},framerate=30/1"
                 ))
             } else {
                 let id = s
