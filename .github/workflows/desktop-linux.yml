@@ -146,8 +146,19 @@ jobs:
 
       - run: pnpm --filter desktop test
 
+      # The test build (target/debug) and the runner's unused SDKs leave too little disk for a
+      # release build (run 41772443760 died with "No space left on device").
+      - name: Free disk space for the release build
+        run: |
+          rm -rf target/debug
+          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /opt/hostedtoolcache/CodeQL
+          df -h /
+
       # deb, rpm and AppImage from tauri.linux.conf.json. No updater signatures here.
+      # No debug info in shipped binaries: smaller packages and a smaller build.
       - name: Bundle
+        env:
+          CARGO_PROFILE_RELEASE_DEBUG: "0"
         run: pnpm --filter desktop tauri build --bundles deb,rpm,appimage
 
       - name: Stage under the release names

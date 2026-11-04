@@ -111,7 +111,13 @@ jobs:
 
       # NSIS and MSI from tauri.windows.conf.json. The MSI (WiX) needs a numeric-only
       # pre-release suffix, e.g. 0.2.0-1, not 0.2.0-beta.1.
+      - name: Free disk space for the release build
+        shell: bash
+        run: rm -rf target/debug
+
       - name: Installers
+        env:
+          CARGO_PROFILE_RELEASE_DEBUG: "0"
         run: pnpm --filter desktop tauri build --bundles nsis,msi
 
       - name: Stage under the release names
