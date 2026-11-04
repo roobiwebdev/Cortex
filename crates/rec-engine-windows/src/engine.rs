@@ -263,6 +263,8 @@ impl Inner {
                         recoverable: true,
                     });
                 }
+                // Faders, mutes or the overlay may have changed while it started.
+                s.session.update(&self.settings);
                 self.recording = Some(Active {
                     sess: s.session,
                     info: s.info,
