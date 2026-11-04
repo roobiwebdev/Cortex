@@ -22,13 +22,19 @@ fn temp_dir(name: &str) -> PathBuf {
     d
 }
 
+/// Recordings run one at a time, as in the app: several at once would compete for the CPU
+/// and each would drop frames that a lone recording keeps.
+static ONE_RECORDING: Mutex<()> = Mutex::new(());
+
 struct Rig {
     engine: LinuxEngine,
     events: mpsc::Receiver<EngineEvent>,
     levels: Arc<Mutex<[f32; 2]>>,
+    _turn: std::sync::MutexGuard<'static, ()>,
 }
 
 fn rig(home: &Path, max_secs: Option<f64>) -> (Rig, RecorderSettings) {
+    let turn = ONE_RECORDING.lock().unwrap_or_else(|p| p.into_inner());
     let (tx, rx) = mpsc::channel();
     let levels = Arc::new(Mutex::new([0f32; 2]));
     let lv = levels.clone();
@@ -67,6 +73,7 @@ fn rig(home: &Path, max_secs: Option<f64>) -> (Rig, RecorderSettings) {
             engine,
             events: rx,
             levels,
+            _turn: turn,
         },
         settings,
     )
@@ -85,6 +92,36 @@ fn wait_finished(rx: &mpsc::Receiver<EngineEvent>, timeout: Duration) -> Recordi
         }
     }
     panic!("no RecordingFinished within {timeout:?}");
+}
+
+/// Frames in video track `track` of `path`, counted from the demuxed packets.
+fn video_frames(path: &Path, track: u32) -> u64 {
+    use gstreamer as gst;
+    use gstreamer::prelude::*;
+    assert!(rec_engine_linux::session::init(), "GStreamer");
+    let text = format!(
+        "filesrc location=\"{}\" ! qtdemux name=d d.video_{track} ! appsink name=snk sync=false",
+        path.display()
+    );
+    let p = gst::parse::launch(&text)
+        .unwrap()
+        .downcast::<gst::Pipeline>()
+        .unwrap();
+    let sink = p
+        .by_name("snk")
+        .unwrap()
+        .downcast::<gstreamer_app::AppSink>()
+        .unwrap();
+    p.set_state(gst::State::Playing).unwrap();
+    let mut n = 0;
+    while sink
+        .try_pull_sample(gst::ClockTime::from_seconds(5))
+        .is_some()
+    {
+        n += 1;
+    }
+    let _ = p.set_state(gst::State::Null);
+    n
 }
 
 fn keep() -> bool {
@@ -143,6 +180,17 @@ fn records_screen_camera_and_three_audio_tracks_with_a_pause() {
         info.duration_secs
     );
     assert!(!info.hevc);
+    // Video may drop frames on a machine too slow for real time, but never most of them:
+    // at least half the frames the recorded time calls for, in each video track.
+    let expected = rec.duration_secs * 30.0;
+    for track in 0..2 {
+        let frames = video_frames(Path::new(&rec.path), track);
+        println!("video track {track}: {frames} frames of {expected:.0}");
+        assert!(
+            frames as f64 >= expected * 0.5,
+            "video track {track} kept {frames} of {expected:.0} frames"
+        );
+    }
 
     let thumbs = GstMedia
         .thumbnails(Path::new(&rec.path), 4, 160.0)
