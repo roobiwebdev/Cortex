@@ -7,6 +7,7 @@ import { Button } from "@starter/ui/components/button";
 import { Segmented } from "@starter/ui/components/segmented";
 import { cn } from "@starter/ui/lib/utils";
 
+import { BrandMark } from "../components/brand-mark";
 import { engine, useEngine } from "../lib/engine";
 import { useHotkeyPractice } from "../lib/hotkey-practice";
 import { PLATFORMS, setHarnessPlatform, usePlatform } from "../lib/platform";
@@ -311,6 +312,7 @@ export function OnboardingWindow({ cameraStream, navigate }: SurfaceProps) {
             key={`${platform}-${step}`}
             className="duration-300 ease-out-quick animate-in fade-in-0 slide-in-from-right-2"
           >
+            {step === "welcome" && <BrandMark className="mb-4 size-10" />}
             <StepHeader copy={copy} kicker={kicker} titleId={titleId} />
             {step === "welcome" && <WelcomeBody platform={platform} />}
             {step === "permissions" && (

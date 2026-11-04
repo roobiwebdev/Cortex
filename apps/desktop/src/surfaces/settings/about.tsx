@@ -1,9 +1,10 @@
 import * as React from "react";
-import { Aperture, ExternalLink } from "lucide-react";
+import { ExternalLink } from "lucide-react";
 
 import { Button } from "@starter/ui/components/button";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@starter/ui/components/dialog";
 
+import { BrandMark } from "../../components/brand-mark";
 import { APP_VERSION } from "./general";
 import { SettingsGroup, SettingsRow } from "./parts";
 
@@ -24,8 +25,8 @@ export function AboutSection() {
   return (
     <div className="mx-auto w-full max-w-[580px] px-8 pb-10">
       <div className="flex flex-col items-center pt-4 pb-8 text-center">
-        <div className="grid size-[76px] place-items-center rounded-[18px] bg-primary text-primary-foreground shadow-ledge-accent">
-          <Aperture className="size-10" strokeWidth={1.6} />
+        <div className="grid size-[76px] place-items-center rounded-[18px] border bg-card shadow-ledge">
+          <BrandMark className="size-12" />
         </div>
         <h1 className="mt-4 font-display text-[30px] leading-none font-bold tracking-[-0.015em]">Cortex</h1>
         <p className="tabular mt-2 text-[13px] text-muted-foreground">Version {APP_VERSION} · macOS 15 or later</p>
