@@ -151,7 +151,7 @@ for group in windows-x64 linux-x64 linux-arm64; do
     else
       warn "no Linux arm64 files: this release leaves them out (the site's arm64 links will 404). Build them with scripts/release/build-linux-docker.sh, or pass --require-all to stop here."
     fi
-  elif [[ " ${allow_missing[*]} " == *" $group "* ]]; then
+  elif [[ " ${allow_missing[*]-} " == *" $group "* ]]; then
     warn "no $group files: left out of this release (--allow-missing)."
   else
     die "$group files are missing: ${missing[*]}"
@@ -212,7 +212,7 @@ unset TAURI_SIGNING_PRIVATE_KEY_PASSWORD
 step "Writing latest.json"
 require="macos"
 for group in windows-x64 linux-x64; do
-  [[ " ${allow_missing[*]} " == *" $group "* ]] || require="$require,$group"
+  [[ " ${allow_missing[*]-} " == *" $group "* ]] || require="$require,$group"
 done
 [[ $require_all == 1 ]] && require="$require,linux-arm64"
 "${manifest[@]}" write --dir "$assets" --version "$version" --base-url "$base_url" \
