@@ -126,23 +126,24 @@ impl MediaLibrary for GstMedia {
                 gst::SeekFlags::FLUSH | gst::SeekFlags::KEY_UNIT,
                 gst::ClockTime::from_nseconds(t),
             );
+            // A seek or preroll can miss on a slow machine; skip that slot rather than
+            // ending the strip early.
             if sought.is_err() {
-                break;
+                continue;
             }
             let _ = p.state(gst::ClockTime::from_seconds(5));
-            match sink.try_pull_preroll(gst::ClockTime::from_seconds(5)) {
-                Some(sample) => {
-                    if let Some(map) = sample.buffer().and_then(|b| b.map_readable().ok()) {
-                        out.push(map.as_slice().to_vec());
-                    }
-                }
-                None => break,
+            if let Some(sample) = sink.try_pull_preroll(gst::ClockTime::from_seconds(5))
+                && let Some(map) = sample.buffer().and_then(|b| b.map_readable().ok())
+            {
+                out.push(map.as_slice().to_vec());
             }
         }
         let _ = p.set_state(gst::State::Null);
-        if out.is_empty() {
+        let Some(last) = out.last().cloned() else {
             return Err(failed("no video frames"));
-        }
+        };
+        // The timeline lays out exactly `count` tiles: repeat the last frame for any misses.
+        out.resize(count.max(1) as usize, last);
         Ok(out)
     }
 
