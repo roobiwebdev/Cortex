@@ -2,6 +2,7 @@ import { useSyncExternalStore } from "react";
 import { isTauri } from "@tauri-apps/api/core";
 
 import { commands } from "../ipc/bindings";
+import { PLATFORM_WORDS, type PlatformWords } from "./platform-words";
 import type { PlatformOs } from "./types";
 
 const inTauri = isTauri();
@@ -43,13 +44,24 @@ export function setHarnessPlatform(p: PlatformOs) {
   for (const l of listeners) l();
 }
 
-function subscribe(l: () => void) {
+/** Follow platform changes outside React (the mock engine follows the harness switch). */
+export function subscribePlatform(l: () => void) {
   listeners.add(l);
   return () => {
     listeners.delete(l);
   };
 }
 
+/** The current platform, outside React. */
+export function harnessPlatform(): PlatformOs {
+  return current;
+}
+
 export function usePlatform(): PlatformOs {
-  return useSyncExternalStore(subscribe, () => current);
+  return useSyncExternalStore(subscribePlatform, () => current);
+}
+
+/** The OS words (Finder, System Settings, Keychain…) for the running platform. */
+export function usePlatformWords(): PlatformWords {
+  return PLATFORM_WORDS[usePlatform()];
 }

@@ -16,6 +16,7 @@ import { Button } from "@starter/ui/components/button";
 import { Switch } from "@starter/ui/components/switch";
 
 import { engine, useEngine } from "../../lib/engine";
+import { usePlatformWords } from "../../lib/platform";
 import type { EngineState, RecorderSettings } from "../../lib/types";
 import { SettingsGroup, SettingsPage, SettingsRow } from "./parts";
 import { APP_VERSION } from "./general";
@@ -24,7 +25,7 @@ const ENV_VARS: ReadonlyArray<{ name: string; does: string }> = [
   { name: "REC_DEBUG", does: "Log audio offsets, frame timing and encoder retries" },
   { name: "REC_SETTINGS", does: "Read settings from another file" },
   { name: "REC_OUTPUT_DIR", does: "Save recordings to another folder" },
-  { name: "REC_STREAM_KEY", does: "Use this stream key instead of Keychain" },
+  { name: "REC_STREAM_KEY", does: "Use this stream key instead of the stored one" },
   { name: "REC_INSECURE_TLS", does: "Accept self-signed RTMPS/WHIP servers" },
 ];
 
@@ -48,6 +49,7 @@ function deviceReport(e: EngineState) {
 /** Advanced: preview power, diagnostics, resets, env overrides, Rec import. Matrix SET-K29, PERF-*, ENV-01..06, SET-03 (import). */
 export function AdvancedSection() {
   const e = useEngine();
+  const words = usePlatformWords();
   firstSeen ??= e.settings;
   const [copied, setCopied] = React.useState(false);
   const [permsReset, setPermsReset] = React.useState(false);
@@ -120,7 +122,8 @@ export function AdvancedSection() {
               <AlertDialogHeader>
                 <AlertDialogTitle>Reset all settings?</AlertDialogTitle>
                 <AlertDialogDescription>
-                  Every option goes back to its default. Your recordings and Keychain stream keys are not touched.
+                  Every option goes back to its default. Your recordings and the stream keys in {words.keyStore} are not
+                  touched.
                 </AlertDialogDescription>
               </AlertDialogHeader>
               <AlertDialogFooter>

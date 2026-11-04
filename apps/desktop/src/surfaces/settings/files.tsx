@@ -4,10 +4,11 @@ import { FolderOpen } from "lucide-react";
 import { Button } from "@starter/ui/components/button";
 
 import { engine, useEngine } from "../../lib/engine";
+import { usePlatformWords } from "../../lib/platform";
 import { ChoiceSelect, SettingsRow } from "./parts";
 
-/** Folders offered by the popup; "other" stands in for the native folder picker. */
-const FOLDERS = ["~/Movies/Cortex", "~/Movies", "~/Desktop", "~/Documents/Recordings"] as const;
+/** Folders the prototype cycles through after the platform's default; stands in for the native picker. */
+const OTHER_FOLDERS = ["~/Desktop", "~/Documents/Recordings"] as const;
 
 /**
  * SOURCE OF TRUTH KEYWORDS: OutputFolderRow, output folder, outputDir, choose folder, save location
@@ -17,10 +18,12 @@ const FOLDERS = ["~/Movies/Cortex", "~/Movies", "~/Desktop", "~/Documents/Record
  */
 export function OutputFolderRow() {
   const dir = useEngine().settings.outputDir;
+  const home = usePlatformWords().defaultFolder;
   function choose() {
-    // prototype-local: cycle through common folders instead of opening NSOpenPanel.
-    const i = FOLDERS.findIndex((f) => f === dir);
-    engine.update({ outputDir: FOLDERS[(i + 1) % FOLDERS.length] ?? FOLDERS[0] });
+    // prototype-local: cycle through common folders instead of opening the native folder picker.
+    const folders = [home, ...OTHER_FOLDERS];
+    const i = folders.findIndex((f) => f === dir);
+    engine.update({ outputDir: folders[(i + 1) % folders.length] ?? home });
   }
   return (
     <SettingsRow label="Save recordings to" hint="New recordings and saved replays go here.">

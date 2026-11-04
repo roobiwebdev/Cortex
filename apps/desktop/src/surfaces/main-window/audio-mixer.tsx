@@ -8,6 +8,7 @@ import { cn } from "@starter/ui/lib/utils";
 
 import { ALLOW_ACCESS, PermissionAsk, allowAccessItem, askPermission } from "../../components/permission-ask";
 import { engine, micLevels, systemLevels } from "../../lib/engine";
+import { usePlatformWords } from "../../lib/platform";
 import type { EngineState } from "../../lib/types";
 import { Tip } from "./parts";
 
@@ -39,6 +40,7 @@ function formatDb(db: number) {
  * WHERE: main window, above the record bar.
  */
 export function AudioMixer({ e }: { e: EngineState }) {
+  const words = usePlatformWords();
   const s = e.settings;
   const allowMic = allowAccessItem("microphone", e.mics, e.permissions.microphone);
   return (
@@ -46,7 +48,9 @@ export function AudioMixer({ e }: { e: EngineState }) {
       <MixerStrip
         icon={<Speaker />}
         name="System audio"
-        device={<span className="truncate text-[12px] text-muted-foreground">All sounds from this Mac</span>}
+        device={
+          <span className="truncate text-[12px] text-muted-foreground">All sounds from this {words.computer}</span>
+        }
         enabled={s.systemAudio}
         levels={systemLevels}
         gainDb={s.systemGainDb}

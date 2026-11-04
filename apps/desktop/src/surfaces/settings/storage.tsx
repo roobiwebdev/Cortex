@@ -5,6 +5,7 @@ import { Button } from "@starter/ui/components/button";
 
 import { formatBytes } from "../../lib/format";
 import { useEngine } from "../../lib/engine";
+import { usePlatformWords } from "../../lib/platform";
 import { recordedOutput } from "../../lib/output-size";
 import { NamingRow, OutputFolderRow } from "./files";
 import { ChoiceSelect, SettingsGroup, SettingsPage, SettingsRow } from "./parts";
@@ -16,6 +17,7 @@ type Keep = "forever" | "90" | "30";
 /** Storage: where files go, free space, how long recordings are kept. Matrix SET-K01, SET-07, FLG-01. */
 export function StorageSection() {
   const e = useEngine();
+  const words = usePlatformWords();
   const s = e.settings;
   // prototype-local: needs a `keepRecordings` setting and a cleanup job (moves to Trash).
   const [keep, setKeep] = React.useState<Keep>("forever");
@@ -78,7 +80,7 @@ export function StorageSection() {
           hint={
             keep === "forever"
               ? "Cortex never deletes anything."
-              : `Older recordings move to the Trash after ${keep} days.`
+              : `Older recordings move to the ${words.trash} after ${keep} days.`
           }
         >
           <ChoiceSelect<Keep>
@@ -92,9 +94,12 @@ export function StorageSection() {
             ]}
           />
         </SettingsRow>
-        <SettingsRow label="Recordings folder" hint={revealed ? "Opened in Finder." : `Open ${s.outputDir} in Finder.`}>
+        <SettingsRow
+          label="Recordings folder"
+          hint={revealed ? `Opened in ${words.fileManager}.` : `Open ${s.outputDir} in ${words.fileManager}.`}
+        >
           <Button variant="soft" size="sm" onClick={() => setRevealed(true)}>
-            <FolderSearch /> Reveal in Finder
+            <FolderSearch /> {words.revealLabel}
           </Button>
         </SettingsRow>
       </SettingsGroup>

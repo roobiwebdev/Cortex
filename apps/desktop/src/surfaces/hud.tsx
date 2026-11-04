@@ -15,7 +15,9 @@ import { cn } from "@starter/ui/lib/utils";
 
 import { CameraBubble } from "../components/camera-bubble";
 import { ElapsedClock } from "../components/progress-text";
+import { useShortcut } from "../components/shortcut-kbd";
 import { engine, micLevels, useEngineCalm } from "../lib/engine";
+import { usePlatformWords } from "../lib/platform";
 import { floatingWindow, useWindowed } from "../lib/floating";
 import type { SurfaceProps } from "../prototype/surfaces";
 import { CaptureExcludedHint, FloatingCard, MENU_CONTENT, MENU_ITEM } from "./floating/floating-card";
@@ -40,6 +42,9 @@ const MENU_RESERVE = 200;
  */
 export function HudSurface({ cameraStream, navigate }: SurfaceProps) {
   const e = useEngineCalm();
+  const words = usePlatformWords();
+  const recordKeys = useShortcut("record");
+  const replayKeys = useShortcut("replay");
   const s = e.settings;
   const capturing = isCapturing(e.status);
   const paused = e.status === "paused";
@@ -115,7 +120,7 @@ export function HudSurface({ cameraStream, navigate }: SurfaceProps) {
       {hidden ? (
         <div className="absolute bottom-12 left-1/2 -translate-x-1/2">
           <CaptureExcludedHint>
-            HUD hidden. Bring it back from the menu bar.
+            HUD hidden. Bring it back from the {words.trayPlace}.
             <Button variant="ghost" size="xs" className="-my-1 -mr-2" onClick={() => setHidden(false)}>
               <Eye />
               Show
@@ -214,7 +219,7 @@ export function HudSurface({ cameraStream, navigate }: SurfaceProps) {
 
             {capturing || e.status === "finalizing" ? (
               <RoundButton
-                label="Stop and save (⇧⌘R)"
+                label={`Stop and save (${recordKeys})`}
                 tone="rec"
                 disabled={e.status === "finalizing"}
                 onClick={() => engine.stop()}
@@ -223,7 +228,7 @@ export function HudSurface({ cameraStream, navigate }: SurfaceProps) {
               </RoundButton>
             ) : (
               <RoundButton
-                label={e.status === "countdown" ? "Cancel countdown (Esc)" : "Start recording (⇧⌘R)"}
+                label={e.status === "countdown" ? "Cancel countdown (Esc)" : `Start recording (${recordKeys})`}
                 tone="rec"
                 onClick={() => engine.toggleRecord()}
               >
@@ -282,17 +287,23 @@ export function HudSurface({ cameraStream, navigate }: SurfaceProps) {
                 <Ellipsis />
               </DropdownMenuTrigger>
               <DropdownMenuContent side="top" align="end" sideOffset={10} className={MENU_CONTENT}>
-                <DropdownMenuItem className={MENU_ITEM} disabled={!s.replayEnabled} onClick={() => engine.saveReplay()}>
-                  <History />
-                  Save replay
-                  <DropdownMenuShortcut>⇧⌘S</DropdownMenuShortcut>
-                </DropdownMenuItem>
+                {e.capabilities.replayBuffer && (
+                  <DropdownMenuItem
+                    className={MENU_ITEM}
+                    disabled={!s.replayEnabled}
+                    onClick={() => engine.saveReplay()}
+                  >
+                    <History />
+                    Save replay
+                    <DropdownMenuShortcut>{replayKeys}</DropdownMenuShortcut>
+                  </DropdownMenuItem>
+                )}
                 <DropdownMenuItem className={MENU_ITEM} onClick={hide}>
                   <Eye />
                   Hide HUD
                 </DropdownMenuItem>
                 <DropdownMenuItem className={MENU_ITEM} onClick={() => navigate("menubar")}>
-                  Open menu bar panel
+                  {words.trayPlace === "menu bar" ? "Open menu bar panel" : "Open Cortex panel"}
                 </DropdownMenuItem>
                 <DropdownMenuSeparator className="mx-1 my-1" />
                 <DropdownMenuItem

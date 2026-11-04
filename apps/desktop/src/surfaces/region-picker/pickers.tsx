@@ -252,7 +252,7 @@ export function DisplayList({
           />
         ))}
       </div>
-      <Note>The whole display is recorded, including the menu bar and Dock. Cortex's own windows never appear.</Note>
+      <Note>The whole display is recorded, taskbars and menu bars included.</Note>
     </div>
   );
 }

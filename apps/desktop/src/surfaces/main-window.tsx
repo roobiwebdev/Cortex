@@ -3,6 +3,8 @@ import * as React from "react";
 import { TooltipProvider } from "@starter/ui/components/tooltip";
 
 import { useEngineCalm } from "../lib/engine";
+import { usePlatform } from "../lib/platform";
+import { isPrimaryModifier } from "../lib/shortcuts";
 import type { SurfaceProps } from "../prototype/surfaces";
 import { AudioMixer } from "./main-window/audio-mixer";
 import { RecordBar } from "./main-window/record-bar";
@@ -22,17 +24,18 @@ export function MainWindow({ cameraStream, navigate }: SurfaceProps) {
   // Clock, bytes and levels update their own leaves; the window re-renders on real changes only.
   const e = useEngineCalm();
 
-  // ⌘, opens Settings while the main window is focused (KEY-04).
+  // ⌘, (Ctrl+, on Windows and Linux) opens Settings while the main window is focused (KEY-04).
+  const platform = usePlatform();
   React.useEffect(() => {
     const onKey = (ev: KeyboardEvent) => {
-      if (ev.metaKey && ev.key === ",") {
+      if (isPrimaryModifier(ev, platform) && ev.key === ",") {
         ev.preventDefault();
         navigate("settings");
       }
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [navigate]);
+  }, [navigate, platform]);
 
   return (
     <TooltipProvider delayDuration={400}>
