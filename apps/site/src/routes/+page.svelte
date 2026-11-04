@@ -338,13 +338,13 @@
 	{#if platform === 'windows'}
 		<a class="download" href={win.exe.url}>{@render osIcon('windows')} Download for Windows</a>
 		<p class="meta">
-			Version {VERSION} · <span class="beta">Beta</span> · Windows 10 or 11, 64-bit · or the
+			Version {VERSION} · <span class="beta">Beta</span> · Windows 11, or Windows 10 (version 2004 or newer), 64-bit · or the
 			<a href={win.msi.url}>.msi</a>
 		</p>
 	{:else if platform === 'linux'}
 		<a class="download" href={linux.appimage.url}>{@render osIcon('linux')} Download AppImage</a>
 		<p class="meta">
-			Version {VERSION} · <span class="beta">Beta</span> · {LINUX_ARCH_LABEL[linuxArch]} · or the
+			Version {VERSION} · <span class="beta">Beta</span> · {LINUX_ARCH_LABEL[linuxArch]} · {LINUX_DISTROS} · or the
 			<a href={linux.deb.url}>.deb</a> · <a href={linux.rpm.url}>.rpm</a>
 		</p>
 	{:else if platform === 'mac'}
