@@ -1,0 +1,168 @@
+# Runs the one-command installers on clean hosted runners, the way users run them:
+# download the script from the site, pipe it to the shell, then check that Cortex is
+# installed, carries no quarantine flag (macOS) and keeps running for 10 seconds.
+#
+# Start it by hand after a release or a site deploy:
+#   gh workflow run install-test.yml --repo roobiwebdev/cortex
+#   gh workflow run install-test.yml --repo roobiwebdev/cortex -f version=v0.1.0 \
+#     -f script_url=https://raw.githubusercontent.com/<owner>/<public repo>/<ref>/apps/site/static
+#
+# script_url is the folder that holds install.ps1 and install.sh, so the scripts can be
+# tried from any public URL before the site is deployed. No secrets are needed: the
+# scripts only read the public roobiwebdev/cortex-releases repository.
+# See docs/engineering/releasing.md, "Install with one command".
+name: Install test
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: Release tag to install (e.g. v0.1.0). Empty means the latest release.
+        type: string
+        default: ""
+      script_url:
+        description: Folder URL that serves install.ps1 and install.sh (no trailing slash)
+        type: string
+        default: https://cortex.roobi.dev
+
+permissions:
+  contents: read
+
+env:
+  CORTEX_VERSION: ${{ inputs.version }}
+  SCRIPT_URL: ${{ inputs.script_url || 'https://cortex.roobi.dev' }}
+
+jobs:
+  windows:
+    name: windows (${{ matrix.shell }})
+    runs-on: windows-latest
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        # Windows PowerShell 5.1 and PowerShell 7.
+        shell: [powershell, pwsh]
+    defaults:
+      run:
+        shell: ${{ matrix.shell }}
+    steps:
+      - name: Install with the one-line command
+        env:
+          NO_OPEN: "1"
+        run: |
+          $PSVersionTable.PSVersion
+          irm "$env:SCRIPT_URL/install.ps1" | iex
+
+      - name: Cortex is installed in %LOCALAPPDATA%\Cortex
+        run: |
+          $exe = Join-Path $env:LOCALAPPDATA 'Cortex\cortex-desktop.exe'
+          if (-not (Test-Path -LiteralPath $exe)) {
+            Get-ChildItem -LiteralPath (Join-Path $env:LOCALAPPDATA 'Cortex') -ErrorAction SilentlyContinue
+            throw "Missing $exe"
+          }
+          Get-Item -LiteralPath $exe | Format-List FullName, Length, LastWriteTime
+          # Invoke-WebRequest leaves no Mark of the Web, and neither does the installer.
+          $zone = Get-Item -LiteralPath $exe -Stream Zone.Identifier -ErrorAction SilentlyContinue
+          if ($zone) { throw "$exe carries a Mark of the Web (Zone.Identifier)" }
+
+      - name: Cortex starts and stays up for 10 seconds
+        run: |
+          $exe = Join-Path $env:LOCALAPPDATA 'Cortex\cortex-desktop.exe'
+          $p = Start-Process -FilePath $exe -PassThru
+          Start-Sleep -Seconds 10
+          $p.Refresh()
+          if ($p.HasExited) { throw "Cortex exited with code $($p.ExitCode) within 10 seconds" }
+          Get-Process -Name cortex-desktop | Format-Table Id, ProcessName, StartTime
+          Stop-Process -Id $p.Id -Force
+
+  macos:
+    runs-on: macos-latest
+    timeout-minutes: 20
+    steps:
+      - name: Install with the one-line command
+        env:
+          NO_OPEN: "1"
+        run: curl -fsSL "$SCRIPT_URL/install.sh" | sh
+
+      - name: Cortex.app is in /Applications without a quarantine flag
+        run: |
+          app=/Applications/Cortex.app
+          test -d "$app" || { echo "Missing $app"; exit 1; }
+          if xattr -p com.apple.quarantine "$app" 2>/dev/null; then
+            echo "$app carries com.apple.quarantine"
+            exit 1
+          fi
+          codesign --verify --deep --strict --verbose=2 "$app"
+          /usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "$app/Contents/Info.plist"
+
+      # Without a Screen Recording grant the app still starts and shows its tour.
+      - name: Cortex starts and stays up for 10 seconds
+        run: |
+          open -a /Applications/Cortex.app
+          sleep 10
+          pgrep -x cortex-desktop || { echo "cortex-desktop is not running after 10 seconds"; exit 1; }
+          pkill -x cortex-desktop || true
+
+  linux:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 20
+    steps:
+      - name: Check that the release has a Linux build
+        id: release
+        run: |
+          if [ -n "$CORTEX_VERSION" ]; then
+            case "$CORTEX_VERSION" in v*) tag=$CORTEX_VERSION ;; *) tag=v$CORTEX_VERSION ;; esac
+            api="https://api.github.com/repos/roobiwebdev/cortex-releases/releases/tags/$tag"
+          else
+            api="https://api.github.com/repos/roobiwebdev/cortex-releases/releases/latest"
+          fi
+          json=$(curl -fsSL --retry 3 -H "Authorization: Bearer $GITHUB_TOKEN" "$api")
+          if printf '%s' "$json" | grep -q '"name": *"Cortex-Linux-x86_64.AppImage"'; then
+            echo "published=true" >>"$GITHUB_OUTPUT"
+          else
+            echo "::notice title=Linux skipped::The release has no Cortex-Linux-x86_64.AppImage yet, so the Linux install test was skipped."
+            echo "published=false" >>"$GITHUB_OUTPUT"
+          fi
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+
+      # FUSE 2 for the AppImage, Xvfb for a display, and the GStreamer runtime the app
+      # expects from the system (tauri.linux.conf.json, deb depends; bundleMediaFramework is off).
+      - name: Install runtime packages
+        if: steps.release.outputs.published == 'true'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            xvfb xauth libfuse2 dbus-x11 \
+            libwebkit2gtk-4.1-0 libgtk-3-0 libayatana-appindicator3-1 \
+            gstreamer1.0-plugins-base gstreamer1.0-plugins-good gstreamer1.0-plugins-bad \
+            gstreamer1.0-libav gstreamer1.0-pipewire gstreamer1.0-pulseaudio xdg-desktop-portal
+
+      - name: Install with the one-line command
+        if: steps.release.outputs.published == 'true'
+        env:
+          NO_OPEN: "1"
+        run: curl -fsSL "$SCRIPT_URL/install.sh" | sh
+
+      - name: The AppImage and menu entry are in place
+        if: steps.release.outputs.published == 'true'
+        run: |
+          test -x "$HOME/.local/bin/cortex" || { echo "Missing or not executable: ~/.local/bin/cortex"; exit 1; }
+          ls -l "$HOME/.local/bin/cortex"
+          cat "$HOME/.local/share/applications/cortex.desktop"
+          ls -l "$HOME/.local/share/icons/hicolor/256x256/apps/cortex.png"
+
+      - name: Cortex starts under Xvfb and stays up for 10 seconds
+        if: steps.release.outputs.published == 'true'
+        run: |
+          xvfb-run -a dbus-launch --exit-with-session "$HOME/.local/bin/cortex" >cortex.log 2>&1 &
+          sleep 10
+          # The AppImage runtime mounts the image and runs usr/bin/cortex-desktop from it.
+          if pgrep -f cortex-desktop >/dev/null; then
+            pgrep -af cortex
+            pkill -f cortex-desktop || true
+          else
+            echo "Cortex is not running after 10 seconds. Its output:"
+            cat cortex.log
+            exit 1
+          fi
