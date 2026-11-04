@@ -614,7 +614,7 @@
 							</button>
 						</div>
 						<p class="note">
-							{FAST_NOTE[os]} No security pop-ups, because the file isn’t downloaded by a browser.
+							{FAST_NOTE[os]} No security warning, because the file isn’t downloaded by a browser.
 						</p>
 					{:else}
 						<p>The one-command install for this Linux build is on its way.</p>
