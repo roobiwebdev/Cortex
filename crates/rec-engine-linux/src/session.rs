@@ -134,6 +134,8 @@ pub struct Session {
     file: PathBuf,
     plan: PipelinePlan,
     started: Instant,
+    /// The latest running time each gate has seen, kept or dropped.
+    gates_seen: Vec<Arc<AtomicU64>>,
     /// The portal session and its PipeWire fd: closed when the recording ends.
     _keepalive: Option<Box<dyn Send>>,
 }
@@ -200,6 +202,7 @@ impl Session {
 
         let shared = Arc::new(Shared::default());
         let timeline = Arc::new(Mutex::new(Timeline::default()));
+        let mut gates_seen = vec![];
         for gate in gate_names(plan) {
             let pad = by_name(&gate)?
                 .static_pad("src")
@@ -208,8 +211,10 @@ impl Session {
             let counter = (gate == names::VIDEO_GATE).then(|| shared.clone());
             let video = gate == names::VIDEO_GATE || gate == names::CAMERA_GATE;
             let qos = video.then(Qos::default);
+            let seen = Arc::new(AtomicU64::new(0));
+            gates_seen.push(seen.clone());
             pad.add_probe(gst::PadProbeType::BUFFER, move |pad, info| {
-                gate_probe(pad, info, &tl, counter.as_deref(), qos.as_ref())
+                gate_probe(pad, info, &tl, &seen, counter.as_deref(), qos.as_ref())
             });
         }
         let mask = Arc::new(Mutex::new(mask));
@@ -260,6 +265,7 @@ impl Session {
             file: file.to_path_buf(),
             plan: plan.clone(),
             started: Instant::now(),
+            gates_seen,
             _keepalive: None,
         };
         if session.pipeline.set_state(gst::State::Playing).is_err() {
@@ -351,12 +357,27 @@ impl Session {
         }
     }
 
-    /// Stop and finalize the file: EOS through every branch so the muxer writes its index,
-    /// then shut down. A timeout still leaves a playable fragmented file.
+    /// Stop and finalize the file: end the timeline now, let every branch pass that time,
+    /// then EOS through every branch so the muxer writes its index, and shut down. A timeout
+    /// still leaves a playable fragmented file.
     pub fn finish(self) -> Result<Stats, String> {
-        // A pause in progress must not swallow the EOS-time frames: close it.
-        self.resume();
-        let secs = self.recorded_secs();
+        let (end, secs) = {
+            let mut tl = lock(&self.timeline);
+            let end = tl.end(running_time(&self.pipeline));
+            (end, tl.recorded_ns(end) as f64 / 1e9)
+        };
+        // EOS stops the sources at once. On a slow machine a branch can still be working
+        // on frames from before the stop; wait for it so every track ends at the stop.
+        let deadline = Instant::now() + CATCH_UP;
+        while Instant::now() < deadline
+            && self.error().is_none()
+            && self
+                .gates_seen
+                .iter()
+                .any(|g| g.load(Ordering::Relaxed) < end)
+        {
+            std::thread::sleep(Duration::from_millis(20));
+        }
         self.pipeline.send_event(gst::event::Eos::new());
         let timeout = Duration::from_secs(20);
         let eos = {
@@ -398,6 +419,9 @@ impl Drop for Session {
         let _ = self.pipeline.set_state(gst::State::Null);
     }
 }
+
+/// The longest `Session::finish` waits for late branches to reach the stop.
+const CATCH_UP: Duration = Duration::from_secs(10);
 
 /// How far behind the clock the composed picture may fall, beyond the compositor's own
 /// latency, before the video gate asks it to skip frames.
@@ -460,12 +484,13 @@ fn report_late(pad: &gst::Pad, qos: &Qos, rt: u64) {
     pad.send_event(ev);
 }
 
-/// The pause gate: drop buffers inside a pause, move later ones back by the paused time.
-/// On the video gate (`qos`) it also reports frames that arrive late, see `frames_late_by`.
+/// The pause gate: drop buffers inside a pause, move later ones back by the paused time,
+/// and note how far this branch has got (`seen`). On the video gates (`qos`) it also reports frames that arrive late, see `frames_late_by`.
 fn gate_probe(
     pad: &gst::Pad,
     info: &mut gst::PadProbeInfo,
     timeline: &Mutex<Timeline>,
+    seen: &AtomicU64,
     counter: Option<&Shared>,
     qos: Option<&Qos>,
 ) -> gst::PadProbeReturn {
@@ -482,6 +507,7 @@ fn gate_probe(
         .and_then(|s| s.to_running_time(pts))
         .unwrap_or(pts)
         .nseconds();
+    seen.fetch_max(rt, Ordering::Relaxed);
     if let Some(qos) = qos {
         report_late(pad, qos, rt);
     }

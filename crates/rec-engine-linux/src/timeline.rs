@@ -41,6 +41,14 @@ impl Timeline {
         }
     }
 
+    /// End the recording at running time `now`: from then on every buffer is dropped (a
+    /// pause in progress already drops them and stays open). Returns the running time the
+    /// file ends at, which each gate must pass before EOS.
+    pub fn end(&mut self, now: u64) -> u64 {
+        self.pause(now);
+        self.spans.last().map_or(now, |(start, _)| *start)
+    }
+
     /// Paused nanoseconds before running time `t` (closed spans that ended by then).
     fn cut_before(&self, t: u64) -> u64 {
         self.spans
@@ -132,6 +140,30 @@ mod tests {
         // Timestamps stay monotonic across the cut.
         let mapped: Vec<_> = (0..90).filter_map(|i| t.map(i * S / 10)).collect();
         assert!(mapped.windows(2).all(|w| w[0] < w[1]));
+    }
+
+    #[test]
+    fn the_end_drops_what_follows_and_freezes_the_clock() {
+        let mut t = Timeline::default();
+        t.mark_origin(0);
+        t.pause(S);
+        t.resume(2 * S);
+        assert_eq!(t.end(4 * S), 4 * S);
+        assert_eq!(
+            t.map(3 * S),
+            Some(2 * S),
+            "late buffers from before the stop kept"
+        );
+        assert_eq!(t.map(4 * S), None);
+        assert_eq!(t.recorded_ns(9 * S), 3 * S);
+
+        // Stopping while paused ends the file where the pause began.
+        let mut t = Timeline::default();
+        t.mark_origin(0);
+        t.pause(2 * S);
+        assert_eq!(t.end(5 * S), 2 * S);
+        assert_eq!(t.map(3 * S), None);
+        assert_eq!(t.recorded_ns(5 * S), 2 * S);
     }
 
     #[test]
