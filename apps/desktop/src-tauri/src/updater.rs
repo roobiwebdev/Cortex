@@ -136,7 +136,7 @@ impl Updates {
             std::fs::write(&self.stamp_path, serde_json::to_vec(&stamp)?)
         };
         if let Err(e) = write() {
-            eprintln!("cortex: could not save the update check time: {e}");
+            log_line!("could not save the update check time: {e}");
         }
     }
 }
@@ -179,7 +179,7 @@ fn info(u: &Update) -> UpdateInfo {
 
 fn emit(app: &AppHandle, status: UpdateStatus) {
     if let Err(e) = UpdateStatusEvent(status).emit(app) {
-        eprintln!("cortex: failed to emit the update status: {e}");
+        log_line!("failed to emit the update status: {e}");
     }
 }
 
@@ -221,7 +221,7 @@ pub fn setup(app: &tauri::App, data_dir: &Path) {
     let raw_feed = var(DEBUG_URL_VAR);
     let feed = debug_feed(raw_feed.as_deref());
     if raw_feed.is_some() && feed.is_none() {
-        eprintln!("cortex: {DEBUG_URL_VAR} ignored: only http(s) URLs on 127.0.0.1 or localhost");
+        log_line!("{DEBUG_URL_VAR} ignored: only http(s) URLs on 127.0.0.1 or localhost");
     }
     let debug_install = feed.is_some() && var(DEBUG_INSTALL_VAR).is_some_and(|v| v == "1");
     let updates = Arc::new(Updates {
@@ -264,13 +264,13 @@ pub fn setup(app: &tauri::App, data_dir: &Path) {
                     .is_some_and(|s| s.settings().auto_update);
                 let due = auto && check_due(updates.lock().last_attempt, now_ms());
                 if due && let Err(e) = tauri::async_runtime::block_on(check(&handle)) {
-                    eprintln!("cortex: update check failed: {e}");
+                    log_line!("update check failed: {e}");
                 }
                 std::thread::sleep(WAKE_EVERY);
             }
         });
     if let Err(e) = spawned {
-        eprintln!("cortex: could not start the update check: {e}");
+        log_line!("could not start the update check: {e}");
     }
 }
 
@@ -442,6 +442,7 @@ pub async fn install(app: &AppHandle) -> Result<UpdateStatus, EngineError> {
         return Err(fail(app, &u, why, |g| g.status.installing = false));
     }
     println!("cortex: installed Cortex {}", update.version);
+    crate::logfile::record(&format!("installed Cortex {}", update.version));
     u.lock().relaunch = true;
     // The quit flow finalizes and flushes settings; `relaunch_after_exit` reopens us.
     app.exit(0);
@@ -468,7 +469,7 @@ pub fn relaunch_after_exit(app: &AppHandle) {
         .ok()
         .and_then(|exe| app_bundle(&exe))
     else {
-        eprintln!("cortex: not running from an app bundle; reopen Cortex to finish the update");
+        log_line!("not running from an app bundle; reopen Cortex to finish the update");
         return;
     };
     // The new copy must not find this one still holding the single-instance lock (it is
@@ -483,11 +484,11 @@ pub fn relaunch_after_exit(app: &AppHandle) {
     }
     match cmd.stdin(std::process::Stdio::null()).output() {
         Ok(o) if o.status.success() => {}
-        Ok(o) => eprintln!(
-            "cortex: could not reopen after the update: {}",
+        Ok(o) => log_line!(
+            "could not reopen after the update: {}",
             String::from_utf8_lossy(&o.stderr).trim()
         ),
-        Err(e) => eprintln!("cortex: could not reopen after the update: {e}"),
+        Err(e) => log_line!("could not reopen after the update: {e}"),
     }
 }
 

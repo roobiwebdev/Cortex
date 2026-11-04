@@ -82,7 +82,7 @@ pub(crate) fn catch_record_hotkey(app: &AppHandle, status: EngineStatus) -> bool
         hotkey: TourHotkey::Record,
     };
     if let Err(e) = event.emit_to(app, ONBOARDING) {
-        eprintln!("cortex: could not tell the tour about the shortcut: {e}");
+        log_line!("could not tell the tour about the shortcut: {e}");
         return false;
     }
     true
@@ -98,7 +98,7 @@ pub(crate) fn open_on_first_run(app: &AppHandle, completed: bool) {
         return;
     }
     if let Err(e) = windows::open_window(app.clone(), AppWindow::Onboarding) {
-        eprintln!("cortex: could not open the tour: {e}");
+        log_line!("could not open the tour: {e}");
     }
 }
 
@@ -131,7 +131,7 @@ fn mark_completed(app: &AppHandle) {
             ..s
         };
         if let Err(e) = shell.update_settings(next) {
-            eprintln!("cortex: could not store that the tour ran: {e}");
+            log_line!("could not store that the tour ran: {e}");
         }
     });
 }
@@ -163,6 +163,6 @@ pub(crate) fn on_menu_event(app: &AppHandle, event: &MenuEvent) {
     if event.id().as_ref() == SHOW_TOUR
         && let Err(e) = windows::open_window(app.clone(), AppWindow::Onboarding)
     {
-        eprintln!("cortex: could not open the tour: {e}");
+        log_line!("could not open the tour: {e}");
     }
 }

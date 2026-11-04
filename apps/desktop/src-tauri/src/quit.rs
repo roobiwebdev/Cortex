@@ -60,7 +60,7 @@ pub fn on_exit_requested(app: &AppHandle, code: Option<i32>, api: &ExitRequestAp
         });
     if let Err(e) = spawned {
         // No thread: let this exit through; `RunEvent::Exit` finalizes on the main thread.
-        eprintln!("cortex: could not start the quit thread: {e}");
+        log_line!("could not start the quit thread: {e}");
         quit.0.store(DONE, Ordering::SeqCst);
         app.exit(code);
     }
@@ -71,6 +71,6 @@ pub fn on_exit_requested(app: &AppHandle, code: Option<i32>, api: &ExitRequestAp
 pub fn watch_signals(app: &AppHandle) {
     let h = app.clone();
     if let Err(e) = crate::platform::system().on_terminate(Box::new(move || h.exit(0))) {
-        eprintln!("cortex: could not watch for SIGTERM: {e}");
+        log_line!("could not watch for SIGTERM: {e}");
     }
 }

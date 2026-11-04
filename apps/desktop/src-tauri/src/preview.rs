@@ -63,10 +63,10 @@ impl LivePreview {
                     }
                     let r = worker_shell.engine().set_preview_enabled(on);
                     if stats {
-                        eprintln!("cortex: preview engine on={on} -> {r:?}");
+                        log_line!("preview engine on={on} -> {r:?}");
                     }
                     if let Err(e) = r {
-                        eprintln!("cortex: preview: {e}");
+                        log_line!("preview: {e}");
                     }
                 }
             })
@@ -84,8 +84,8 @@ impl LivePreview {
         preview.view.on_window_visibility(Box::new(move |visible| {
             if p.trace {
                 // Main thread here, so the window getters do not block.
-                eprintln!(
-                    "cortex: preview window: shown={:?} minimized={:?} focused={:?}",
+                log_line!(
+                    "preview window: shown={:?} minimized={:?} focused={:?}",
                     p.window.is_visible().ok(),
                     p.window.is_minimized().ok(),
                     p.window.is_focused().ok()
@@ -122,9 +122,11 @@ impl LivePreview {
         f(&mut w);
         let on = should_preview(w.hole, w.visible);
         if self.trace {
-            eprintln!(
-                "cortex: preview {why}: hole={} visible={} -> on={on} (was {})",
-                w.hole, w.visible, w.on
+            log_line!(
+                "preview {why}: hole={} visible={} -> on={on} (was {})",
+                w.hole,
+                w.visible,
+                w.on
             );
         }
         if on == w.on {
