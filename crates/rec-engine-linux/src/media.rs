@@ -61,6 +61,67 @@ fn appsink(p: &gst::Pipeline) -> Result<gst_app::AppSink, MediaError> {
         .ok_or_else(|| failed("no appsink"))
 }
 
+/// Fill the empty `slots` by playing the video from the start: each gets the first frame at
+/// or after its target time, or the last frame when the track ends before it. Stops as soon
+/// as every slot is filled.
+fn fill_by_decoding(
+    text: &str,
+    targets: &[u64],
+    slots: &mut [Option<Vec<u8>>],
+) -> Result<(), MediaError> {
+    let p = paused(text)?;
+    let sink = appsink(&p)?;
+    p.set_state(gst::State::Playing).map_err(failed)?;
+    let mut last: Option<Vec<u8>> = None;
+    while slots.iter().any(Option::is_none) {
+        let Some(sample) = sink.try_pull_sample(gst::ClockTime::from_seconds(5)) else {
+            break;
+        };
+        let Some(buf) = sample.buffer() else { continue };
+        let pts = buf.pts().map(|t| t.nseconds()).unwrap_or(0);
+        let Ok(map) = buf.map_readable() else {
+            continue;
+        };
+        let jpeg = map.as_slice().to_vec();
+        for (slot, t) in slots.iter_mut().zip(targets) {
+            if slot.is_none() && pts >= *t {
+                *slot = Some(jpeg.clone());
+            }
+        }
+        last = Some(jpeg);
+    }
+    let _ = p.set_state(gst::State::Null);
+    if let Some(last) = last {
+        for slot in slots.iter_mut().filter(|s| s.is_none()) {
+            *slot = Some(last.clone());
+        }
+    }
+    Ok(())
+}
+
+/**
+ * SOURCE OF TRUTH KEYWORDS: frames_for_every_slot, thumbnails, timeline strip, missing frames
+ * WHAT:  One frame per slot: an empty slot takes the nearest earlier frame, or the first one
+ *        when none comes before. None when there is no frame at all.
+ * WHY:   The trim timeline lays out exactly as many tiles as it asked for.
+ * WHERE: `GstMedia::thumbnails`.
+ */
+fn frames_for_every_slot(slots: Vec<Option<Vec<u8>>>) -> Option<Vec<Vec<u8>>> {
+    let first = slots.iter().flatten().next()?.clone();
+    let mut prev = first;
+    Some(
+        slots
+            .into_iter()
+            .map(|s| {
+                if let Some(f) = s {
+                    prev = f;
+                }
+                prev.clone()
+            })
+            .collect(),
+    )
+}
+
 impl MediaLibrary for GstMedia {
     fn inspect(&self, path: &Path) -> Result<MediaInfo, MediaError> {
         ready()?;
@@ -119,15 +180,18 @@ impl MediaLibrary for GstMedia {
             .query_duration::<gst::ClockTime>()
             .map(|d| d.nseconds())
             .unwrap_or(0);
-        let mut out = vec![];
-        for i in 0..count.max(1) {
-            let t = duration * (2 * u64::from(i) + 1) / (2 * u64::from(count.max(1)));
+        let n = count.max(1);
+        let targets: Vec<u64> = (0..n)
+            .map(|i| duration * (2 * u64::from(i) + 1) / (2 * u64::from(n)))
+            .collect();
+        let mut slots: Vec<Option<Vec<u8>>> = vec![None; targets.len()];
+        for (slot, t) in slots.iter_mut().zip(&targets) {
             let sought = p.seek_simple(
                 gst::SeekFlags::FLUSH | gst::SeekFlags::KEY_UNIT,
-                gst::ClockTime::from_nseconds(t),
+                gst::ClockTime::from_nseconds(*t),
             );
-            // A seek or preroll can miss on a slow machine; skip that slot rather than
-            // ending the strip early.
+            // A seek or preroll can miss (a slow machine, a video track that ends before
+            // the audio); the pass below fills that slot.
             if sought.is_err() {
                 continue;
             }
@@ -135,16 +199,14 @@ impl MediaLibrary for GstMedia {
             if let Some(sample) = sink.try_pull_preroll(gst::ClockTime::from_seconds(5))
                 && let Some(map) = sample.buffer().and_then(|b| b.map_readable().ok())
             {
-                out.push(map.as_slice().to_vec());
+                *slot = Some(map.as_slice().to_vec());
             }
         }
         let _ = p.set_state(gst::State::Null);
-        let Some(last) = out.last().cloned() else {
-            return Err(failed("no video frames"));
-        };
-        // The timeline lays out exactly `count` tiles: repeat the last frame for any misses.
-        out.resize(count.max(1) as usize, last);
-        Ok(out)
+        if slots.iter().any(Option::is_none) {
+            fill_by_decoding(&text, &targets, &mut slots)?;
+        }
+        frames_for_every_slot(slots).ok_or_else(|| failed("no video frames"))
     }
 
     fn waveform(&self, path: &Path, buckets: u32) -> Result<Vec<f32>, MediaError> {
@@ -205,5 +267,20 @@ impl MediaLibrary for GstMedia {
         crate::trash::move_to_trash(path, &dir, &when)
             .map(|_| ())
             .map_err(|e| failed(format!("Could not move it to the trash: {e}")))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn every_slot_gets_a_frame() {
+        let f = |b: u8| Some(vec![b]);
+        assert_eq!(frames_for_every_slot(vec![None, None]), None);
+        assert_eq!(
+            frames_for_every_slot(vec![None, f(1), None, f(2)]),
+            Some(vec![vec![1], vec![1], vec![1], vec![2]])
+        );
     }
 }
