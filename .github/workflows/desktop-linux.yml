@@ -42,6 +42,21 @@ on:
       - "rust-toolchain.toml"
       - "scripts/release/stage.sh"
       - ".github/workflows/desktop-linux.yml"
+  # Rebuild only the Linux installers of a release (assemble.sh --from takes the rest).
+  workflow_dispatch:
+    inputs:
+      runner:
+        description: Runner label (ubuntu-24.04 for x86_64, ubuntu-24.04-arm for arm64)
+        type: string
+        default: ubuntu-24.04
+      group:
+        description: Release group, linux-x64 or linux-arm64
+        type: string
+        default: linux-x64
+      version:
+        description: Release version; must match tauri.conf.json
+        type: string
+        required: true
   workflow_call:
     inputs:
       runner:

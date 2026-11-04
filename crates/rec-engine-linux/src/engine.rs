@@ -580,9 +580,12 @@ impl LinuxEngine {
                     } => crop_for([*x, *y, *rw, *rh], (f64::from(w), f64::from(h)), (w, h)),
                     _ => None,
                 };
+                // At the recording's own rate: a faster pattern is generated only to be dropped by
+                // videorate, which starves software-encoded runs on small CI machines.
+                let fps = s.fps.max(1);
                 sources.screen = Some(ScreenSource {
                     src: format!(
-                        "videotestsrc is-live=true pattern=smpte ! video/x-raw,width={w},height={h},framerate=60/1"
+                        "videotestsrc is-live=true pattern=smpte ! video/x-raw,width={w},height={h},framerate={fps}/1"
                     ),
                     size: (w, h),
                     crop,
