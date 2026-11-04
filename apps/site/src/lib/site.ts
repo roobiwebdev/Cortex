@@ -153,6 +153,6 @@ export const TITLE = `${NAME}: a screen and camera recorder for Mac, Windows and
 export const DESCRIPTION =
   "Cortex records your screen, system audio, mic and camera into one file on Mac, Windows and Linux. On the Mac it adds true 4K, Quick trim, a replay buffer and Go live.";
 
-// Describes og.jpg as rendered (scripts/og); its text still says "for the Mac" until it is re-rendered.
+// Describes og.jpg as rendered (scripts/og).
 export const OG_IMAGE_ALT =
-  'The Cortex icon and name above "One key. One file." and "A screen and camera recorder for the Mac, with the camera on its own track.", beside a screenshot of the Cortex window with its sources sidebar, preview and red Record button.';
+  'The Cortex icon and name above "One key. One file." and "A screen and camera recorder for Mac, Windows and Linux.", beside a screenshot of the Cortex window with its sources sidebar, preview and red Record button.';
