@@ -228,6 +228,7 @@ Not run anywhere: the ScreenCast portal and restore token, `pipewiresrc` on a re
 ### Fixed on the way
 
 - `compositor` and `audiomixer` default to `start-time-selection=zero`; with a source faster than the output the compositor emitted two frames stamped 0 and x264 then gave the muxer a frame without a PTS ("Buffer has no PTS"). Both now use `first`.
+- On a slow CPU (the `ubuntu-24.04-arm` CI runner, or Docker with `--cpus=2`) the mix track went silent after a pause, or the file ended seconds early. The picture fell behind the clock, and the muxer, which waits for its slowest track, held back the audio too. The live audiomixer then ran ahead during the pause and dropped its late input. Now video drops frames instead: leaky queues sit in front of the video encoders, and the video gates send QoS events so the compositor and the camera track skip frames. Each AAC track may queue 10 s ahead of the picture. `Session::finish` waits for every branch to reach the stop before EOS. Reproduce it with the engine tests in parallel under `docker run --cpus=1.5`.
 - tao's `set_ignore_cursor_events` unwraps the GDK window, which does not exist until the GTK window is realized; the shell configures the countdown window before it is shown, so the app aborted on Linux. `platform/linux.rs` realizes the window first.
 - The GlobalShortcuts check said yes without a portal (making the proxy does not fail); it now reads the interface's `version` property.
 
