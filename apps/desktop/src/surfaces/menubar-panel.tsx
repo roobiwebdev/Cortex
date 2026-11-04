@@ -34,6 +34,7 @@ import { Segmented } from "@starter/ui/components/segmented";
 import { Switch } from "@starter/ui/components/switch";
 import { cn } from "@starter/ui/lib/utils";
 
+import { BrandMark } from "../components/brand-mark";
 import { BytesWritten, DroppedFrames, ElapsedClock } from "../components/progress-text";
 import { formatAgo, formatBytes, formatClock } from "../lib/format";
 import { engine, micLevels, systemLevels, useEngineCalm } from "../lib/engine";
@@ -68,6 +69,7 @@ export function MenuBarPanel({ navigate }: SurfaceProps) {
       style={{ top: MENUBAR_H + 6, right: 150 }}
     >
       <header className="flex h-11 items-center gap-2 px-3.5">
+        <BrandMark className="size-4" />
         <span className="text-[13px] font-semibold">Cortex</span>
         <RecStatus status={e.status} />
         {e.live && <LiveBadge />}

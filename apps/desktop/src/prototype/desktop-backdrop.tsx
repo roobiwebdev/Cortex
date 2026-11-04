@@ -1,8 +1,9 @@
 import type * as React from "react";
-import { BatteryFull, Circle, Search, Wifi } from "lucide-react";
+import { BatteryFull, Search, Wifi } from "lucide-react";
 
 import { cn } from "@starter/ui/lib/utils";
 
+import { BrandMark } from "../components/brand-mark";
 import { ElapsedClock } from "../components/progress-text";
 import { useEngineCalm } from "../lib/engine";
 import { MockScreen } from "./mock-screen";
@@ -58,7 +59,7 @@ export function DesktopBackdrop({
                 </span>
               </>
             ) : (
-              <Circle className="size-3.5" strokeWidth={2.6} />
+              <BrandMark mono className="size-3.5 text-foreground" />
             )}
           </button>
           <Wifi className="size-4" />
