@@ -181,7 +181,9 @@ cargo run --release -p rec-engine-macos --example live_smoke -- --url rtmp://127
 cargo run --release -p rec-engine-macos --example whip_sink        local WHIP endpoint for live_smoke
 scripts/desktop/third-party-licenses.sh          refresh apps/desktop/THIRD_PARTY_RUST.md
 scripts/desktop/bump-version.sh 0.1.1            set the app version in every manifest
-scripts/desktop/release-macos.sh --notes "..."   signed release (DMG, updater bundle, latest.json) in dist/desktop/<version>/
+scripts/desktop/release-macos.sh --notes "..."   signed universal macOS build (DMG, updater bundle) in dist/release/<version>/macos/
+scripts/release/assemble.sh <version>            whole release: CI installers + macOS, signed, latest.json (see releasing.md)
+scripts/release/publish.sh <version> --dry-run   what publishing would run (without --dry-run it asks, then publishes)
 ```
 
 The design harness runs every surface against `lib/mock-engine.ts`. Use it for design review and Playwright. It needs no Rust build.
@@ -276,45 +278,42 @@ Until the Apple Developer membership exists, releases are signed with this ident
 
 Verified on 2026-11-03 (Apple Silicon, macOS 27): 0.1.0 and 0.1.1 built with the script; a copy of 0.1.0 installed from its DMG into a scratch folder updated itself from a local feed to 0.1.1 and relaunched; the updated app kept the designated requirement `identifier "dev.roobi.cortex" and certificate leaf = H"b3e0…"`, still saw Screen Recording, Camera and Microphone as granted, and recorded both the test pattern and the real screen (3 s, 180 frames at 60 fps). A bundle re-packed after signing (signature check failed), a feed announcing 0.1.2 for the 0.1.1 bundle (signed-version check failed) and an install during a countdown (refused) all left 0.1.0 in place. Not yet seen: the DMG window as Finder draws it, notarization, and an update over real HTTPS.
 
-`scripts/desktop/release-macos.sh` builds a release into `dist/desktop/<version>/` (gitignored). It never uploads anything.
+**The full release flow for macOS, Windows and Linux (CI, assembling, signing, publishing to `roobiwebdev/cortex-releases`) is in [Releasing](releasing.md).** This section covers the macOS build and the updater.
 
-### Steps
+`scripts/desktop/release-macos.sh` builds the macOS part of a release into `dist/release/<version>/macos/` (gitignored). It never uploads anything; `scripts/release/assemble.sh` runs it (or reuses its output) and adds the other platforms.
+
+### The macOS build
 
 1. Set the version: `scripts/desktop/bump-version.sh 0.1.1`. It writes `tauri.conf.json`, `apps/desktop/package.json`, `src-tauri/Cargo.toml` and the `cortex-desktop` entry in `Cargo.lock`. `cargo test -p cortex-desktop` fails if they disagree. The UI reads the version from `tauri.conf.json` at build time (`vite.config.ts`).
-2. Commit, then run `scripts/desktop/release-macos.sh --notes "What changed"` (or `--notes-file FILE`). It:
-   - cleans the bundle folder, the web build and the `cortex-desktop` crate, then runs `tauri build --bundles app` with updater artifacts on (the app and its `.app.tar.gz` + `.sig`);
+2. Commit, then run `scripts/desktop/release-macos.sh --notes "What changed"` (or `--notes-file FILE`; `assemble.sh` passes its notes). It:
+   - cleans the bundle folder, the web build and the `cortex-desktop` crate, then runs `tauri build --target universal-apple-darwin --bundles app` with updater artifacts on (the app and its `.app.tar.gz` + `.sig`); `--arm64-only` builds Apple Silicon alone;
    - signs with `CORTEX_SIGNING_IDENTITY` (default `Cortex Dev Signing`), hardened runtime, `Entitlements.plist`;
-   - checks the signature, the `Info.plist` version, and that the designated requirement names this certificate;
+   - checks the signature, the `Info.plist` version, that the designated requirement names this certificate, and that the binary holds both architectures (`lipo -archs`);
    - builds the DMG with `dmgbuild` and signs it;
    - checks the DMG: it verifies, mounts, holds `Cortex.app` and an `Applications` link, and the app's signature still verifies after copying it out;
-   - checks that the updater signature carries the version (`requireSignedVersion`);
+   - checks that the updater signature carries the version (`requireSignedVersion`) and verifies it against the public key (`scripts/release/updater-manifest.mjs`);
    - notarizes and staples when Apple credentials are set (below);
    - writes the release folder and unregisters the build's `Cortex.app` from Launch Services.
-3. Publish by hand once hosting exists: put the folder's files at `<base>/<version>/`, then replace `<base>/latest.json` with the new `latest.json`. Installed apps pick it up within a day (or at once with Check now).
 
-The release folder:
+The folder:
 
-| File                                      | What it is                                                                                |
-| ----------------------------------------- | ----------------------------------------------------------------------------------------- |
-| `Cortex_<version>_aarch64.dmg`            | The installer: the app and an Applications link on a light background.                    |
-| `Cortex_<version>_aarch64.app.tar.gz`     | The updater bundle: the signed `Cortex.app`, tarred.                                      |
-| `Cortex_<version>_aarch64.app.tar.gz.sig` | Its minisign signature from the updater key.                                              |
-| `latest.json`                             | The update manifest: version, notes, date, and per platform the bundle URL and signature. |
-| `SHA256SUMS`                              | SHA-256 of every file above.                                                              |
-| `BUILD.txt`                               | Commit, identity, designated requirement, whether it was notarized.                       |
+| File                          | What it is                                                                                                               |
+| ----------------------------- | ------------------------------------------------------------------------------------------------------------------------ |
+| `Cortex-macOS.dmg`            | The installer: the universal app and an Applications link on a light background.                                         |
+| `Cortex-macOS.app.tar.gz`     | The updater bundle: the signed `Cortex.app`, tarred.                                                                     |
+| `Cortex-macOS.app.tar.gz.sig` | Its minisign signature from the updater key, naming the version.                                                         |
+| `latest.json`                 | A macOS-only feed (`darwin-aarch64` and `darwin-x86_64`), for the local updater test. `assemble.sh` writes the real one. |
+| `SHA256SUMS`, `VERSION`       | SHA-256 of the files above; the version, so `assemble.sh` knows it can reuse the build.                                  |
+| `BUILD.txt`                   | Commit, architectures, identity, designated requirement, whether it was notarized.                                       |
 
-Builds are Apple Silicon only (`darwin-aarch64`). Intel Macs would need `tauri build --target universal-apple-darwin` and a `darwin-x86_64` entry in `latest.json`; the script does not do that yet.
+The build is universal (Apple Silicon and Intel, macOS 15+): both `darwin-aarch64` and `darwin-x86_64` in the feed point at the same tarball. It needs the `x86_64-apple-darwin` Rust target (listed in `rust-toolchain.toml`) and about 6 GB in `target/`.
 
 The DMG window is 660×400 with the app at (180, 200) and Applications at (480, 200) over `src-tauri/dmg/background.png` and `background@2x.png` (brand teal arrow and caption), set in `src-tauri/dmg/dmgbuild-settings.py`. The script builds it with [dmgbuild](https://github.com/dmgbuild/dmgbuild) (MIT, pinned to 1.6.7, installed into `~/.cache/cortex/dmgbuild-venv` on first use), which writes the window layout itself. Tauri's own DMG step scripts Finder over AppleEvents instead; that needs an Automation grant and a GUI session, and it timed out when run from an agent, so `tauri.conf.json` bundles only the app.
 
-### Placeholders to fill in
+### Where updates come from
 
-The public download URL is not chosen yet (Vercel plus a private GitHub repo, so the files need some public host). Two values hold it:
-
-- `plugins.updater.endpoints` in `src-tauri/tauri.conf.json`: `https://cortex.example/updates/latest.json`. Every installed app asks this URL, so pick one that can stay. It must be `https`.
-- `CORTEX_UPDATE_BASE_URL` for the release script (default `https://cortex.example/updates`, marked `TODO(hosting)`): the base the bundle URLs in `latest.json` are built from.
-
-Until then **Check now** reports that it couldn't reach the feed, and the daily check fails quietly (logged only).
+- `plugins.updater.endpoints` in `src-tauri/tauri.conf.json`: `https://github.com/roobiwebdev/cortex-releases/releases/latest/download/latest.json`, the feed of the newest (non-pre-release) GitHub release of the public downloads repository. Every installed app asks this URL, so it has to stay.
+- `CORTEX_UPDATE_BASE_URL` for `release-macos.sh` (default `https://github.com/roobiwebdev/cortex-releases/releases/download`): its `latest.json` points at `<base>/v<version>/<file>`. Only the local updater test changes it.
 
 ### Keys and where they live
 
@@ -331,7 +330,7 @@ Back up the `Cortex Dev Signing` certificate too (Keychain Access → export as 
 
 ### How updates work in the app
 
-- **Feed and check.** `tauri-plugin-updater` asks the endpoint for `latest.json` and offers the entry for `darwin-aarch64` if its version is newer. It is driven from Rust only (`src-tauri/src/updater.rs`): the webview has three commands, `update_status`, `check_for_updates` and `install_update`, granted to the Settings and menu bar windows (`capabilities/updates.json`). No window gets the updater or process plugin's own permissions, so a page can only ask for the one update the feed announces.
+- **Feed and check.** `tauri-plugin-updater` asks the endpoint for `latest.json` and offers the entry for this platform (`darwin-aarch64`, `darwin-x86_64`, `windows-x86_64-nsis`, `linux-x86_64-deb`, ...; see [Releasing](releasing.md#the-files-of-a-release)) if its version is newer. It is driven from Rust only (`src-tauri/src/updater.rs`): the webview has three commands, `update_status`, `check_for_updates` and `install_update`, granted to the Settings and menu bar windows (`capabilities/updates.json`). No window gets the updater or process plugin's own permissions, so a page can only ask for the one update the feed announces.
 - **Signatures.** The bundle must verify against the public key in `tauri.conf.json`, or it is never installed. `requireSignedVersion` also checks that the signature names the announced version, so a tampered feed can't relabel an older signed bundle as new.
 - **Never during a recording.** `Shell::begin_update` refuses the install while recording, paused, counting down, finalizing or live, and holds `start` and `go_live` off from then until the relaunch. A bundle that finishes downloading during a recording is kept; the button installs it later.
 - **Relaunch.** After installing, the app quits through the normal quit flow (finalize, flush settings) and `RunEvent::Exit` reopens it with `open -n`. Relaunching through Launch Services gives the new process its own launchd parent, as Tauri's restart does; unlike it, the `CORTEX_DEBUG_*` variables are passed on so test copies keep their scratch data folder.
@@ -360,14 +359,14 @@ What users see: the Developer ID certificate has a different hash, so the design
 
 ### Testing the updater locally
 
-`--local-test-feed` builds a copy that accepts a plain-HTTP feed (it sets `dangerousInsecureTransportProtocol` for that build only and writes to `dist/desktop/<version>-localtest/`; never publish it). `CORTEX_DEBUG_UPDATE_URL` points an app at a feed on `127.0.0.1` or `localhost` (other hosts are ignored); with it the app checks once at launch, prints the result, and with `CORTEX_DEBUG_UPDATE_INSTALL=1` installs what it finds. Release builds made without `--local-test-feed` only accept `https` there, and every bundle still needs our signature.
+`--local-test-feed` builds a copy that accepts a plain-HTTP feed (it sets `dangerousInsecureTransportProtocol` for that build only and writes to `dist/release/<version>-localtest/macos/`; never publish it). `CORTEX_DEBUG_UPDATE_URL` points an app at a feed on `127.0.0.1` or `localhost` (other hosts are ignored); with it the app checks once at launch, prints the result, and with `CORTEX_DEBUG_UPDATE_INSTALL=1` installs what it finds. Release builds made without `--local-test-feed` only accept `https` there, and every bundle still needs our signature.
 
 ```
 scripts/desktop/release-macos.sh --local-test-feed                  # the old version, e.g. 0.1.0
 scripts/desktop/bump-version.sh 0.1.1
 CORTEX_UPDATE_BASE_URL=http://127.0.0.1:8765 scripts/desktop/release-macos.sh --skip-clean
-# serve dist/desktop/ as http://127.0.0.1:8765/ with latest.json at the top:
-mkdir -p /tmp/feed && cp -R dist/desktop/0.1.1 /tmp/feed/ && cp dist/desktop/0.1.1/latest.json /tmp/feed/
+# serve the files as http://127.0.0.1:8765/v0.1.1/<file> with latest.json at the top:
+mkdir -p /tmp/feed/v0.1.1 && cp dist/release/0.1.1/macos/* /tmp/feed/v0.1.1/ && cp dist/release/0.1.1/macos/latest.json /tmp/feed/
 python3 -m http.server 8765 --bind 127.0.0.1 --directory /tmp/feed
 # a scratch copy of the old app, outside /Applications:
 open -n /path/to/scratch/Cortex.app --env CORTEX_DEBUG_DATA_DIR=/path/to/scratch/data \
@@ -427,7 +426,7 @@ Real ScreenCaptureKit capture cannot run in CI because hosted runners cannot gra
 
 ## CI
 
-`.github/workflows/desktop.yml` runs on a macOS runner when a change touches `crates/**`, `apps/desktop/**`, `packages/ui/**`, `Cargo.*` or `third_party/**`. It runs fmt and clippy on the crates we own, `cargo test --workspace`, the `engine_smoke` recording, `pnpm --filter desktop check-types`, and an unsigned `tauri build --debug --bundles app`. No signing secrets are configured. `.github/workflows/desktop-windows.yml` does the same on `windows-latest` for `rec-core`, `rec-engine-windows` and `cortex-desktop` (fmt, clippy, tests) and builds the NSIS and MSI installers; it has not run yet. The Linux `ci.yml` job does not build Rust.
+`.github/workflows/desktop.yml` runs on a macOS runner when a change touches `crates/**`, `apps/desktop/**`, `packages/ui/**`, `Cargo.*` or `third_party/**`. It runs fmt and clippy on the crates we own, `cargo test --workspace`, the `engine_smoke` recording, `pnpm --filter desktop check-types`, and an unsigned `tauri build --debug --bundles app`. No signing secrets are configured. `.github/workflows/desktop-windows.yml` and `desktop-linux.yml` do the same on `windows-latest` and `ubuntu-24.04` for `rec-core`, the platform's engine and `cortex-desktop` (fmt, clippy, tests) and build the installers; `release.yml` calls them to build release installers (see [Releasing](releasing.md)). The web `ci.yml` job does not build Rust.
 
 ## Windows and Linux
 
