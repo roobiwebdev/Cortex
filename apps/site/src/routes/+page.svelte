@@ -27,7 +27,7 @@
 		GITHUB_URL,
 		LICENSES_PATH,
 		LINUX_ARCH_LABEL,
-		LINUX_ARM64_READY,
+		LINUX_READY,
 		LINUX_DISTROS,
 		MIN_MACOS,
 		NAME,
@@ -90,7 +90,7 @@
 	const mac = DOWNLOADS.mac.universal;
 	const win = DOWNLOADS.windows.x86_64;
 	let linux = $derived(DOWNLOADS.linux[linuxArch]);
-	let linuxReady = $derived(linuxArch === 'x86_64' || LINUX_ARM64_READY);
+	let linuxReady = $derived(LINUX_READY[linuxArch]);
 
 	/** The visitor's own primary installer, for the nav pill. */
 	let primary = $derived<Download | null>(
@@ -352,8 +352,8 @@
 			<a href={win.msi.url}>.msi</a>
 		</p>
 	{:else if platform === 'linux' && !linuxReady}
-		<span class="download soon" aria-disabled="true">{@render osIcon('linux')} Linux arm64 · Coming soon</span>
-		<p class="meta">Version {VERSION} · The arm64 build is on its way; the x86_64 build is ready.</p>
+		<span class="download soon" aria-disabled="true">{@render osIcon('linux')} Linux · Coming soon</span>
+		<p class="meta">Version {VERSION} · The Linux build is on its way. Mac and Windows are ready now.</p>
 	{:else if platform === 'linux'}
 		<a class="download" href={linux.appimage.url}>{@render osIcon('linux')} Download AppImage</a>
 		<p class="meta">
@@ -560,8 +560,8 @@
 								<a href={linux.rpm.url}>.rpm</a> (Fedora, openSUSE)
 							</p>
 						{:else}
-							<span class="download soon" aria-disabled="true">{@render osIcon('linux')} arm64 · Coming soon</span>
-							<p class="files">The arm64 build is on its way. The x86_64 build is ready now.</p>
+							<span class="download soon" aria-disabled="true">{@render osIcon('linux')} {LINUX_ARCH_LABEL[linuxArch]} · Coming soon</span>
+							<p class="files">This Linux build is on its way.</p>
 						{/if}
 					{/if}
 					<h3 class="req-title">Requires</h3>
