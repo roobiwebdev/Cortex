@@ -154,11 +154,11 @@ fn debug_open(app: &tauri::AppHandle, what: &str) {
     use crate::floating::FloatingSurface;
     use crate::windows::AppWindow;
     let r = match what {
-        "menubar" => floating::open_floating(app.clone(), FloatingSurface::Menubar),
-        "region" => floating::open_floating(app.clone(), FloatingSurface::Region),
-        "settings" => windows::open_window(app.clone(), AppWindow::Settings),
-        "onboarding" => windows::open_window(app.clone(), AppWindow::Onboarding),
-        "trim" => windows::open_window(app.clone(), AppWindow::Trim),
+        "menubar" => floating::show_floating(app.clone(), FloatingSurface::Menubar),
+        "region" => floating::show_floating(app.clone(), FloatingSurface::Region),
+        "settings" => windows::show_window(app.clone(), AppWindow::Settings),
+        "onboarding" => windows::show_window(app.clone(), AppWindow::Onboarding),
+        "trim" => windows::show_window(app.clone(), AppWindow::Trim),
         _ => Ok(()),
     };
     if let Err(e) = r {
