@@ -7,9 +7,14 @@ demo changed. It is a separate workspace app with no link to the web app's packa
 ## Licence
 
 Rec's repo is MIT OR Apache-2.0 and its `site/` folder has no licence of its own. The fork keeps
-`LICENSE-MIT` and `LICENSE-APACHE` in `apps/site`, the root `NOTICE` credits it, and the footer
-names Rec and its author. The first commit of `apps/site` is the upstream folder unchanged, from
-rec-rs commit `93dd4948`.
+`LICENSE-MIT` and `LICENSE-APACHE` in `apps/site`, and the root `NOTICE` credits it. The first
+commit of `apps/site` is the upstream folder unchanged, from rec-rs commit `93dd4948`.
+
+The page itself is branded Cortex only: the footer reads "Built by Roobi" and links to the
+releases repo. MIT asks for the copyright and permission notice to travel with copies, not for a
+visible credit, so the footer's muted "Licenses" link opens `static/licenses.txt`, which
+reproduces the rec-rs MIT notice and the other third-party notices. Keep that file and the
+licence files when editing the page.
 
 ## Where things live
 

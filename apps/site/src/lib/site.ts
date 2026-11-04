@@ -140,10 +140,12 @@ export const FEATURES: ReadonlyArray<{
 
 export const NAME = "Cortex";
 
-/** Cortex's engine is Rec. The footer credits it, as NOTICE does. */
-export const UPSTREAM_NAME = "Rec";
-export const UPSTREAM_URL = "https://github.com/michaelshimeles/rec-rs";
-export const UPSTREAM_AUTHOR = "Michael Shimeles";
+/** Who makes Cortex: the footer line and the JSON-LD author. */
+export const AUTHOR = "Roobi";
+/** The public repo the releases come from; the footer links to it. */
+export const GITHUB_URL = "https://github.com/roobiwebdev/cortex-releases";
+/** Open-source notices for the code Cortex is built on (static/licenses.txt), linked in the footer. */
+export const LICENSES_PATH = "/licenses.txt";
 
 export const TITLE = `${NAME}: a screen and camera recorder for Mac, Windows and Linux`;
 

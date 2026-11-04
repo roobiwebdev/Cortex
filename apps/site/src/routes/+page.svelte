@@ -18,10 +18,13 @@
 	import { theme } from '#lib/theme.svelte.js';
 	import {
 		ARCH,
+		AUTHOR,
 		BETA,
 		DESCRIPTION,
 		DOWNLOADS,
 		FEATURES,
+		GITHUB_URL,
+		LICENSES_PATH,
 		LINUX_ARCH_LABEL,
 		LINUX_DISTROS,
 		MIN_MACOS,
@@ -31,9 +34,6 @@
 		REQUIREMENTS,
 		SITE_URL,
 		TITLE,
-		UPSTREAM_AUTHOR,
-		UPSTREAM_NAME,
-		UPSTREAM_URL,
 		VERSION,
 		WINDOWS_SIGNED,
 		type Download,
@@ -56,7 +56,8 @@
 		operatingSystem: `macOS ${MIN_MACOS} or later, Windows 10 (version 2004) or 11, Linux`,
 		applicationCategory: 'MultimediaApplication',
 		downloadUrl: `${SITE_URL}/download`,
-		softwareVersion: VERSION
+		softwareVersion: VERSION,
+		author: { '@type': 'Person', name: AUTHOR }
 	}).replaceAll('<', '\\u003c');
 	// A literal closing tag here would end this <script> block, so it is split in two.
 	const jsonLd = `<script type="application/ld+json">${app}<` + `/script>`;
@@ -601,14 +602,12 @@
 		<img src={icon} width="20" height="20" alt="" />
 		<span>{NAME}</span>
 	</div>
-	<p>
-		{NAME}’s recording engine and this page’s design come from <a href={UPSTREAM_URL}>{UPSTREAM_NAME}</a> by
-		{UPSTREAM_AUTHOR}, used under the MIT license.
-	</p>
-	<a class="link" href={UPSTREAM_URL}>
+	<p>Built by {AUTHOR}.</p>
+	<a class="link" href={GITHUB_URL}>
 		{@render github()}
-		{UPSTREAM_NAME} on GitHub
+		{NAME} on GitHub
 	</a>
+	<a class="link licenses" href={LICENSES_PATH}>Licenses</a>
 </footer>
 
 <style>
@@ -1301,12 +1300,8 @@
 		font-size: 13px;
 	}
 
-	.footer p a {
-		text-underline-offset: 2px;
-	}
-
-	.footer p a:hover {
-		color: var(--fg);
+	.footer .licenses {
+		font-size: 13px;
 	}
 
 	@keyframes rise {
