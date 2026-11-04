@@ -60,6 +60,17 @@ public static class W {
     return list;
   }
 
+  [DllImport("user32.dll")] public static extern bool GetClientRect(IntPtr h, out RECT r);
+  [DllImport("user32.dll")] public static extern bool ClientToScreen(IntPtr h, ref POINT p);
+  // Screen point of a client-area point given in CSS pixels (scaled by the window's DPI).
+  public static POINT ClientCss(IntPtr h, int fromRightCss, int fromTopCss) {
+    RECT r; GetClientRect(h, out r);
+    double k = GetDpiForWindow(h) / 96.0;
+    var p = new POINT { X = r.R - (int)(fromRightCss * k), Y = (int)(fromTopCss * k) };
+    ClientToScreen(h, ref p);
+    return p;
+  }
+
   public static void Click(int x, int y) {
     SetCursorPos(x, y);
     System.Threading.Thread.Sleep(80);
@@ -247,9 +258,17 @@ function Launch-Run($name) {
     Start-Sleep 4
     Shot "$name-after-click"
   } else {
-    $res.gear_rect = $null
-    Log "$name gear not found through UI Automation"
-    Shot "$name-no-gear"
+    # WebView2 content is not always in the UI Automation tree: click where the title bar
+    # draws the gear (right edge, vertically centred in the 44 px bar).
+    $pt = [W]::ClientCss($p.MainWindowHandle, 26, 22)
+    $res.gear_rect = "by-position $($pt.X),$($pt.Y)"
+    Log "$name gear not found through UI Automation; clicking its position $($pt.X),$($pt.Y)"
+    [W]::SetForegroundWindow($p.MainWindowHandle) | Out-Null
+    Start-Sleep -Milliseconds 300
+    Shot "$name-before-click"
+    [W]::Click($pt.X, $pt.Y)
+    Start-Sleep 4
+    Shot "$name-after-click"
   }
   $after = @([W]::Windows([uint32]$p.Id) | Where-Object { $_ -match '\|True\|' })
   $res.windows_after_click = $after
