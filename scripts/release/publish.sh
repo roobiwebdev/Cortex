@@ -64,10 +64,8 @@ if [[ $dry_run == 1 ]]; then
   echo
   echo "Dry run. These commands would run:"
   echo "  # only when $repo does not exist yet:"
-  printf '  %q' "${create_repo[@]}"
-  echo
-  printf '  %q' "${create_release[@]}"
-  echo
+  echo " $(printf ' %q' "${create_repo[@]}")"
+  echo " $(printf ' %q' "${create_release[@]}")"
   exit 0
 fi
 

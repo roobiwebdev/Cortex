@@ -158,7 +158,10 @@ if [[ $rebuild_macos == 1 || ! -f "$mac/VERSION" || "$(cat "$mac/VERSION" 2>/dev
   step "Building the macOS release"
   scripts/desktop/release-macos.sh --notes-file "$rel/notes.md"
 else
-  step "Reusing the macOS build in $mac ($(sed -n 's/^commit: *//p' "$mac/BUILD.txt"))"
+  mac_commit="$(sed -n 's/^commit: *//p' "$mac/BUILD.txt")"
+  step "Reusing the macOS build in $mac ($mac_commit)"
+  [[ "$mac_commit" == "$(git rev-parse HEAD)" ]] ||
+    warn "the macOS build is from $mac_commit, this checkout is $(git rev-parse HEAD); --rebuild-macos rebuilds it"
 fi
 for file in $("${manifest[@]}" assets --group macos); do
   [[ -f "$mac/$file" ]] || die "$mac/$file is missing; run with --rebuild-macos"
