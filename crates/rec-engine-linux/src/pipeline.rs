@@ -18,10 +18,11 @@
 //!        its slowest track; when the CPU can't compose and encode the picture in real time,
 //!        that held back every audio track, stalled the live sources, and the live
 //!        audiomixer (past its deadline) mixed silence and dropped its late input. So video
-//!        drops frames rather than fall behind (a leaky queue in front of each video encoder,
-//!        and the video gates' QoS reports, `session::frames_late_by`, make the compositor
-//!        and the camera track's converters skip frames), and each audio track may run
-//!        `AUDIO_AHEAD_SECS` ahead of the picture in the queue before the muxer.
+//!        drops frames rather than fall far behind (`FRAME_QUEUE` in front of each video
+//!        encoder; past a second of lag the video gates' QoS reports,
+//!        `session::frames_late_by`, make the compositor and the camera track's converters
+//!        skip frames), and each audio track may run `AUDIO_AHEAD_SECS` ahead of the picture
+//!        in the queue before the muxer.
 //! WHERE: `session::Session::start`.
 
 use rec_core::settings::AudioTracks;
@@ -54,6 +55,12 @@ pub const CAMERA_TRACK_FPS: u32 = 30;
 pub const FRAGMENT_MS: u32 = 1000;
 /// How far the audio tracks may run ahead of a late picture before the muxer holds them back.
 pub const AUDIO_AHEAD_SECS: u64 = 10;
+/// The queue in front of each video encoder (and at the head of the camera track): drops
+/// the oldest frame only when 10 are waiting, about a third of a second at 30 fps, so an
+/// encoder's ups and downs cost nothing and only one that is slower than real time loses
+/// frames. Counted in frames, not bytes: the default 10 MB limit held just two 1080p frames.
+pub const FRAME_QUEUE: &str =
+    "queue max-size-buffers=10 max-size-bytes=0 max-size-time=0 leaky=downstream";
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub enum AudioRole {
@@ -246,7 +253,8 @@ impl PipelinePlan {
 }
 
 /// The video aggregator: always present, so the frame rate is constant even when the screen
-/// only sends damaged frames.
+/// only sends damaged frames. It composes in BGRA (the shaped camera needs alpha): left to
+/// negotiate, it picked 16-bit A444_16LE, twice the bytes per pixel to blend and convert.
 fn compositor(plan: &PipelinePlan) -> String {
     let mut s = format!(
         "compositor name={} background=black start-time-selection=first",
@@ -264,7 +272,7 @@ fn compositor(plan: &PipelinePlan) -> String {
     }
     let (w, h) = plan.out;
     s.push_str(&format!(
-        " ! video/x-raw,width={w},height={h},framerate={}/1 ! identity name={} silent=true ! queue max-size-buffers=3 leaky=downstream ! videoconvert ! {} ! {} ! queue ! {}.video_0",
+        " ! video/x-raw,format=BGRA,width={w},height={h},framerate={}/1 ! identity name={} silent=true ! videoconvert ! {FRAME_QUEUE} ! {} ! {} ! queue ! {}.video_0",
         plan.fps,
         names::VIDEO_GATE,
         plan.video_encoder.0,
@@ -323,7 +331,7 @@ fn camera_branches(cam: &CameraPlan, plan: &PipelinePlan) -> Vec<String> {
                 "camtee. ! queue max-size-buffers=3 leaky=downstream{picture}"
             ));
             out.push(format!(
-                "camtee. ! queue max-size-buffers=3 leaky=downstream ! videoconvert ! videoscale ! video/x-raw,width={w},height={h},pixel-aspect-ratio=1/1 ! videorate ! video/x-raw,framerate={}/1 ! identity name={} silent=true ! queue max-size-buffers=3 leaky=downstream ! {enc} ! {parse} ! queue ! {}.video_1",
+                "camtee. ! {FRAME_QUEUE} ! videoconvert ! videoscale ! video/x-raw,width={w},height={h},pixel-aspect-ratio=1/1 ! videorate ! video/x-raw,framerate={}/1 ! identity name={} silent=true ! {FRAME_QUEUE} ! {enc} ! {parse} ! queue ! {}.video_1",
                 CAMERA_TRACK_FPS,
                 names::CAMERA_GATE,
                 names::MUX
@@ -529,7 +537,7 @@ mod tests {
         let d = describe(&p);
         assert!(d.starts_with("qtmux name=mux"));
         assert!(d.contains("pipewiresrc fd=7 path=42 ! queue max-size-buffers=3 leaky=downstream ! videocrop left=100 right=20 top=0 bottom=40 ! videoconvert ! videoscale ! video/x-raw,width=1920,height=1080,pixel-aspect-ratio=1/1 ! comp.sink_0"));
-        assert!(d.contains("compositor name=comp background=black start-time-selection=first ! video/x-raw,width=1920,height=1080,framerate=60/1 ! identity name=gate_v silent=true ! queue max-size-buffers=3 leaky=downstream ! videoconvert ! x264enc ! h264parse ! queue ! mux.video_0"));
+        assert!(d.contains("compositor name=comp background=black start-time-selection=first ! video/x-raw,format=BGRA,width=1920,height=1080,framerate=60/1 ! identity name=gate_v silent=true ! videoconvert ! queue max-size-buffers=10 max-size-bytes=0 max-size-time=0 leaky=downstream ! x264enc ! h264parse ! queue ! mux.video_0"));
     }
 
     #[test]
@@ -546,7 +554,7 @@ mod tests {
         assert!(d.contains("compositor name=comp background=black start-time-selection=first sink_1::xpos=1460 sink_1::ypos=806 sink_1::zorder=1"));
         assert!(d.contains("tee name=camtee"));
         assert!(d.contains("aspectratiocrop aspect-ratio=422/238 ! videoscale ! video/x-raw,width=422,height=238,pixel-aspect-ratio=1/1 ! videoflip method=horizontal-flip ! videoconvert ! video/x-raw,format=BGRA ! identity name=cammask ! comp.sink_1"));
-        assert!(d.contains("framerate=30/1 ! identity name=gate_c silent=true ! queue max-size-buffers=3 leaky=downstream ! x264enc ! h264parse ! queue ! mux.video_1"));
+        assert!(d.contains("framerate=30/1 ! identity name=gate_c silent=true ! queue max-size-buffers=10 max-size-bytes=0 max-size-time=0 leaky=downstream ! x264enc ! h264parse ! queue ! mux.video_1"));
         assert_eq!(gate_names(&p)[1], "gate_c");
     }
 
