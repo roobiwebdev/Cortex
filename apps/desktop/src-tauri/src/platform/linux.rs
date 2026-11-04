@@ -131,8 +131,8 @@ fn bind_once() {
     std::thread::spawn(move || {
         let result = desktop::bind_global_shortcuts(specs, on_activate);
         match &result {
-            Ok(assigned) => eprintln!("cortex: global shortcuts bound: {assigned:?}"),
-            Err(e) => eprintln!("cortex: global shortcuts unavailable: {e}"),
+            Ok(assigned) => log_line!("global shortcuts bound: {assigned:?}"),
+            Err(e) => log_line!("global shortcuts unavailable: {e}"),
         }
         if let Ok(mut g) = state.lock() {
             *g = result.err();
@@ -190,6 +190,20 @@ impl SystemIntegration for System {
     fn screen_capture_granted(&self) -> bool {
         // Nothing to grant ahead of time: the portal asks at use.
         true
+    }
+    fn os_version(&self) -> String {
+        let release = std::fs::read_to_string("/etc/os-release").unwrap_or_default();
+        let name = release
+            .lines()
+            .find_map(|l| l.strip_prefix("PRETTY_NAME="))
+            .map_or("Linux", |v| v.trim_matches('"'));
+        let kernel = std::fs::read_to_string("/proc/sys/kernel/osrelease").unwrap_or_default();
+        let session = std::env::var("XDG_SESSION_TYPE").unwrap_or_default();
+        let desktop = std::env::var("XDG_CURRENT_DESKTOP").unwrap_or_default();
+        format!(
+            "{name}, kernel {}, session {session}, desktop {desktop}",
+            kernel.trim()
+        )
     }
     fn on_terminate(&self, f: Box<dyn Fn() + Send>) -> std::io::Result<()> {
         let f = Arc::new(Mutex::new(f));

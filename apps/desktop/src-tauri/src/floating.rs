@@ -217,7 +217,7 @@ pub(crate) fn on_created(app: &AppHandle, win: &WebviewWindow) {
         return;
     };
     if !platform::chrome().configure_floating(win, kind) {
-        eprintln!("cortex: could not configure the {label} window");
+        log_line!("could not configure the {label} window");
     }
     match label {
         // The countdown never takes clicks meant for the app being recorded.
@@ -363,7 +363,7 @@ fn deliver_toast(app: &AppHandle, floating: &Floating, t: ToastEvent) {
         let mut g = floating.lock();
         if g.toasts_ready && app.get_webview_window(TOASTS).is_some() {
             if let Err(e) = emit_toast(app, t) {
-                eprintln!("cortex: could not send a toast: {e}");
+                log_line!("could not send a toast: {e}");
             }
             return;
         }
@@ -426,7 +426,7 @@ fn register_hotkey(id: u32, key: HotkeyKey, f: impl Fn() + 'static) {
         primary_shift: id != HOTKEY_ESCAPE,
     };
     if let Err(e) = platform::hotkeys().register(id, hotkey, Box::new(f)) {
-        eprintln!("cortex: hotkey {id} is taken by another app ({e})");
+        log_line!("hotkey {id} is taken by another app ({e})");
     }
 }
 
@@ -609,7 +609,7 @@ fn save_hud_spots(app: &AppHandle) {
         std::fs::write(&path, serde_json::to_vec(&spots)?)
     };
     if let Err(e) = write() {
-        eprintln!("cortex: could not save the HUD position: {e}");
+        log_line!("could not save the HUD position: {e}");
     }
 }
 
@@ -755,7 +755,7 @@ pub fn window_ready(window: WebviewWindow) {
     g.toasts_ready = true;
     for t in std::mem::take(&mut g.pending_toasts) {
         if let Err(e) = emit_toast(app, t) {
-            eprintln!("cortex: could not send a toast: {e}");
+            log_line!("could not send a toast: {e}");
         }
     }
 }

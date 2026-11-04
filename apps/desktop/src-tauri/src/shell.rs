@@ -418,7 +418,7 @@ impl Shell {
     pub fn shutdown(&self) {
         self.engine.shutdown();
         if let Err(e) = self.store.flush() {
-            eprintln!("cortex: could not save settings: {e}");
+            log_line!("could not save settings: {e}");
         }
     }
 }
