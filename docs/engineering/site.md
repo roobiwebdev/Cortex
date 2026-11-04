@@ -15,7 +15,7 @@ rec-rs commit `93dd4948`.
 
 | What                                                                                        | File                                                                    |
 | ------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------- |
-| Version, minimum macOS, architecture, URLs, title, description, release flags               | `src/lib/site.ts`                                                       |
+| Version, requirements, the download table, feature availability, title, release flags       | `src/lib/site.ts`                                                       |
 | Page copy, feature cards, shortcuts, Quick trim keys, install steps                         | `src/routes/+page.svelte`                                               |
 | Brand colours (hue 188 from `packages/ui/src/styles/studio.css`) and the app-window palette | `src/app.css`                                                           |
 | Hero demo timeline, cursor path, captions, chapters                                         | `src/lib/demo/script.ts`                                                |
@@ -23,8 +23,8 @@ rec-rs commit `93dd4948`.
 | Demo sounds (Web Audio, no files)                                                           | `src/lib/demo/sound.ts`                                                 |
 | Feature card visuals                                                                        | `src/lib/cards/*`                                                       |
 | Shared mocks (cursor, camera picture, slide, track lanes, shape glyphs)                     | `src/lib/mock/*`                                                        |
-| Visitor OS detection for the download buttons                                               | `src/lib/platform.ts`                                                   |
-| `/download` redirect                                                                        | `src/routes/download/+server.ts` (target is `DOWNLOAD_URL`)             |
+| Visitor OS and Linux CPU detection for the download buttons                                 | `src/lib/platform.ts`                                                   |
+| `/download` redirect (`?os=windows`, `?os=linux&arch=aarch64&format=deb`; else the DMG)     | `src/routes/download/+server.ts`                                        |
 | Share image                                                                                 | `scripts/og/og.html` + `scripts/og/render.sh` → `src/lib/assets/og.jpg` |
 
 ## Rules for the copy
@@ -46,16 +46,27 @@ No CPU figure is shown: there is no recorded measurement of the current build in
 one only with its source. Go live was tested against local servers only, so the page lists the
 services without claiming they were verified on each platform.
 
-## Placeholders
+## Downloads and release flags
 
-- `SITE_URL` (`https://cortex.example`), plus `static/robots.txt` and `static/sitemap.xml`.
-- `DOWNLOAD_URL` (`https://cortex.example/releases/Cortex.dmg`).
-- `NOTARIZED = false` adds the "Open Anyway" install step. Set it to true once releases are
-  notarized. The step uses System Settings, because macOS 15 removed the Control-click → Open
-  bypass.
-- `WAITLIST_EMAIL` is empty, so the Windows and Linux notes have no link.
-- The build uses `@sveltejs/adapter-vercel` from upstream. Nothing is deployed; swap the adapter
-  when hosting is chosen.
+- `SITE_URL` is `https://cortex.roobi.dev`; `static/robots.txt` and `static/sitemap.xml` repeat it.
+- `DOWNLOADS` is the one table of installers: OS → architecture → format → GitHub Releases URL
+  (`https://github.com/roobiwebdev/cortex-releases/releases/latest/download/<asset>`). Asset names
+  carry no version, so the table only changes when a format or architecture is added.
+- The hero offers the visitor's own installer once the page loads: the DMG on a Mac, the per-user
+  `Setup.exe` on Windows (the `.msi` is a secondary link), and the AppImage on Linux with `.deb`
+  and `.rpm` beside it. Linux picks arm64 from `userAgentData` architecture hints or an `aarch64`
+  user agent, else x86_64. "Other platforms" always links to the install tabs.
+- The install section has a tab per OS with three steps, the requirements (`REQUIREMENTS`,
+  `LINUX_DISTROS`) and a feature availability table (`FEATURES`, from each engine's
+  `PlatformCapabilities`). Windows and Linux are labelled Beta (`BETA`).
+- `NOTARIZED = false` adds the "Open Anyway" step on macOS (System Settings, since macOS 15
+  removed the Control-click → Open bypass). `WINDOWS_SIGNED = false` adds SmartScreen's
+  "More info → Run anyway". Set each to true once releases are notarized or signed.
+- `LINUX_DISTROS` follows the build: the Linux CI job builds on Ubuntu 24.04, so the binaries
+  need glibc 2.39. Change it if the release pipeline builds on an older base.
+- The share image (`og.jpg`) still says "for the Mac"; re-render it with `pnpm --filter site og`
+  after changing `scripts/og/og.html`.
+- The build uses `@sveltejs/adapter-vercel` from upstream.
 
 ## Checks
 

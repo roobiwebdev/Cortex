@@ -1,5 +1,5 @@
-# TODO(domain): cortex.example is a placeholder until hosting is decided (see src/lib/site.ts).
+# The site domain lives in src/lib/site.ts (SITE_URL); keep this file in step with it.
 User-agent: *
 Disallow:
 
-Sitemap: https://cortex.example/sitemap.xml
+Sitemap: https://cortex.roobi.dev/sitemap.xml
