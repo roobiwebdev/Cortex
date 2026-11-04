@@ -1,0 +1,79 @@
+# Reproduces Windows UI and recording bugs on GitHub's Windows runners: builds the
+# release exe once, then runs scripts/desktop/windows-repro.ps1 at several display
+# scales (screenshots, window rects, responsiveness, a Settings-gear click, test-pattern
+# and real-screen recordings). Results are uploaded as artifacts.
+#
+# Runs on pushes to agent/win-* branches, or by hand with any ref.
+name: Windows repro
+
+on:
+  push:
+    branches: ["agent/win-*"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: windows-repro-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: windows-latest
+    timeout-minutes: 75
+    defaults:
+      run:
+        shell: pwsh
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: pnpm/action-setup@73e46992e05b19abd31f2f3c20e0e7370d762115 # v6.1.1
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 24
+          cache: pnpm
+      - name: Install Rust toolchain
+        run: rustup toolchain install
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
+      - run: pnpm install --frozen-lockfile
+      # Release exe with the web assets embedded, the way users get it, without installers.
+      - name: Build
+        env:
+          CARGO_PROFILE_RELEASE_DEBUG: "0"
+        run: pnpm --filter desktop tauri build --no-bundle
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: cortex-exe
+          path: target/release/cortex-desktop.exe
+          if-no-files-found: error
+          retention-days: 3
+
+  repro:
+    needs: build
+    runs-on: windows-latest
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        scale: [100, 125, 150, 175]
+    defaults:
+      run:
+        shell: pwsh
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          name: cortex-exe
+          path: bin
+      - name: Install ffmpeg (ffprobe)
+        run: choco install ffmpeg -y --no-progress
+      - name: Run the reproduction
+        run: |
+          $env:PATH = "C:\ProgramData\chocolatey\bin;$env:PATH"
+          ./scripts/desktop/windows-repro.ps1 -Exe "$PWD\bin\cortex-desktop.exe" -Out "$PWD\out" -Scale ${{ matrix.scale }}
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        if: always()
+        with:
+          name: repro-scale-${{ matrix.scale }}
+          path: out
+          retention-days: 7
