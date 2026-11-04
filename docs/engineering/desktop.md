@@ -138,6 +138,21 @@ rec_engine::trim (AVFoundation)   inspect · thumbnails (JPEG) · waveform (peak
   - Progress arrives as `trim://progress`; `cancel_trim` stops the export and removes the partial file. The new file is announced like a finished recording, so the toast and the menu bar list update.
 - **Browser harness.** `surfaces/trim/native.ts` is `null` outside Tauri, and the Trim window keeps its simulated player, filmstrip and export.
 
+### One running copy and the log file
+
+- **Single instance.** `tauri-plugin-single-instance` is the first plugin in `lib.rs`. A second launch hands over to the running copy and exits before it creates a window, and the running copy shows its main window (`windows::show_main`). This fixes the Windows crash where the second copy failed with WebView2 `0x800700AA` ("The requested resource is in use") because both used the same WebView2 data folder. macOS uses a socket at `/tmp/dev_roobi_cortex_si.sock` (it matters for `open -n`), Windows a named mutex, Linux a D-Bus name. The update relaunch calls `tauri_plugin_single_instance::destroy` before `open -n`, so the new copy doesn't find the old one still holding the lock.
+- **Debug runs skip it.** With `CORTEX_DEBUG_DATA_DIR` set, the plugin isn't registered, so `perf-compare.sh` and the update test run next to an installed Cortex without focusing it. On Windows such a run still shares the WebView2 data folder with an installed copy that is running, so quit the installed copy first there.
+- **Log file.** `log_line!` (`src-tauri/src/logfile.rs`) prints `cortex: …` to stderr and appends the line with a UTC timestamp to `cortex.log`. At 5 MB the file becomes `cortex.1.log` and a new one starts, so at most about 10 MB is kept. It logs startup (version, OS version, capabilities, monitors with scale factors, engine displays), engine errors, status changes (recording start and stop), finished recordings and saved replays with their paths, window creation failures and panics (with a backtrace). Stream URLs (`rtmp://`, `rtmps://`, `srt://`) keep only their host, and bearer tokens are dropped. Use `log_line!` for new shell diagnostics instead of `eprintln!`.
+
+  | OS      | Log folder                             |
+  | ------- | -------------------------------------- |
+  | macOS   | `~/Library/Logs/dev.roobi.cortex`      |
+  | Windows | `%LOCALAPPDATA%\dev.roobi.cortex\logs` |
+  | Linux   | `~/.local/share/dev.roobi.cortex/logs` |
+  | Debug   | `<CORTEX_DEBUG_DATA_DIR>/logs`         |
+
+  Settings › Advanced › Troubleshooting › **Open log folder** calls `open_log_folder`, which only the Settings window may call (`capabilities/troubleshooting.json`).
+
 ## Single sources of truth
 
 | Concern                                             | Lives in                                                                                    |
@@ -157,6 +172,7 @@ rec_engine::trim (AVFoundation)   inspect · thumbnails (JPEG) · waveform (peak
 | App version                                         | `src-tauri/tauri.conf.json` (`bump-version.sh` also sets `package.json` and `Cargo.toml`)   |
 | Update feed URL and updater public key              | `plugins.updater` in `src-tauri/tauri.conf.json`                                            |
 | Checking and installing updates                     | `src-tauri/src/updater.rs` (UI: `apps/desktop/src/lib/updates.ts`)                          |
+| The shell's log file (`log_line!`, rotation)        | `src-tauri/src/logfile.rs`                                                                  |
 
 `bindings.ts` plays the role `RouterOutputs` plays on the web. If a TypeScript type for a setting or state field is wrong, fix the Rust type in `rec-core` and regenerate.
 
