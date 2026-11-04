@@ -29,8 +29,8 @@ render icon-full-bleed.svg icon-full-bleed.png
 render tray-template.svg "$TMP/tray.png"
 
 # Windows and Linux files come from the full-bleed tile; the macOS .icns keeps Apple's margin.
-(cd "$DESKTOP" && pnpm exec tauri icon "$BRANDING/icon-full-bleed.png" >/dev/null)
-(cd "$DESKTOP" && pnpm exec tauri icon "$BRANDING/icon.png" -o "$TMP/mac" >/dev/null)
+(cd "$DESKTOP" && pnpm exec tauri icon "$BRANDING/icon-full-bleed.png" >/dev/null 2>&1)
+(cd "$DESKTOP" && pnpm exec tauri icon "$BRANDING/icon.png" -o "$TMP/mac" >/dev/null 2>&1)
 cp "$TMP/mac/icon.icns" "$ICONS/icon.icns"
 # No mobile targets: drop the Android and iOS sets the CLI also writes.
 rm -rf "$ICONS/android" "$ICONS/ios"
