@@ -1,6 +1,5 @@
 <script lang="ts">
-	import { onMount } from 'svelte';
-	import { resolve } from '$app/paths';
+	import { onMount, type Component } from 'svelte';
 	import icon from '#lib/assets/icon.webp';
 	import shareImage from '#lib/assets/og.jpg';
 	import AreaCard from '#lib/cards/AreaCard.svelte';
@@ -15,22 +14,31 @@
 	import { Player } from '#lib/demo/player.svelte.js';
 	import { play } from '#lib/demo/sound.js';
 	import { reveal } from '#lib/motion.svelte.js';
-	import { detectPlatform, type Platform } from '#lib/platform.js';
+	import { detectLinuxArch, detectPlatform, type Platform } from '#lib/platform.js';
 	import { theme } from '#lib/theme.svelte.js';
 	import {
 		ARCH,
+		BETA,
 		DESCRIPTION,
+		DOWNLOADS,
+		FEATURES,
+		LINUX_ARCH_LABEL,
+		LINUX_DISTROS,
 		MIN_MACOS,
 		NAME,
 		NOTARIZED,
 		OG_IMAGE_ALT,
+		REQUIREMENTS,
 		SITE_URL,
 		TITLE,
 		UPSTREAM_AUTHOR,
 		UPSTREAM_NAME,
 		UPSTREAM_URL,
 		VERSION,
-		WAITLIST_EMAIL
+		WINDOWS_SIGNED,
+		type Download,
+		type DownloadOs,
+		type LinuxArch
 	} from '#lib/site.js';
 
 	const url = `${SITE_URL}/`;
@@ -45,7 +53,7 @@
 		description: DESCRIPTION,
 		url,
 		image,
-		operatingSystem: `macOS ${MIN_MACOS} or later`,
+		operatingSystem: `macOS ${MIN_MACOS} or later, Windows 10 (version 2004) or 11, Linux`,
 		applicationCategory: 'MultimediaApplication',
 		downloadUrl: `${SITE_URL}/download`,
 		softwareVersion: VERSION
@@ -60,16 +68,47 @@
 		if (player.sound) play('switch');
 	}
 
-	// Prerendered for macOS; Windows and Linux visitors get "Coming soon" once the page loads.
+	// Prerendered for macOS; once the page loads, the hero and the install tabs switch to the
+	// visitor's own system (and, on Linux, CPU).
 	let platform = $state<Platform>('mac');
+	let linuxArch = $state<LinuxArch>('x86_64');
+	let tab = $state<DownloadOs>('mac');
 	onMount(() => {
 		platform = detectPlatform();
+		if (platform !== 'other') tab = platform;
+		void detectLinuxArch().then((arch) => (linuxArch = arch));
 	});
-	const SOON: Record<'windows' | 'linux', string> = { windows: 'Windows', linux: 'Linux' };
-	let soon = $derived(platform === 'windows' || platform === 'linux' ? SOON[platform] : null);
-	const waitlist = WAITLIST_EMAIL ? `mailto:${WAITLIST_EMAIL}?subject=Cortex%20for%20Windows%20or%20Linux` : null;
 
-	const recording = [
+	const OSES: readonly DownloadOs[] = ['mac', 'windows', 'linux'];
+	const OS_LABEL: Record<DownloadOs, string> = { mac: 'macOS', windows: 'Windows', linux: 'Linux' };
+	const LINUX_ARCHES: readonly LinuxArch[] = ['x86_64', 'aarch64'];
+	const isBeta = (os: DownloadOs) => os !== 'mac' && BETA[os];
+
+	const mac = DOWNLOADS.mac.universal;
+	const win = DOWNLOADS.windows.x86_64;
+	let linux = $derived(DOWNLOADS.linux[linuxArch]);
+
+	/** The visitor's own primary installer, for the nav pill. */
+	let primary = $derived<Download | null>(
+		platform === 'windows' ? win.exe : platform === 'linux' ? linux.appimage : platform === 'mac' ? mac.dmg : null
+	);
+
+	// Windows and Linux use Ctrl+Shift where macOS uses ⇧⌘ (the engines register exactly these).
+	let pc = $derived(platform === 'windows' || platform === 'linux');
+	let recordKeys = $derived(pc ? 'Ctrl+Shift+R' : '⇧⌘R');
+
+	/** A card's caveat for the visitor's platform, when that platform does less. */
+	type Limits = Partial<Record<'windows' | 'linux', string>>;
+	interface Card {
+		title: string;
+		body: string;
+		Visual: Component;
+		limits?: Limits;
+	}
+	const limitFor = (limits: Limits | undefined) =>
+		platform === 'windows' || platform === 'linux' ? limits?.[platform] : undefined;
+
+	let recording = $derived<Card[]>([
 		{
 			title: 'Put your camera anywhere',
 			body: 'Drag the camera around the preview and let go near a corner to snap it there. Choose one of six shapes, then set its size, roundness, border and shadow, and mirror it if you like.',
@@ -78,30 +117,46 @@
 		{
 			title: 'Record exactly what you mean',
 			body: 'A whole display, a single window, every window of one app, or an area you drag out. Cortex leaves its own windows and controls out of the picture.',
-			Visual: AreaCard
+			Visual: AreaCard,
+			limits: {
+				windows: 'On Windows, choosing an app records its largest window.',
+				linux: 'On Linux you pick the screen or window in the system dialog, there is no app capture, and Cortex’s own windows can appear in the video.'
+			}
 		},
 		{
 			title: 'Everything in one file',
 			body: 'Screen, system audio, mic and camera are written to one .mov or .mp4: a mixed audio track, then system audio and mic on tracks of their own. H.264, HEVC or ProRes, at a constant frame rate.',
-			Visual: FileCard
+			Visual: FileCard,
+			limits: {
+				windows: 'Windows writes .mp4 with H.264, or HEVC when the PC has an encoder.',
+				linux: 'Linux writes .mp4 or .mov with H.264, or HEVC when an encoder is installed.'
+			}
 		},
 		{
 			title: 'The camera on its own track',
 			body: 'Turn on the camera track and the file also keeps the raw camera next to the screen, so an editor can reframe it later. With .mp4 it is saved beside the file as a .camera.mov.',
-			Visual: CameraTrackCard
+			Visual: CameraTrackCard,
+			limits: {
+				windows: 'Not on Windows yet.',
+				linux: 'On Linux the camera is a second video track inside the file.'
+			}
 		}
-	];
+	]);
 
-	const quiet = [
+	let quiet = $derived<Card[]>([
 		{
 			title: 'Start from anywhere',
-			body: '⇧⌘R starts and stops a recording from any app. A small floating bar keeps the time without showing up in the file, and closing the window leaves Cortex in the menu bar.',
-			Visual: MenuBarCard
+			body: pc
+				? `${recordKeys} starts and stops a recording from any app. A small floating bar keeps the time, and closing the window leaves ${NAME} in the system tray.`
+				: '⇧⌘R starts and stops a recording from any app. A small floating bar keeps the time without showing up in the file, and closing the window leaves Cortex in the menu bar.',
+			Visual: MenuBarCard,
+			limits: { linux: 'On Linux the shortcut needs a desktop with the GlobalShortcuts portal.' }
 		},
 		{
 			title: 'Save the last minute, or stream it',
 			body: 'Keep the last 15 seconds to 5 minutes in memory and save them with ⇧⌘S. Go live to YouTube, Twitch, Kick or your own RTMP, RTMPS or WHIP server, with stream keys kept in the Keychain.',
-			Visual: LiveCard
+			Visual: LiveCard,
+			limits: { windows: 'Mac only for now.', linux: 'Mac only for now.' }
 		},
 		{
 			title: 'True 4K',
@@ -111,17 +166,26 @@
 		{
 			title: 'Built to keep every take',
 			body: 'A 10-minute 4K60 test kept all 36,000 frames. Cortex writes the file in 2-second pieces, so a crash still leaves it playable, and quitting saves the recording first.',
-			Visual: SafeCard
+			Visual: SafeCard,
+			limits: { windows: 'On Windows a crash can still lose the file for now.' }
 		}
-	];
+	]);
 
-	const shortcuts = [
-		{ keys: ['⇧', '⌘', 'R'], label: 'Start or stop recording' },
-		{ keys: ['⇧', '⌘', 'S'], label: 'Save the replay buffer' },
-		{ keys: ['esc'], label: 'Cancel the countdown' },
-		{ keys: ['⌘', ','], label: 'Settings' },
-		{ keys: ['⌘', 'Q'], label: 'Quit, after saving the file' }
-	];
+	let shortcuts = $derived(
+		pc
+			? [
+					{ keys: ['Ctrl', 'Shift', 'R'], label: 'Start or stop recording' },
+					{ keys: ['Esc'], label: 'Cancel the countdown' },
+					{ keys: ['Ctrl', ','], label: 'Settings' }
+				]
+			: [
+					{ keys: ['⇧', '⌘', 'R'], label: 'Start or stop recording' },
+					{ keys: ['⇧', '⌘', 'S'], label: 'Save the replay buffer' },
+					{ keys: ['esc'], label: 'Cancel the countdown' },
+					{ keys: ['⌘', ','], label: 'Settings' },
+					{ keys: ['⌘', 'Q'], label: 'Quit, after saving the file' }
+				]
+	);
 
 	const trimKeys = [
 		{ keys: ['Space'], label: 'Play or pause' },
@@ -131,17 +195,89 @@
 		{ keys: ['Home', 'End'], label: 'Jump to the start or the end' }
 	];
 
-	// TODO(notarize): with NOTARIZED = true in site.ts, the Gatekeeper step disappears.
-	const steps = [
-		`Download ${NAME} and drag it to your Applications folder.`,
-		...(NOTARIZED
-			? []
-			: [
-					`${NAME} isn’t notarized by Apple yet, so macOS stops the first launch. Open it once and close the warning, then go to System Settings → Privacy & Security and click Open Anyway.`
-				]),
-		`Turn on ${NAME} in System Settings → Privacy & Security → Screen & System Audio Recording. If it asks, reopen ${NAME}.`,
-		'Allow the camera and mic when macOS asks. Then press ⇧⌘R.'
+	/** One install step: plain text, plus commands to copy. */
+	interface Step {
+		text: string;
+		code?: readonly string[];
+	}
+
+	// TODO(notarize): with NOTARIZED = true in site.ts, the Gatekeeper step becomes a plain "open it".
+	const macSteps: readonly Step[] = [
+		{ text: `Open ${mac.dmg.file} and drag ${NAME} to your Applications folder.` },
+		NOTARIZED
+			? { text: `Open ${NAME} from your Applications folder.` }
+			: {
+					text: `The first time, macOS says “Apple could not verify “${NAME}” is free of malware”, because ${NAME} isn’t notarized yet. Click Done, then open System Settings › Privacy & Security, scroll down and click Open Anyway.`
+				},
+		{
+			text: `Allow Screen Recording when ${NAME} asks; the guided tour walks you through it. Then press ⇧⌘R to record.`
+		}
 	];
+
+	// TODO(sign): with WINDOWS_SIGNED = true in site.ts, the SmartScreen sentence disappears.
+	const windowsSteps: readonly Step[] = [
+		{
+			text: WINDOWS_SIGNED
+				? `Run ${win.exe.file}.`
+				: `Run ${win.exe.file}. If Windows says “Windows protected your PC”, click More info, then Run anyway. The installer isn’t code-signed yet.`
+		},
+		{
+			text: `It installs for your user only, so it needs no admin rights. If WebView2 is missing, the installer adds it.`
+		},
+		{
+			text: `If ${NAME} asks for the camera or mic, turn them on in Settings › Privacy & security › Camera and Microphone, including “Let desktop apps access”. Then press Ctrl+Shift+R to record.`
+		}
+	];
+
+	let linuxSteps = $derived<readonly Step[]>([
+		{
+			text: 'AppImage: download it, make it executable and run it. It uses your system’s GStreamer plugins.',
+			code: [`chmod +x ${linux.appimage.file} && ./${linux.appimage.file}`]
+		},
+		{
+			text: 'Or install the package for your distribution, which also installs GStreamer:',
+			code: [`sudo apt install ./${linux.deb.file}`, `sudo dnf install ./${linux.rpm.file}`]
+		},
+		{
+			text: 'When you start recording, pick the screen or window in the system dialog and click Share. Screen sharing needs PipeWire, which current Ubuntu, Fedora and Debian desktops include.'
+		}
+	]);
+
+	let steps = $derived<Record<DownloadOs, readonly Step[]>>({
+		mac: macSteps,
+		windows: windowsSteps,
+		linux: linuxSteps
+	});
+
+	let copied = $state<string | null>(null);
+	async function copy(text: string) {
+		try {
+			await navigator.clipboard.writeText(text);
+			copied = text;
+			setTimeout(() => {
+				if (copied === text) copied = null;
+			}, 1600);
+		} catch {
+			// Clipboard blocked: the command stays selectable.
+		}
+	}
+
+	/** Arrow keys move between the OS tabs, as the WAI-ARIA tabs pattern expects. */
+	function tabKey(event: KeyboardEvent) {
+		const i = OSES.indexOf(tab);
+		const next =
+			event.key === 'ArrowRight'
+				? OSES[(i + 1) % OSES.length]
+				: event.key === 'ArrowLeft'
+					? OSES[(i + OSES.length - 1) % OSES.length]
+					: undefined;
+		if (!next) return;
+		event.preventDefault();
+		tab = next;
+		document.getElementById(`tab-${next}`)?.focus();
+	}
+
+	const mark = (v: boolean | string) => (v === true ? 'Yes' : v === false ? 'Not yet' : v);
 </script>
 
 <svelte:head>
@@ -168,12 +304,22 @@
 	{@html jsonLd}
 </svelte:head>
 
-{#snippet apple()}
-	<svg viewBox="0 0 17 21" aria-hidden="true">
-		<path
-			d="M11.2 4.3c.6-.8 1-1.8.9-2.8-.9 0-2 .6-2.6 1.4-.6.7-1.1 1.7-.9 2.7 1 .1 2-.5 2.6-1.3zM12.1 5.8c-1.4-.1-2.7.8-3.3.8-.7 0-1.7-.8-2.9-.8C4.4 5.9 3 6.8 2.2 8.1c-1.6 2.7-.4 6.8 1.1 9 .8 1.1 1.7 2.3 2.8 2.3 1.1 0 1.6-.7 2.9-.7 1.4 0 1.8.7 2.9.7 1.2 0 2-1.1 2.7-2.2.9-1.3 1.2-2.5 1.2-2.6 0 0-2.4-.9-2.4-3.6 0-2.2 1.8-3.3 1.9-3.4-1-1.5-2.6-1.7-3.2-1.7z"
-		/>
-	</svg>
+{#snippet osIcon(os: DownloadOs)}
+	{#if os === 'mac'}
+		<svg viewBox="0 0 17 21" aria-hidden="true">
+			<path
+				d="M11.2 4.3c.6-.8 1-1.8.9-2.8-.9 0-2 .6-2.6 1.4-.6.7-1.1 1.7-.9 2.7 1 .1 2-.5 2.6-1.3zM12.1 5.8c-1.4-.1-2.7.8-3.3.8-.7 0-1.7-.8-2.9-.8C4.4 5.9 3 6.8 2.2 8.1c-1.6 2.7-.4 6.8 1.1 9 .8 1.1 1.7 2.3 2.8 2.3 1.1 0 1.6-.7 2.9-.7 1.4 0 1.8.7 2.9.7 1.2 0 2-1.1 2.7-2.2.9-1.3 1.2-2.5 1.2-2.6 0 0-2.4-.9-2.4-3.6 0-2.2 1.8-3.3 1.9-3.4-1-1.5-2.6-1.7-3.2-1.7z"
+			/>
+		</svg>
+	{:else if os === 'windows'}
+		<svg viewBox="0 0 16 16" aria-hidden="true">
+			<path d="M0 2.2 6.5 1.3v6.3H0zM7.3 1.2 16 0v7.6H7.3zM0 8.4h6.5v6.3L0 13.8zM7.3 8.4H16V16l-8.7-1.2z" />
+		</svg>
+	{:else}
+		<svg viewBox="0 0 16 16" aria-hidden="true">
+			<path d="M7.2 1h1.6v8.1l2.7-2.7 1.1 1.1L8 12.1 3.4 7.5l1.1-1.1 2.7 2.7zM2 13.4h12V15H2z" />
+		</svg>
+	{/if}
 {/snippet}
 
 {#snippet github()}
@@ -184,23 +330,39 @@
 	</svg>
 {/snippet}
 
-{#snippet download()}
-	{#if soon}
-		<span class="download soon" aria-disabled="true">{soon} · Coming soon</span>
+{#snippet heroDownload()}
+	{#if platform === 'windows'}
+		<a class="download" href={win.exe.url}>{@render osIcon('windows')} Download for Windows</a>
+		<p class="meta">
+			Version {VERSION} · <span class="beta">Beta</span> · Windows 10 or 11, 64-bit · or the
+			<a href={win.msi.url}>.msi</a>
+		</p>
+	{:else if platform === 'linux'}
+		<a class="download" href={linux.appimage.url}>{@render osIcon('linux')} Download AppImage</a>
+		<p class="meta">
+			Version {VERSION} · <span class="beta">Beta</span> · {LINUX_ARCH_LABEL[linuxArch]} · or the
+			<a href={linux.deb.url}>.deb</a> · <a href={linux.rpm.url}>.rpm</a>
+		</p>
+	{:else if platform === 'mac'}
+		<a class="download" href={mac.dmg.url}>{@render osIcon('mac')} Download for macOS</a>
+		<p class="meta">Version {VERSION} · {ARCH} · macOS {MIN_MACOS} or later</p>
 	{:else}
-		<a class="download" href={resolve('/download')} data-sveltekit-reload>
-			{@render apple()}
-			Download for macOS
-		</a>
+		<a class="download" href="#install">See downloads</a>
+		<p class="meta">{NAME} runs on Mac, Windows and Linux computers.</p>
+	{/if}
+	{#if platform !== 'other'}
+		<a class="other" href="#install">Other platforms</a>
 	{/if}
 {/snippet}
 
-{#snippet card(item: (typeof recording)[number], i: number)}
+{#snippet card(item: Card, i: number)}
+	{@const limit = limitFor(item.limits)}
 	<article class="card" style:--delay="{i * 90}ms" {@attach reveal}>
 		<item.Visual />
 		<div class="caption">
 			<h3>{item.title}</h3>
 			<p>{item.body}</p>
+			{#if limit}<p class="limit">{limit}</p>{/if}
 		</div>
 	</article>
 {/snippet}
@@ -233,10 +395,10 @@
 					/>
 				</svg>
 			</button>
-			{#if soon}
-				<a class="pill" href="#install">Get {NAME}</a>
+			{#if primary}
+				<a class="pill" href={primary.url}>Download</a>
 			{:else}
-				<a class="pill" href={resolve('/download')} data-sveltekit-reload>Download</a>
+				<a class="pill" href="#install">Get {NAME}</a>
 			{/if}
 		</div>
 	</div>
@@ -247,20 +409,11 @@
 		<img class="logo" src={icon} width="112" height="112" alt="{NAME} app icon" />
 		<h1>One key. One file.</h1>
 		<p class="lede">
-			{NAME} records a display, a window, an app or just an area, with your camera, mic and system audio, into
-			one file for your editor. Press ⇧⌘R from any app to start.
+			{NAME} records a display, a window or just an area, with your camera, mic and system audio, into one file for
+			your editor. On Mac, Windows and Linux. Press {recordKeys} from any app to start.
 		</p>
 		<div class="cta">
-			{@render download()}
-			{#if soon}
-				<p class="meta">
-					{NAME} runs on macOS today. A {soon} version is on the way{#if waitlist}: <a href={waitlist}
-							>join the waitlist</a
-						>{/if}.
-				</p>
-			{:else}
-				<p class="meta">Version {VERSION} · {ARCH} · macOS {MIN_MACOS} or later</p>
-			{/if}
+			{@render heroDownload()}
 		</div>
 	</header>
 
@@ -291,12 +444,20 @@
 	<section id="shortcuts" class="section split" aria-labelledby="shortcuts-title">
 		<div class="intro" {@attach reveal}>
 			<h2 id="shortcuts-title">Shortcuts</h2>
-			<p>⇧⌘R works in every app while {NAME} is open, and ⇧⌘S does too while the replay buffer is on.</p>
+			{#if pc}
+				<p>
+					{recordKeys} works in every app while {NAME} is open{platform === 'linux'
+						? ', on desktops that offer global shortcuts'
+						: ''}. Esc cancels the countdown.
+				</p>
+			{:else}
+				<p>⇧⌘R works in every app while {NAME} is open, and ⇧⌘S does too while the replay buffer is on.</p>
+			{/if}
 		</div>
 		<ul class="shortcuts" {@attach reveal}>
 			{#each shortcuts as shortcut (shortcut.label)}
 				<li>
-					<span class="keys">
+					<span class={{ keys: true, wide: pc }}>
 						{#each shortcut.keys as key (key)}
 							<kbd class={{ hot: key === 'R' }}>{key}</kbd>
 						{/each}
@@ -315,6 +476,7 @@
 				Exact re-encodes for a cut on the exact frame. Save a copy, or replace the original and send it to the
 				Trash.
 			</p>
+			{#if pc}<p class="limit">Mac only for now.</p>{/if}
 		</div>
 		<ul class="commands" {@attach reveal}>
 			{#each trimKeys as row (row.label)}
@@ -328,34 +490,109 @@
 		</ul>
 	</section>
 
-	<section id="install" class="section split" aria-labelledby="install-title">
-		<div class="intro" {@attach reveal}>
+	<section id="install" class="section" aria-labelledby="install-title">
+		<div class="install-head" {@attach reveal}>
 			<h2 id="install-title">Install</h2>
-			<p>macOS {MIN_MACOS} or later on {ARCH}.</p>
-			<a class="download" href={resolve('/download')} data-sveltekit-reload>
-				{@render apple()}
-				Download for macOS
-			</a>
-			<ul class="platforms">
-				{#each ['windows', 'linux'] as const as os (os)}
-					<li class={{ yours: platform === os }}>
-						<span class="soon-button" aria-disabled="true">{SOON[os]} · Coming soon</span>
-					</li>
-				{/each}
-			</ul>
-			<p class="waitlist">
-				{#if waitlist}
-					Windows and Linux builds are on the way. <a href={waitlist}>Join the waitlist</a> to hear when they’re ready.
-				{:else}
-					Windows and Linux builds are on the way.
-				{/if}
-			</p>
+			<p>Version {VERSION}. Free to download; nothing to sign up for.</p>
 		</div>
-		<ol class="steps" {@attach reveal}>
-			{#each steps as step, i (step)}
-				<li><span class="num">{i + 1}</span>{step}</li>
+
+		<div class="tabs" role="tablist" aria-label="Operating system" {@attach reveal}>
+			{#each OSES as os (os)}
+				<button
+					type="button"
+					role="tab"
+					id="tab-{os}"
+					aria-selected={tab === os}
+					aria-controls="panel-{os}"
+					tabindex={tab === os ? 0 : -1}
+					class="tab"
+					onclick={() => (tab = os)}
+					onkeydown={tabKey}
+				>
+					{@render osIcon(os)}
+					{OS_LABEL[os]}
+					{#if isBeta(os)}<span class="beta">Beta</span>{/if}
+				</button>
 			{/each}
-		</ol>
+		</div>
+
+		{#each OSES as os (os)}
+			<div class="panel" role="tabpanel" id="panel-{os}" aria-labelledby="tab-{os}" hidden={tab !== os}>
+				<div class="get">
+					{#if os === 'mac'}
+						<a class="download" href={mac.dmg.url}>{@render osIcon('mac')} Download {mac.dmg.label}</a>
+						<p class="files">{mac.dmg.file}</p>
+					{:else if os === 'windows'}
+						<a class="download" href={win.exe.url}>{@render osIcon('windows')} Download installer</a>
+						<p class="files">
+							{win.exe.file} · or the <a href={win.msi.url}>{win.msi.label}</a>, which installs for every user and
+							needs admin
+						</p>
+					{:else}
+						<div class="arch" role="radiogroup" aria-label="Processor">
+							{#each LINUX_ARCHES as arch (arch)}
+								<button type="button" role="radio" aria-checked={linuxArch === arch} onclick={() => (linuxArch = arch)}>
+									{LINUX_ARCH_LABEL[arch]}
+								</button>
+							{/each}
+						</div>
+						<a class="download" href={linux.appimage.url}>{@render osIcon('linux')} Download AppImage</a>
+						<p class="files">
+							or the <a href={linux.deb.url}>.deb</a> (Ubuntu, Debian) ·
+							<a href={linux.rpm.url}>.rpm</a> (Fedora, openSUSE)
+						</p>
+					{/if}
+					<h3 class="req-title">Requires</h3>
+					<ul class="req">
+						{#each REQUIREMENTS[os] as line (line)}<li>{line}</li>{/each}
+						{#if os === 'linux'}<li>{LINUX_DISTROS}</li>{/if}
+					</ul>
+				</div>
+				<ol class="steps">
+					{#each steps[os] as step, i (step.text)}
+						<li>
+							<span class="num">{i + 1}</span>
+							<div class="step">
+								<span>{step.text}</span>
+								{#each step.code ?? [] as line (line)}
+									<div class="code">
+										<code>{line}</code>
+										<button type="button" class="copy" onclick={() => copy(line)} aria-label="Copy command">
+											{copied === line ? 'Copied' : 'Copy'}
+										</button>
+									</div>
+								{/each}
+							</div>
+						</li>
+					{/each}
+				</ol>
+			</div>
+		{/each}
+
+		<div class="availability" {@attach reveal}>
+			<h3>Feature availability</h3>
+			<p>Windows and Linux are new and in beta. Some Mac features are still on the way.</p>
+			<div class="table">
+				<table>
+					<thead>
+						<tr>
+							<th scope="col">Feature</th>
+							{#each OSES as os (os)}<th scope="col">{OS_LABEL[os]}</th>{/each}
+						</tr>
+					</thead>
+					<tbody>
+						{#each FEATURES as row (row.name)}
+							<tr>
+								<th scope="row">{row.name}</th>
+								{#each OSES as os (os)}
+									<td class={{ no: row[os] === false }}>{mark(row[os])}</td>
+								{/each}
+							</tr>
+						{/each}
+					</tbody>
+				</table>
+			</div>
+		</div>
 	</section>
 </main>
 
@@ -581,22 +818,8 @@
 		scale: 1.03;
 	}
 
-	/* Windows and Linux: shown like a button, but nothing to click yet. */
-	.download.soon,
-	.soon-button {
-		background: color-mix(in srgb, var(--fg) 8%, transparent);
-		box-shadow: inset 0 0 0 1px var(--line);
-		color: var(--muted);
-		cursor: default;
-	}
-
-	.download.soon:hover {
-		background: color-mix(in srgb, var(--fg) 8%, transparent);
-		scale: 1;
-	}
-
 	.meta a,
-	.waitlist a {
+	.files a {
 		color: var(--fg);
 		text-underline-offset: 2px;
 	}
@@ -681,14 +904,6 @@
 		color: var(--muted);
 		font-size: 14px;
 		line-height: 22px;
-	}
-
-	#install .intro p {
-		max-width: none;
-	}
-
-	.intro .download {
-		margin-top: 22px;
 	}
 
 	ul,
@@ -791,35 +1006,10 @@
 		flex-shrink: 0;
 	}
 
-	.platforms {
-		display: flex;
-		flex-wrap: wrap;
-		gap: 8px;
-		margin-top: 14px;
-	}
-
-	.soon-button {
-		display: inline-flex;
-		align-items: center;
-		height: 32px;
-		padding: 0 12px;
-		border-radius: 999px;
-		font: 500 12.5px var(--sans);
-		white-space: nowrap;
-	}
-
-	.platforms .yours .soon-button {
-		color: var(--fg);
-	}
-
-	#install .intro .waitlist {
-		margin-top: 12px;
-		font-size: 13px;
-	}
-
 	.steps {
 		display: flex;
 		flex-direction: column;
+		min-width: 0;
 	}
 
 	.steps li {
@@ -841,6 +1031,253 @@
 		background: color-mix(in srgb, var(--fg) 7%, transparent);
 		color: var(--fg);
 		font: 11px/14px var(--mono);
+	}
+
+	.other {
+		color: var(--muted);
+		font-size: 13px;
+		text-underline-offset: 2px;
+	}
+
+	.other:hover {
+		color: var(--fg);
+	}
+
+	.beta {
+		display: inline-block;
+		padding: 1px 6px;
+		border-radius: 999px;
+		background: color-mix(in srgb, var(--brand) 16%, transparent);
+		color: var(--fg);
+		font: 600 10.5px/15px var(--sans);
+		letter-spacing: 0.02em;
+		text-transform: uppercase;
+		vertical-align: 1px;
+	}
+
+	p.limit,
+	.caption p.limit {
+		margin-top: 8px;
+		color: var(--fg);
+		font-size: 13px;
+		line-height: 20px;
+		opacity: 0.72;
+	}
+
+	.intro p.limit {
+		margin-top: 10px;
+	}
+
+	.keys.wide {
+		width: 128px;
+	}
+
+	.install-head p {
+		margin: -14px 0 0;
+		color: var(--muted);
+		font-size: 14px;
+	}
+
+	.tabs {
+		display: inline-flex;
+		gap: 4px;
+		margin-top: 22px;
+		padding: 4px;
+		border-radius: 999px;
+		background: color-mix(in srgb, var(--fg) 6%, transparent);
+	}
+
+	.tab {
+		display: inline-flex;
+		align-items: center;
+		gap: 7px;
+		padding: 7px 14px;
+		border: 0;
+		border-radius: 999px;
+		background: none;
+		color: var(--muted);
+		font: 500 14px var(--sans);
+		cursor: pointer;
+		transition:
+			color 0.15s,
+			background-color 0.15s;
+	}
+
+	.tab svg {
+		width: 13px;
+		height: 14px;
+		fill: currentColor;
+	}
+
+	.tab:hover {
+		color: var(--fg);
+	}
+
+	.tab[aria-selected='true'] {
+		background: var(--card);
+		box-shadow: var(--card-edge);
+		color: var(--fg);
+	}
+
+	.panel {
+		display: grid;
+		grid-template-columns: 300px minmax(0, 1fr);
+		gap: 40px;
+		margin-top: 28px;
+	}
+
+	.panel[hidden] {
+		display: none;
+	}
+
+	.get {
+		display: flex;
+		flex-direction: column;
+		align-items: flex-start;
+	}
+
+	.files {
+		margin: 12px 0 0;
+		color: var(--muted);
+		font-size: 13px;
+		line-height: 20px;
+	}
+
+	.arch {
+		display: inline-flex;
+		gap: 2px;
+		margin-bottom: 14px;
+		padding: 3px;
+		border-radius: 999px;
+		background: color-mix(in srgb, var(--fg) 6%, transparent);
+	}
+
+	.arch button {
+		padding: 4px 11px;
+		border: 0;
+		border-radius: 999px;
+		background: none;
+		color: var(--muted);
+		font: 500 12.5px var(--mono);
+		cursor: pointer;
+	}
+
+	.arch button[aria-checked='true'] {
+		background: var(--card);
+		box-shadow: var(--card-edge);
+		color: var(--fg);
+	}
+
+	.req-title {
+		margin-top: 26px;
+		color: var(--fg);
+		font-size: 13px;
+	}
+
+	.req {
+		margin-top: 6px;
+	}
+
+	.req li {
+		padding: 2px 0;
+		color: var(--muted);
+		font-size: 13px;
+		line-height: 20px;
+	}
+
+	.step {
+		display: flex;
+		flex: 1;
+		flex-direction: column;
+		gap: 8px;
+		min-width: 0;
+	}
+
+	.code {
+		display: flex;
+		align-items: center;
+		gap: 8px;
+		padding: 6px 6px 6px 12px;
+		border-radius: 10px;
+		background: var(--card);
+		box-shadow: var(--card-edge);
+	}
+
+	.code code {
+		flex: 1;
+		min-width: 0;
+		overflow-x: auto;
+		color: var(--fg);
+		font: 12.5px/20px var(--mono);
+		white-space: nowrap;
+	}
+
+	.copy {
+		flex-shrink: 0;
+		min-width: 64px;
+		padding: 4px 10px;
+		border: 0;
+		border-radius: 7px;
+		background: color-mix(in srgb, var(--fg) 8%, transparent);
+		color: var(--fg);
+		font: 500 12px var(--sans);
+		cursor: pointer;
+	}
+
+	.copy:hover {
+		background: color-mix(in srgb, var(--fg) 14%, transparent);
+	}
+
+	.availability {
+		margin-top: 48px;
+	}
+
+	.availability h3 {
+		font-size: 14px;
+	}
+
+	.availability > p {
+		margin: 4px 0 0;
+		color: var(--muted);
+		font-size: 13px;
+	}
+
+	.table {
+		margin-top: 14px;
+		overflow-x: auto;
+	}
+
+	table {
+		width: 100%;
+		border-collapse: collapse;
+		font-size: 13px;
+		line-height: 18px;
+	}
+
+	th,
+	td {
+		padding: 8px 12px 8px 0;
+		border-bottom: 1px solid var(--line);
+		text-align: left;
+		vertical-align: top;
+	}
+
+	thead th {
+		color: var(--fg);
+		font-weight: 600;
+	}
+
+	tbody th {
+		color: var(--fg);
+		font-weight: 400;
+	}
+
+	td {
+		color: var(--muted);
+	}
+
+	td.no {
+		opacity: 0.6;
 	}
 
 	.footer {
@@ -888,11 +1325,13 @@
 
 	@media (max-width: 860px) {
 		.cards,
-		.split {
+		.split,
+		.panel {
 			grid-template-columns: minmax(0, 1fr);
 		}
 
-		.split {
+		.split,
+		.panel {
 			gap: 28px;
 		}
 	}
@@ -939,6 +1378,21 @@
 
 		.combo {
 			width: auto;
+		}
+
+		.tabs {
+			display: flex;
+		}
+
+		.tab {
+			flex: 1;
+			justify-content: center;
+			padding-inline: 8px;
+		}
+
+		.availability td,
+		.availability th {
+			padding-right: 8px;
 		}
 
 		.footer {
