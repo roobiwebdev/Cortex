@@ -24,6 +24,9 @@
   </g>
   <rect x="24" y="24" width="976" height="976" rx="200" fill="url(#glow)"/>
   <rect x="26" y="26" width="972" height="972" rx="198" fill="none" stroke="#fff" stroke-opacity="0.08" stroke-width="4"/>
-  <path d="M664.6 342.6A228 228 0 1 0 664.6 681.4" fill="none" stroke="url(#teal)" stroke-width="128" stroke-linecap="round"/>
-  <circle cx="512" cy="512" r="92" fill="url(#rec)"/>
+  <!-- The glyph is 12% larger than on macOS so it fills the bigger tile at taskbar sizes. -->
+  <g transform="translate(512 512) scale(1.12) translate(-512 -512)">
+    <path d="M664.6 342.6A228 228 0 1 0 664.6 681.4" fill="none" stroke="url(#teal)" stroke-width="128" stroke-linecap="round"/>
+    <circle cx="512" cy="512" r="92" fill="url(#rec)"/>
+  </g>
 </svg>
