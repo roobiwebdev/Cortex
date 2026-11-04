@@ -11,6 +11,7 @@
 
 pub mod audio;
 pub mod caps;
+pub mod convert;
 pub mod devices;
 pub mod engine;
 pub mod overlay;
