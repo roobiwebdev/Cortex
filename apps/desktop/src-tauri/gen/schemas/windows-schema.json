@@ -279,6 +279,12 @@
           "markdownDescription": "Enables the open_link command without any pre-configured scope."
         },
         {
+          "description": "Enables the open_log_folder command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-open-log-folder",
+          "markdownDescription": "Enables the open_log_folder command without any pre-configured scope."
+        },
+        {
           "description": "Enables the open_recordings_folder command without any pre-configured scope.",
           "type": "string",
           "const": "allow-open-recordings-folder",
@@ -535,6 +541,12 @@
           "type": "string",
           "const": "deny-open-link",
           "markdownDescription": "Denies the open_link command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the open_log_folder command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-open-log-folder",
+          "markdownDescription": "Denies the open_log_folder command without any pre-configured scope."
         },
         {
           "description": "Denies the open_recordings_folder command without any pre-configured scope.",
