@@ -3,6 +3,7 @@
 #   icon.svg            -> icon.png (1024, macOS shape) -> src-tauri/icons/icon.icns
 #   icon-full-bleed.svg -> icon-full-bleed.png (1024)   -> src-tauri/icons/*.png, icon.ico, Square*/StoreLogo
 #   tray-template.svg   -> src-tauri/icons/tray-template.png (44 px, the menu-bar template at 2x)
+#   mark.svg            -> src-tauri/icons/tray-color.png (64 px, the Windows and Linux tray icon in colour)
 #   site: favicon.png, apple-touch-icon.png, src/lib/assets/icon.webp, scripts/og/icon.webp
 # Needs macOS (`sips`), Google Chrome, `cwebp` (brew install webp) and the desktop app's node_modules.
 # Run from anywhere: sh apps/desktop/branding/render.sh. Then run `pnpm --filter site og` for the share image.
@@ -27,6 +28,8 @@ resize() { sips -z "$2" "$2" "$1" --out "$3" >/dev/null; }
 render icon.svg icon.png
 render icon-full-bleed.svg icon-full-bleed.png
 render tray-template.svg "$TMP/tray.png"
+# Windows and Linux do not tint template images, so a black icon vanishes on a dark taskbar.
+render mark.svg "$TMP/tray-color.png"
 
 # Windows and Linux files come from the full-bleed tile; the macOS .icns keeps Apple's margin.
 (cd "$DESKTOP" && pnpm exec tauri icon "$BRANDING/icon-full-bleed.png" >/dev/null 2>&1)
@@ -36,6 +39,7 @@ cp "$TMP/mac/icon.icns" "$ICONS/icon.icns"
 rm -rf "$ICONS/android" "$ICONS/ios"
 
 resize "$TMP/tray.png" 44 "$ICONS/tray-template.png"
+resize "$TMP/tray-color.png" 64 "$ICONS/tray-color.png"
 
 resize icon-full-bleed.png 64 "$SITE/static/favicon.png"
 resize icon-full-bleed.png 180 "$SITE/static/apple-touch-icon.png"

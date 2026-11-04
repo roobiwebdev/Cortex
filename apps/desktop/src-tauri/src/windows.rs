@@ -216,6 +216,16 @@ pub fn open_window(app: AppHandle, window: AppWindow) -> Result<(), EngineError>
     win.set_focus().map_err(fail)
 }
 
+/// The status icon: the black template on macOS, which tints it for the menu bar; the
+/// colour mark on Windows and Linux, where a black icon disappears on a dark taskbar.
+fn tray_icon() -> tauri::image::Image<'static> {
+    if cfg!(target_os = "macos") {
+        tauri::include_image!("icons/tray-template.png")
+    } else {
+        tauri::include_image!("icons/tray-color.png")
+    }
+}
+
 pub fn setup(app: &mut App) -> tauri::Result<()> {
     app.manage(PanelHiddenAt::default());
     app.manage(Lifecycle::default());
@@ -235,8 +245,9 @@ pub fn setup(app: &mut App) -> tauri::Result<()> {
     let menu = Menu::with_items(app, &[&open, &quit])?;
 
     TrayIconBuilder::with_id("status")
-        .icon(tauri::include_image!("icons/tray-template.png"))
-        .icon_as_template(true)
+        .icon(tray_icon())
+        // Only macOS tints template images for light and dark menu bars.
+        .icon_as_template(cfg!(target_os = "macos"))
         .tooltip("Cortex")
         .menu(&menu)
         // Left click opens our panel; right click shows the small native menu.
