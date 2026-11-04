@@ -15,6 +15,9 @@
 #   --require-all       fail when the Linux arm64 files are missing (default: warn and leave
 #                       them out)
 #   --allow-commit-mismatch   accept CI artifacts built from another commit than HEAD
+#   --allow-missing GROUP     leave out a whole platform group (windows-x64, linux-x64 or
+#                       linux-arm64) whose files are absent; repeatable. The feed and sums then
+#                       omit it; add it later by re-running and uploading with --clobber.
 #
 # Environment: CORTEX_SOURCE_REPO (default roobiwebdev/cortex), CORTEX_RELEASES_REPO (default
 # roobiwebdev/cortex-releases), CORTEX_UPDATER_KEY (default ~/.config/cortex/updater.key),
@@ -46,6 +49,7 @@ notes=""
 notes_file=""
 rebuild_macos=0
 require_all=0
+allow_missing=()
 allow_mismatch=0
 while [[ $# -gt 0 ]]; do
   case "$1" in
@@ -55,6 +59,7 @@ while [[ $# -gt 0 ]]; do
     --notes-file) notes_file="${2:?--notes-file needs a path}"; shift 2 ;;
     --rebuild-macos) rebuild_macos=1; shift ;;
     --require-all) require_all=1; shift ;;
+    --allow-missing) allow_missing+=("${2:?--allow-missing needs a group}"); shift 2 ;;
     --allow-commit-mismatch) allow_mismatch=1; shift ;;
     -h | --help) sed -n '2,25p' "$0"; exit 0 ;;
     *) die "unknown option $1 (see --help)" ;;
@@ -146,6 +151,8 @@ for group in windows-x64 linux-x64 linux-arm64; do
     else
       warn "no Linux arm64 files: this release leaves them out (the site's arm64 links will 404). Build them with scripts/release/build-linux-docker.sh, or pass --require-all to stop here."
     fi
+  elif [[ " ${allow_missing[*]} " == *" $group "* ]]; then
+    warn "no $group files: left out of this release (--allow-missing)."
   else
     die "$group files are missing: ${missing[*]}"
   fi
@@ -203,7 +210,10 @@ unset TAURI_SIGNING_PRIVATE_KEY_PASSWORD
 
 # --- 5. latest.json: written from the files, then checked the way the updater reads it ---
 step "Writing latest.json"
-require="macos,windows-x64,linux-x64"
+require="macos"
+for group in windows-x64 linux-x64; do
+  [[ " ${allow_missing[*]} " == *" $group "* ]] || require="$require,$group"
+done
 [[ $require_all == 1 ]] && require="$require,linux-arm64"
 "${manifest[@]}" write --dir "$assets" --version "$version" --base-url "$base_url" \
   --notes-file "$rel/notes.md" --darwin-arches "$darwin_arches" --require "$require"
