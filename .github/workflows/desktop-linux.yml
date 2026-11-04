@@ -1,17 +1,26 @@
-# Linux checks for the desktop recorder (crates/rec-engine-linux, apps/desktop).
-# See docs/engineering/platforms.md.
+# Linux checks and installers for the desktop recorder (crates/rec-engine-linux, apps/desktop).
+# See docs/engineering/platforms.md and docs/engineering/releasing.md.
 #
-# Hosted runners have no Wayland session, no xdg-desktop-portal, no GPU and no audio
-# devices. This job proves the build, clippy, the unit tests, the engine's headless runtime
-# tests (real GStreamer pipelines fed by the test pattern) and the deb/rpm/AppImage
-# bundles. Portal capture, hardware encoders and global shortcuts are checked on a Linux PC
-# with the test script in docs/engineering/platforms.md.
-# scripts/desktop/linux-dev.Dockerfile is the same environment for local runs.
+# Two ways in:
+#   - push / pull_request: CI on x86_64. Proves fmt, clippy, the unit tests, the engine's
+#     headless runtime tests (real GStreamer pipelines fed by the test pattern) and the
+#     deb/rpm/AppImage bundles.
+#   - workflow_call from release.yml: the same checks, then the release installers for one
+#     architecture under the stable asset names, as an artifact the assemble script downloads.
+#
+# Hosted runners have no Wayland session, no xdg-desktop-portal, no GPU and no audio devices.
+# Portal capture, hardware encoders and global shortcuts are checked on a Linux PC with
+# docs/engineering/linux-testing.md. scripts/desktop/linux-dev.Dockerfile is the same
+# environment for local runs.
+#
+# Bundles are never signed here: the updater key stays on the release Mac, and
+# scripts/release/assemble.sh signs the files after downloading them.
 name: Desktop (Linux)
 
 on:
   push:
-    branches: [main]
+    # agent/desktop-recorder-4c1e9 is the default branch of roobiwebdev/cortex.
+    branches: [main, agent/desktop-recorder-4c1e9]
     paths:
       - "crates/rec-core/**"
       - "crates/rec-engine-linux/**"
@@ -20,6 +29,7 @@ on:
       - "Cargo.toml"
       - "Cargo.lock"
       - "rust-toolchain.toml"
+      - "scripts/release/stage.sh"
       - ".github/workflows/desktop-linux.yml"
   pull_request:
     paths:
@@ -30,22 +40,48 @@ on:
       - "Cargo.toml"
       - "Cargo.lock"
       - "rust-toolchain.toml"
+      - "scripts/release/stage.sh"
       - ".github/workflows/desktop-linux.yml"
+  workflow_call:
+    inputs:
+      runner:
+        description: Runner label (ubuntu-24.04 for x86_64, ubuntu-24.04-arm for arm64)
+        type: string
+        default: ubuntu-24.04
+      group:
+        description: Release group, linux-x64 or linux-arm64 (names the files and the artifact)
+        type: string
+        default: linux-x64
+      version:
+        description: Release version; must match tauri.conf.json
+        type: string
+        required: true
+      optional:
+        description: Let the release run succeed when this job fails (arm64 runners)
+        type: boolean
+        default: false
 
-concurrency:
-  group: desktop-linux-${{ github.ref }}
-  cancel-in-progress: true
+permissions:
+  contents: read
 
 jobs:
   linux:
-    runs-on: ubuntu-24.04
-    timeout-minutes: 60
+    name: linux (${{ inputs.group || 'linux-x64' }})
+    runs-on: ${{ inputs.runner || 'ubuntu-24.04' }}
+    timeout-minutes: 75
+    continue-on-error: ${{ inputs.optional == true }}
+    concurrency:
+      group: desktop-linux-${{ github.workflow }}-${{ github.ref }}-${{ inputs.group || 'linux-x64' }}
+      cancel-in-progress: ${{ inputs.version == '' || inputs.version == null }}
     env:
       # linuxdeploy is an AppImage; runners have no FUSE.
       APPIMAGE_EXTRACT_AND_RUN: 1
+      GROUP: ${{ inputs.group || 'linux-x64' }}
+      VERSION: ${{ inputs.version }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
+      # Keep in step with scripts/desktop/linux-dev.Dockerfile.
       - name: Install system packages (Tauri, GStreamer, PipeWire, D-Bus, V4L2)
         run: |
           sudo apt-get update
@@ -56,22 +92,37 @@ jobs:
             libpipewire-0.3-dev libgstreamer1.0-dev libgstreamer-plugins-base1.0-dev \
             gstreamer1.0-plugins-base gstreamer1.0-plugins-good gstreamer1.0-plugins-bad \
             gstreamer1.0-plugins-ugly gstreamer1.0-libav gstreamer1.0-pipewire \
-            gstreamer1.0-pulseaudio libdbus-1-dev libv4l-dev ffmpeg rpm
+            gstreamer1.0-pulseaudio libdbus-1-dev libv4l-dev ffmpeg \
+            rpm squashfs-tools desktop-file-utils xdg-utils
 
-      - uses: pnpm/action-setup@v4
-      - uses: actions/setup-node@v4
+      - uses: pnpm/action-setup@73e46992e05b19abd31f2f3c20e0e7370d762115 # v6.1.1
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: 24
           cache: pnpm
 
+      - name: Check the release version
+        if: env.VERSION != ''
+        run: |
+          conf="$(node -p 'require("./apps/desktop/src-tauri/tauri.conf.json").version')"
+          [ "$conf" = "$VERSION" ] || { echo "::error::tauri.conf.json is $conf, the release is $VERSION (run scripts/desktop/bump-version.sh)"; exit 1; }
+
       # rust-toolchain.toml pins the channel; rustup adds the host target on its own.
+      # The arm64 runner image may not ship rustup.
       - name: Install Rust toolchain
         run: |
+          if ! command -v rustup >/dev/null; then
+            curl -sSf https://sh.rustup.rs | sh -s -- -y --no-modify-path --profile minimal --default-toolchain none
+            echo "$HOME/.cargo/bin" >>"$GITHUB_PATH"
+            export PATH="$HOME/.cargo/bin:$PATH"
+          fi
           rustup toolchain install
           rustc --version
           cargo --version
 
-      - uses: Swatinem/rust-cache@v2
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
+        with:
+          key: ${{ env.GROUP }}
 
       # rec-engine-macos and rec-cli are macOS-only workspace members, so every cargo
       # command names the crates that build on Linux.
@@ -95,16 +146,16 @@ jobs:
 
       - run: pnpm --filter desktop test
 
-      # deb, rpm and AppImage from tauri.linux.conf.json. Unsigned.
+      # deb, rpm and AppImage from tauri.linux.conf.json. No updater signatures here.
       - name: Bundle
         run: pnpm --filter desktop tauri build --bundles deb,rpm,appimage
 
-      - uses: actions/upload-artifact@v4
+      - name: Stage under the release names
+        run: bash scripts/release/stage.sh "$GROUP" target/release/bundle dist/stage "${VERSION:-*}"
+
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
-          name: cortex-linux-x64
-          path: |
-            target/release/bundle/deb/*.deb
-            target/release/bundle/rpm/*.rpm
-            target/release/bundle/appimage/*.AppImage
+          name: cortex-${{ env.GROUP }}
+          path: dist/stage/*
           if-no-files-found: error
           retention-days: 7
