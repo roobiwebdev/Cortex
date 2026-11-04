@@ -97,7 +97,7 @@ pub(crate) fn open_on_first_run(app: &AppHandle, completed: bool) {
     if completed {
         return;
     }
-    if let Err(e) = windows::open_window(app.clone(), AppWindow::Onboarding) {
+    if let Err(e) = windows::show_window(app.clone(), AppWindow::Onboarding) {
         log_line!("could not open the tour: {e}");
     }
 }
@@ -161,7 +161,7 @@ pub(crate) fn app_menu<R: Runtime>(app: &AppHandle<R>) -> tauri::Result<Menu<R>>
 /// App menu events: "Show the Tour" opens the onboarding window.
 pub(crate) fn on_menu_event(app: &AppHandle, event: &MenuEvent) {
     if event.id().as_ref() == SHOW_TOUR
-        && let Err(e) = windows::open_window(app.clone(), AppWindow::Onboarding)
+        && let Err(e) = windows::show_window(app.clone(), AppWindow::Onboarding)
     {
         log_line!("could not open the tour: {e}");
     }

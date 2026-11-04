@@ -695,9 +695,17 @@ pub fn fit_floating(window: WebviewWindow, width: f64, height: f64) -> Result<()
 
 /// Show a floating surface in its place: the menu bar panel under the status item, the
 /// region picker over the display under the cursor, or the HUD after the user hid it.
+///
+/// Async for the same reason as `windows::open_window`: it may create a window, which
+/// deadlocks on Windows when done inside a synchronous (UI-thread) command.
 #[tauri::command]
 #[specta::specta]
-pub fn open_floating(app: AppHandle, surface: FloatingSurface) -> Result<(), EngineError> {
+pub async fn open_floating(app: AppHandle, surface: FloatingSurface) -> Result<(), EngineError> {
+    show_floating(app, surface)
+}
+
+/// `open_floating`'s work, for callers already on the right thread (debug hooks).
+pub fn show_floating(app: AppHandle, surface: FloatingSurface) -> Result<(), EngineError> {
     match surface {
         FloatingSurface::Menubar => windows::open_menubar(&app),
         FloatingSurface::Hud => {
@@ -760,10 +768,11 @@ pub fn window_ready(window: WebviewWindow) {
     }
 }
 
-/// Show a toast in the toasts window (from any window; failed commands use it).
+/// Show a toast in the toasts window (from any window; failed commands use it). Async: it
+/// may create the toasts window (see `windows::open_window`).
 #[tauri::command]
 #[specta::specta]
-pub fn push_toast(app: AppHandle, toast: UiToast) -> Result<(), EngineError> {
+pub async fn push_toast(app: AppHandle, toast: UiToast) -> Result<(), EngineError> {
     let short = |s: &str| s.chars().take(MAX_TOAST_TEXT).collect::<String>();
     let toast = UiToast {
         id: short(&toast.id),
