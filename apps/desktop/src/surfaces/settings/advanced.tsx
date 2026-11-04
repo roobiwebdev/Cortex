@@ -1,5 +1,5 @@
 import * as React from "react";
-import { Check, ClipboardCopy } from "lucide-react";
+import { Check, ClipboardCopy, FolderOpen } from "lucide-react";
 
 import {
   AlertDialog,
@@ -88,6 +88,15 @@ export function AdvancedSection() {
           <Button variant="soft" size="sm" onClick={copyReport}>
             {copied ? <Check /> : <ClipboardCopy />}
             {copied ? "Copied" : "Copy"}
+          </Button>
+        </SettingsRow>
+        <SettingsRow
+          label="Log file"
+          hint="Opens the folder with cortex.log. Attach it when you report a problem. It never holds stream keys."
+        >
+          <Button variant="soft" size="sm" onClick={() => engine.openLogFolder()}>
+            <FolderOpen />
+            Open log folder
           </Button>
         </SettingsRow>
         <SettingsRow

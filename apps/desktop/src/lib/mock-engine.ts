@@ -482,6 +482,7 @@ export const engine = {
   // Native-only actions; the prototype has nothing to open.
   revealRecording(_id: string) {},
   openRecordingsFolder() {},
+  openLogFolder() {},
   openLink(_link: ExternalLink) {},
   openSystemSettings(_p: Permission) {},
   toggleLive() {

@@ -194,6 +194,10 @@ const tauriEngine: typeof mock.engine = {
   openRecordingsFolder() {
     void run(commands.openRecordingsFolder());
   },
+  /** Opens the folder holding cortex.log (Settings › Advanced › Troubleshooting). */
+  openLogFolder() {
+    void run(commands.openLogFolder());
+  },
   /** Opens a fixed web link (author site, downloads page) in the default browser. */
   openLink(link: ExternalLink) {
     void run(commands.openLink(link));
