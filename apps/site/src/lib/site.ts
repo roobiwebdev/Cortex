@@ -89,6 +89,20 @@ export type LinuxArch = keyof typeof DOWNLOADS.linux;
 /** The Mac DMG: the fallback for `/download` and the prerendered hero button. */
 export const DOWNLOAD_URL = DOWNLOADS.mac.universal.dmg.url;
 
+/**
+ * SOURCE OF TRUTH KEYWORDS: INSTALL_COMMANDS, install.sh, install.ps1, one-command install, curl, irm, no warnings
+ * WHAT:  The one line a visitor pastes into a terminal to install Cortex, per OS. The scripts
+ *        are static/install.sh (macOS and Linux) and static/install.ps1 (Windows).
+ * WHY:   A file that curl or PowerShell downloads isn't marked as coming from the internet, so
+ *        Gatekeeper and SmartScreen don't stop it. Built from SITE_URL so a new domain moves them.
+ * WHERE: routes/+page.svelte, the "Fastest: one command, no warnings" box in each install tab.
+ */
+export const INSTALL_COMMANDS: Record<DownloadOs, string> = {
+  mac: `curl -fsSL ${SITE_URL}/install.sh | sh`,
+  windows: `irm ${SITE_URL}/install.ps1 | iex`,
+  linux: `curl -fsSL ${SITE_URL}/install.sh | sh`,
+};
+
 /** Which Linux builds are published. An unpublished one shows "coming soon" instead of a dead link. */
 export const LINUX_READY: Record<LinuxArch, boolean> = { x86_64: false, aarch64: false };
 
