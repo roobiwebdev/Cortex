@@ -16,9 +16,8 @@ export const SITE_URL = "https://cortex.roobi.dev";
 // From apps/desktop/src-tauri/tauri.conf.json ("version"). Bump with each release.
 export const VERSION = "0.1.0";
 
-// `lipo -archs /Applications/Cortex.app/Contents/MacOS/cortex-desktop` prints only arm64.
-// Change this to 'Apple Silicon and Intel' once the release build is universal.
-export const ARCH = "Apple Silicon";
+// The release DMG is universal (`lipo -archs` prints x86_64 arm64): every M-series Mac and Intel Macs.
+export const ARCH = "Apple Silicon and Intel";
 
 // tauri.conf.json bundle.macOS.minimumSystemVersion and .cargo/config.toml MACOSX_DEPLOYMENT_TARGET.
 export const MIN_MACOS = "15";
