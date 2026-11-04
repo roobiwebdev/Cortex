@@ -196,9 +196,18 @@ pub enum AppWindow {
 }
 
 /// Show (creating it if needed) and focus one of the app's normal windows.
+///
+/// Async on purpose: a synchronous command runs on the UI thread, and creating a WebView2
+/// window there deadlocks on Windows (the Settings gear froze the whole app). Async
+/// commands run off the UI thread, where window creation is safe on every platform.
 #[tauri::command]
 #[specta::specta]
-pub fn open_window(app: AppHandle, window: AppWindow) -> Result<(), EngineError> {
+pub async fn open_window(app: AppHandle, window: AppWindow) -> Result<(), EngineError> {
+    show_window(app, window)
+}
+
+/// `open_window`'s work, for callers already on the right thread (the tour, debug hooks).
+pub fn show_window(app: AppHandle, window: AppWindow) -> Result<(), EngineError> {
     let label = match window {
         AppWindow::Main => {
             show_main(&app);

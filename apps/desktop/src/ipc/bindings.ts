@@ -78,6 +78,9 @@ export const commands = {
 	/**
 	 *  Show a floating surface in its place: the menu bar panel under the status item, the
 	 *  region picker over the display under the cursor, or the HUD after the user hid it.
+	 * 
+	 *  Async for the same reason as `windows::open_window`: it may create a window, which
+	 *  deadlocks on Windows when done inside a synchronous (UI-thread) command.
 	 */
 	openFloating: (surface: FloatingSurface) => typedError<null, EngineError>(__TAURI_INVOKE("open_floating", { surface })),
 	/**  Hide the calling floating window. A hidden HUD stays hidden until the next recording. */
@@ -87,9 +90,18 @@ export const commands = {
 	 *  the toasts held for it.
 	 */
 	windowReady: () => __TAURI_INVOKE<void>("window_ready"),
-	/**  Show a toast in the toasts window (from any window; failed commands use it). */
+	/**
+	 *  Show a toast in the toasts window (from any window; failed commands use it). Async: it
+	 *  may create the toasts window (see `windows::open_window`).
+	 */
 	pushToast: (toast: UiToast_Deserialize) => typedError<null, EngineError>(__TAURI_INVOKE("push_toast", { toast })),
-	/**  Show (creating it if needed) and focus one of the app's normal windows. */
+	/**
+	 *  Show (creating it if needed) and focus one of the app's normal windows.
+	 * 
+	 *  Async on purpose: a synchronous command runs on the UI thread, and creating a WebView2
+	 *  window there deadlocks on Windows (the Settings gear froze the whole app). Async
+	 *  commands run off the UI thread, where window creation is safe on every platform.
+	 */
 	openWindow: (window: AppWindow) => typedError<null, EngineError>(__TAURI_INVOKE("open_window", { window })),
 	/**  The platform this build runs on, for the screens that differ per platform. */
 	platform: () => __TAURI_INVOKE<PlatformOs>("platform"),
