@@ -162,7 +162,10 @@ pnpm --filter desktop ipc:bindings          regenerate apps/desktop/src/ipc/bind
 cargo test --workspace                      Rust tests (needs rustup on PATH)
 cargo run --release -p rec-engine-macos --example engine_smoke   test-pattern recording + ffprobe check
 scripts/desktop/bump-version.sh <version>   set the desktop version everywhere
-scripts/desktop/release-macos.sh            signed macOS release into dist/desktop/<version>/ (never uploads)
+scripts/desktop/release-macos.sh            signed universal macOS build into dist/release/<version>/macos/ (never uploads)
+scripts/release/assemble.sh <version>       whole release: CI installers + macOS, updater-signed, latest.json (docs/engineering/releasing.md)
+scripts/release/publish.sh <version>        publish to roobiwebdev/cortex-releases (asks first; --dry-run prints the commands)
+scripts/release/build-linux-docker.sh       Linux arm64 installers in Docker (fallback for the CI arm64 job)
 scripts/desktop/linux-dev.Dockerfile        Linux build/test/bundle container (see docs/engineering/platforms.md, "Linux in Docker")
 cargo run -p rec-engine-linux --example probe   what the Linux engine finds (encoders, devices, portals)
 
