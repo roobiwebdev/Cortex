@@ -638,6 +638,13 @@ pub fn fit_floating(window: WebviewWindow, width: f64, height: f64) -> Result<()
     }
     let (width, height) = (width.clamp(0.0, MAX_SIDE), height.clamp(0.0, MAX_SIDE));
     let label = window.label().to_string();
+    if crate::trace_on() {
+        eprintln!(
+            "cortex: trace fit_floating {label} {width}x{height} (scale {:?}, now {:?})",
+            window.scale_factor(),
+            window.outer_size()
+        );
+    }
     if label == TOASTS && height < 1.0 {
         return window.hide().map_err(failed);
     }
