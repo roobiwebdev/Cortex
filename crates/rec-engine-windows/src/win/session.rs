@@ -24,7 +24,7 @@ use rec_core::state::Rect;
 use super::audio::{AudioCapture, Endpoint};
 use super::camera::{CamFrame, Camera};
 use super::capture::{Capture, Source as CaptureSource};
-use super::compose::{Compositor, RING};
+use super::compose::{Compositor, Frame, RING};
 use super::d3d::Gpu;
 use super::devices::{hwnd, listed_windows, monitors};
 use super::encoder::Encoder;
@@ -452,12 +452,36 @@ fn finish_start(
     }
     let roles = track_layout(has[0], has[1], s.audio_tracks);
 
-    // The file: hardware path first, then system memory.
-    let encoder = match Encoder::new(&req.file, &cfg, roles.len(), Some(gpu), fragmented) {
+    // The video path, chosen once: the GPU's video processor, else the CPU.
+    let comp = Compositor::new(
+        gpu,
+        crop,
+        (cfg.width, cfg.height),
+        cfg.fps,
+        camera.is_some(),
+    )
+    .map_err(|e| EngineError::failed(msg("Could not set up the video scaler", &e)))?;
+    let gpu_path = comp.is_gpu();
+    eprintln!(
+        "cortex: video path: {} (d3d11 {})",
+        if gpu_path { "gpu" } else { "cpu" },
+        gpu.kind
+    );
+    if !gpu_path {
+        notes.push(
+            "This PC has no GPU video scaler (basic display driver, virtual machine or Remote Desktop): video is scaled on the CPU, which uses more processor time".into(),
+        );
+    }
+
+    // The file. GPU path: share the device with a hardware encoder, then retry with the
+    // software encoder. CPU path: system-memory frames, no device manager.
+    let open =
+        |dev: Option<&Gpu>| Encoder::new(&req.file, &cfg, roles.len(), dev, !gpu_path, fragmented);
+    let encoder = match open(gpu_path.then_some(gpu)) {
         Ok(e) => e,
-        Err(first) => {
+        Err(first) if gpu_path => {
             let _ = std::fs::remove_file(&req.file);
-            match Encoder::new(&req.file, &cfg, roles.len(), None, fragmented) {
+            match open(None) {
                 Ok(e) => {
                     notes.push(format!(
                         "The GPU encoder is unavailable ({}); using the software encoder",
@@ -471,16 +495,12 @@ fn finish_start(
                 }
             }
         }
+        Err(e) => {
+            let _ = std::fs::remove_file(&req.file);
+            return Err(EngineError::failed(msg("Could not start the encoder", &e)));
+        }
     };
     let encoder = Arc::new(Mutex::new(Some(encoder)));
-    let comp = Compositor::new(
-        gpu,
-        crop,
-        (cfg.width, cfg.height),
-        cfg.fps,
-        camera.is_some(),
-    )
-    .map_err(|e| EngineError::failed(msg("Could not set up the GPU scaler", &e)))?;
 
     let video = {
         let (sh, enc) = (shared.clone(), encoder.clone());
@@ -533,7 +553,7 @@ fn video_loop(
     let fps = sh.fps;
     let (cw, ch) = comp.canvas_size();
     let mut next_slot: i64 = 0;
-    let mut last: Option<windows::Win32::Graphics::Direct3D11::ID3D11Texture2D> = None;
+    let mut last: Option<Frame> = None;
     let mut dirty = true;
     let mut overlay_seq = 0u64;
     if matches!(source, VideoSource::CameraOnly) {
@@ -608,13 +628,13 @@ fn video_loop(
             match comp.finish() {
                 Ok(t) => last = Some(t),
                 Err(e) => {
-                    sh.fail(msg("The GPU scaler failed", &e));
+                    sh.fail(msg("The video scaler failed", &e));
                     break;
                 }
             }
             dirty = false;
         }
-        let Some(tex) = &last else { continue };
+        let Some(frame) = &last else { continue };
         for slot in due {
             let Some(out) = slot.out else { continue };
             if sh.max_slots.is_some_and(|m| out as u64 >= m) {
@@ -622,7 +642,7 @@ fn video_loop(
             }
             let r = match enc.lock() {
                 Ok(g) => match g.as_ref() {
-                    Some(e) => e.write_video(tex, slot_time(out, fps), slot_duration(out, fps)),
+                    Some(e) => e.write_video(frame, slot_time(out, fps), slot_duration(out, fps)),
                     None => Ok(()),
                 },
                 Err(_) => Ok(()),
