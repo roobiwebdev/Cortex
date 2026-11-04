@@ -1,7 +1,7 @@
 //! SOURCE OF TRUTH KEYWORDS: Encoder, IMFSinkWriter, H.264, HEVC, AAC, MP4, hardware transforms, DXGI device manager, hevc_encoder_available, fragmented MP4
 //! WHAT:  The file writer: a Media Foundation sink writer with one H.264 or HEVC video
-//!        stream fed NV12 D3D11 textures, and up to three AAC audio streams fed 48 kHz
-//!        stereo 16-bit PCM, written as MPEG-4.
+//!        stream fed NV12 frames (D3D11 textures, or system memory on the CPU video path),
+//!        and up to three AAC audio streams fed 48 kHz stereo 16-bit PCM, written as MPEG-4.
 //! WHY:   The sink writer picks the GPU's encoder MFT (NVENC, Quick Sync, AMF) when
 //!        `MF_READWRITE_ENABLE_HARDWARE_TRANSFORMS` is set and it shares our D3D11 device
 //!        through the DXGI device manager, so frames are never copied to system memory.
@@ -18,6 +18,7 @@ use windows::Win32::Media::MediaFoundation::*;
 use windows::Win32::System::Com::CoTaskMemFree;
 use windows::core::{Interface, PCWSTR, Result};
 
+use super::compose::Frame;
 use super::d3d::Gpu;
 use super::util::wide;
 use crate::plan::{EncoderConfig, VideoCodec};
@@ -40,6 +41,23 @@ fn video_type(cfg: &EncoderConfig, subtype: &windows::core::GUID) -> Result<IMFM
         t.SetUINT64(&MF_MT_FRAME_RATE, pack(cfg.fps, 1))?;
         t.SetUINT64(&MF_MT_PIXEL_ASPECT_RATIO, pack(1, 1))?;
         Ok(t)
+    }
+}
+
+/// A Media Foundation memory buffer holding a copy of `bytes`.
+fn memory_buffer(bytes: &[u8]) -> Result<IMFMediaBuffer> {
+    let len = u32::try_from(bytes.len()).map_err(|_| windows::core::Error::empty())?;
+    // SAFETY: the buffer is locked for at least `len` bytes while we copy into it.
+    unsafe {
+        let buffer = MFCreateMemoryBuffer(len)?;
+        let mut p: *mut u8 = std::ptr::null_mut();
+        buffer.Lock(&mut p, None, None)?;
+        if !p.is_null() {
+            std::ptr::copy_nonoverlapping(bytes.as_ptr(), p, bytes.len());
+        }
+        buffer.Unlock()?;
+        buffer.SetCurrentLength(len)?;
+        Ok(buffer)
     }
 }
 
@@ -77,12 +95,15 @@ unsafe impl Send for Encoder {}
 
 impl Encoder {
     /// Open `path` for writing. `gpu`: share this device with the encoder (hardware path);
-    /// None writes through system memory. `audio_tracks`: number of AAC streams.
+    /// None lets Media Foundation copy through system memory. `cpu_frames`: frames arrive
+    /// as NV12 bytes (`Frame::Cpu`, `width` bytes per row) rather than textures.
+    /// `audio_tracks`: number of AAC streams.
     pub fn new(
         path: &Path,
         cfg: &EncoderConfig,
         audio_tracks: usize,
         gpu: Option<&Gpu>,
+        cpu_frames: bool,
         fragmented: bool,
     ) -> Result<Encoder> {
         let url = wide(&path.display().to_string());
@@ -129,6 +150,9 @@ impl Encoder {
             let input = video_type(cfg, &MFVideoFormat_NV12)?;
             input.SetUINT32(&MF_MT_YUV_MATRIX, MFVideoTransferMatrix_BT709.0 as u32)?;
             input.SetUINT32(&MF_MT_VIDEO_NOMINAL_RANGE, MFNominalRange_16_235.0 as u32)?;
+            if cpu_frames {
+                input.SetUINT32(&MF_MT_DEFAULT_STRIDE, cfg.width)?;
+            }
             writer.SetInputMediaType(video, &input, None)?;
 
             let mut audio = vec![];
@@ -148,15 +172,22 @@ impl Encoder {
         }
     }
 
-    /// Write one frame: an NV12 texture shown from `time` for `duration` (100 ns units).
-    pub fn write_video(&self, tex: &ID3D11Texture2D, time: i64, duration: i64) -> Result<()> {
-        // SAFETY: the texture is a live NV12 texture on the device the writer shares;
-        // the sample keeps it alive until the encoder is done with it.
+    /// Write one NV12 frame shown from `time` for `duration` (100 ns units).
+    pub fn write_video(&self, frame: &Frame, time: i64, duration: i64) -> Result<()> {
+        let buffer = match frame {
+            // SAFETY: the texture is a live NV12 texture on the device the writer shares;
+            // the sample keeps it alive until the encoder is done with it.
+            Frame::Gpu(tex) => unsafe {
+                let buffer = MFCreateDXGISurfaceBuffer(&ID3D11Texture2D::IID, tex, 0, false)?;
+                if let Ok(b2) = buffer.cast::<IMF2DBuffer>() {
+                    buffer.SetCurrentLength(b2.GetContiguousLength()?)?;
+                }
+                buffer
+            },
+            Frame::Cpu(bytes) => memory_buffer(bytes)?,
+        };
+        // SAFETY: plain sample setup and a write on a live writer.
         unsafe {
-            let buffer = MFCreateDXGISurfaceBuffer(&ID3D11Texture2D::IID, tex, 0, false)?;
-            if let Ok(b2) = buffer.cast::<IMF2DBuffer>() {
-                buffer.SetCurrentLength(b2.GetContiguousLength()?)?;
-            }
             let sample = MFCreateSample()?;
             sample.AddBuffer(&buffer)?;
             sample.SetSampleTime(time)?;
@@ -189,17 +220,9 @@ impl Encoder {
         if pcm.is_empty() {
             return Ok(());
         }
-        let len = u32::try_from(pcm.len()).map_err(|_| windows::core::Error::empty())?;
-        // SAFETY: the buffer is locked for exactly `len` bytes while we copy into it.
+        let buffer = memory_buffer(pcm)?;
+        // SAFETY: plain sample setup and a write on a live writer.
         unsafe {
-            let buffer = MFCreateMemoryBuffer(len)?;
-            let mut p: *mut u8 = std::ptr::null_mut();
-            buffer.Lock(&mut p, None, None)?;
-            if !p.is_null() {
-                std::ptr::copy_nonoverlapping(pcm.as_ptr(), p, pcm.len());
-            }
-            buffer.Unlock()?;
-            buffer.SetCurrentLength(len)?;
             let sample = MFCreateSample()?;
             sample.AddBuffer(&buffer)?;
             sample.SetSampleTime(time)?;
