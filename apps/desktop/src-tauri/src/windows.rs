@@ -102,7 +102,7 @@ pub(crate) fn ensure(app: &AppHandle, label: &str) -> Option<WebviewWindow> {
     let win = match WebviewWindowBuilder::from_config(app, &config).and_then(|b| b.build()) {
         Ok(w) => w,
         Err(e) => {
-            eprintln!("cortex: could not create the {label} window: {e}");
+            log_line!("could not create the {label} window: {e}");
             return None;
         }
     };
@@ -127,8 +127,8 @@ pub(crate) fn ensure(app: &AppHandle, label: &str) -> Option<WebviewWindow> {
         crate::tour::on_window_created(app, &win);
     }
     floating::on_created(app, &win);
-    eprintln!(
-        "cortex: created the {label} window in {} ms",
+    log_line!(
+        "created the {label} window in {} ms",
         started.elapsed().as_millis()
     );
     Some(win)
@@ -140,8 +140,8 @@ pub(crate) fn log_ready(app: &AppHandle, label: &str) {
         return;
     };
     if let Some(entry) = lazy_label(label).and_then(|l| life.lock().get(l).map(|e| e.created)) {
-        eprintln!(
-            "cortex: {label} window ready {} ms after creation",
+        log_line!(
+            "{label} window ready {} ms after creation",
             entry.elapsed().as_millis()
         );
     }
@@ -179,8 +179,8 @@ fn reap(app: &AppHandle) {
         life.lock().remove(label);
         floating::before_destroy(app, label);
         match win.destroy() {
-            Ok(()) => eprintln!("cortex: closed the hidden {label} window"),
-            Err(e) => eprintln!("cortex: could not close the {label} window: {e}"),
+            Ok(()) => log_line!("closed the hidden {label} window"),
+            Err(e) => log_line!("could not close the {label} window: {e}"),
         }
     }
 }
@@ -325,7 +325,7 @@ fn toggle_menubar(app: &AppHandle, tray_rect: Rect) {
         return;
     };
     if let Err(err) = place_under(&panel, tray_rect) {
-        eprintln!("cortex: could not position the menu bar panel: {err}");
+        log_line!("could not position the menu bar panel: {err}");
     }
     let _ = panel.show();
     let _ = panel.set_focus();
@@ -339,7 +339,7 @@ pub(crate) fn open_menubar(app: &AppHandle) {
     if let Ok(Some(rect)) = tray.rect()
         && let Err(err) = place_under(&panel, rect)
     {
-        eprintln!("cortex: could not position the menu bar panel: {err}");
+        log_line!("could not position the menu bar panel: {err}");
     }
     let _ = panel.show();
     let _ = panel.set_focus();

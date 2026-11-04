@@ -200,6 +200,9 @@ impl SystemIntegration for System {
     fn screen_capture_granted(&self) -> bool {
         false
     }
+    fn os_version(&self) -> String {
+        std::env::consts::OS.into()
+    }
     fn on_terminate(&self, _f: Box<dyn Fn() + Send>) -> std::io::Result<()> {
         Err(std::io::Error::new(
             std::io::ErrorKind::Unsupported,

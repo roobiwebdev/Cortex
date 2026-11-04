@@ -1,6 +1,9 @@
 //! Cortex desktop shell: windows, menu bar icon, and the typed IPC layer over
 //! the macOS recorder engine (`rec-engine-macos`, driven through `shell::Shell`).
 
+// First: `log_line!` is defined here and used by every module below.
+#[macro_use]
+mod logfile;
 #[cfg(debug_assertions)]
 mod debug_live;
 mod floating;
@@ -159,7 +162,100 @@ fn debug_open(app: &tauri::AppHandle, what: &str) {
         _ => Ok(()),
     };
     if let Err(e) = r {
-        eprintln!("cortex: CORTEX_DEBUG_OPEN={what} failed: {e}");
+        log_line!("CORTEX_DEBUG_OPEN={what} failed: {e}");
+    }
+}
+
+/// Opens the log (`logfile`) in the platform log folder, or `<CORTEX_DEBUG_DATA_DIR>/logs`.
+/// A plugin so it runs before Tauri creates the configured windows.
+fn logfile_plugin(debug_dir: Option<std::path::PathBuf>) -> tauri::plugin::TauriPlugin<tauri::Wry> {
+    tauri::plugin::Builder::new("cortex-log")
+        .setup(move |app, _| {
+            // ~/Library/Logs/dev.roobi.cortex, %LOCALAPPDATA%\dev.roobi.cortex\logs,
+            // ~/.local/share/dev.roobi.cortex/logs.
+            let dir = match debug_dir {
+                Some(d) => d,
+                None => app.path().app_log_dir()?,
+            };
+            if let Err(e) = logfile::init(&dir) {
+                log_line!("could not open the log in {}: {e}", dir.display());
+            }
+            Ok(())
+        })
+        .build()
+}
+
+/// What a support request needs first: the version, the OS, what the engine can do and
+/// the displays. Written once at launch.
+fn log_startup(app: &tauri::AppHandle, shell: Arc<Shell>) {
+    let info = app.package_info();
+    let state = shell.state();
+    let monitors = app
+        .available_monitors()
+        .unwrap_or_default()
+        .iter()
+        .map(|m| {
+            let (size, at) = (m.size(), m.position());
+            format!(
+                "{} {}x{} at {},{} scale {}",
+                m.name().map_or("unnamed", String::as_str),
+                size.width,
+                size.height,
+                at.x,
+                at.y,
+                m.scale_factor()
+            )
+        })
+        .collect::<Vec<_>>();
+    let version = info.version.to_string();
+    let caps = state.capabilities;
+    // The OS version can take a process launch (Windows): off the main thread.
+    std::thread::spawn(move || {
+        log_line!(
+            "started Cortex {version} on {} ({}, {})",
+            platform::system().os_version(),
+            std::env::consts::OS,
+            std::env::consts::ARCH
+        );
+        log_line!("capabilities: {caps:?}");
+        log_line!("monitors: [{}]", monitors.join("; "));
+        // The engine lists its displays shortly after it opens.
+        std::thread::sleep(std::time::Duration::from_secs(3));
+        let displays = shell
+            .state()
+            .displays
+            .iter()
+            .map(|d| {
+                format!(
+                    "{} {} {}x{} scale {}",
+                    d.id, d.name, d.width, d.height, d.scale
+                )
+            })
+            .collect::<Vec<_>>();
+        log_line!("engine displays: [{}]", displays.join("; "));
+    });
+}
+
+/// Logs engine errors, recording starts and stops (from the status changes) and every
+/// finished recording or saved replay with its path.
+fn activity_logger() -> impl Fn(&Outbound) + Send + Sync + 'static {
+    use rec_core::state::EngineStatus;
+    let last = std::sync::Mutex::new(EngineStatus::Idle);
+    move |o| match o {
+        Outbound::Error {
+            message,
+            recoverable,
+        } => log_line!("engine error (recoverable: {recoverable}): {message}"),
+        Outbound::RecordingFinished(r) => log_line!("recording finished: {}", r.path),
+        Outbound::ReplaySaved(path) => log_line!("replay saved: {path}"),
+        Outbound::State(st) => {
+            let mut last = last.lock().unwrap_or_else(|p| p.into_inner());
+            if *last != st.status {
+                log_line!("status {:?} -> {:?}", *last, st.status);
+                *last = st.status;
+            }
+        }
+        _ => {}
     }
 }
 
@@ -190,8 +286,10 @@ pub fn run() {
         let granted = platform::system().screen_capture_granted();
         std::process::exit(if granted { 0 } else { 1 });
     }
+    logfile::install_panic_hook();
     let ipc = ipc::builder();
     let debug = DebugRun::from_env();
+    let log_dir = debug.data_dir.as_ref().map(|d| d.join("logs"));
     let handler = ipc.invoke_handler();
 
     let mut builder = tauri::Builder::default();
@@ -202,11 +300,13 @@ pub fn run() {
     // update test) start next to an installed Cortex instead of focusing it.
     if debug.data_dir.is_none() {
         builder = builder.plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| {
-            eprintln!("cortex: Cortex was opened again; showing the main window");
+            log_line!("Cortex was opened again; showing the main window");
             windows::show_main(app);
         }));
     }
     let app = builder
+        // Before any window exists, so a failure to create one lands in the log.
+        .plugin(logfile_plugin(log_dir))
         // Used from Rust only (`updater.rs`); no window is granted an updater permission.
         .plugin(tauri_plugin_updater::Builder::new().build())
         .invoke_handler(move |invoke| {
@@ -260,12 +360,9 @@ pub fn run() {
             let to_webviews = ipc::emitter(app.handle().clone());
             let to_windows = floating::observer(app.handle().clone(), floating.clone());
             let to_library = trim::observer(app.handle().clone());
+            let to_log = activity_logger();
             let fan_out = move |o: Outbound| {
-                // Engine errors also reach stderr, so a recording that fails shows why in logs.
-                if let Outbound::Error { message, recoverable } = &o {
-                    let kind = if *recoverable { "recoverable" } else { "fatal" };
-                    eprintln!("cortex: engine error ({kind}): {message}");
-                }
+                to_log(&o);
                 to_library(&o);
                 to_windows(&o);
                 to_webviews(o);
@@ -277,6 +374,7 @@ pub fn run() {
                 Arc::new(move |o: Outbound| {
                     let finished = matches!(&o, Outbound::RecordingFinished(_));
                     if let Outbound::RecordingFinished(r) = &o {
+                        // perf-compare.sh reads this line from stdout.
                         println!("cortex: recorded {}", r.path);
                     }
                     fan_out(o);
@@ -301,7 +399,7 @@ pub fn run() {
             app.manage(Arc::new(trim::Library::new(cache_dir, emit.clone())));
             let shell = Shell::open(opts, settings_path, emit.clone());
             if let Some(message) = &shell.load_error {
-                eprintln!("cortex: {message}");
+                log_line!("{message}");
                 emit(Outbound::Error {
                     message: message.clone(),
                     recoverable: true,
@@ -312,12 +410,13 @@ pub fn run() {
             let settings = shell.settings();
             let shell = Arc::new(shell);
             app.manage(shell.clone());
+            log_startup(app.handle(), shell.clone());
             trim::rescan_later(app.handle());
             windows::setup(app)?;
             let live = match preview::LivePreview::attach(app, shell.clone(), debug.preview_stats) {
                 Ok(p) => Some(p),
                 Err(e) => {
-                    eprintln!("cortex: live preview unavailable: {e}");
+                    log_line!("live preview unavailable: {e}");
                     None
                 }
             };
@@ -334,8 +433,8 @@ pub fn run() {
                             .collect::<Vec<_>>()
                             .join(", ")
                     };
-                    eprintln!(
-                        "cortex: devices: cameras [{}], mics [{}]; permissions {:?}",
+                    log_line!(
+                        "devices: cameras [{}], mics [{}]; permissions {:?}",
                         names(&st.cameras),
                         names(&st.mics),
                         st.permissions
@@ -380,7 +479,7 @@ pub fn run() {
                 std::thread::spawn(move || {
                     std::thread::sleep(std::time::Duration::from_secs(3));
                     if let Err(e) = shell.start() {
-                        eprintln!("cortex: debug record failed: {e}");
+                        log_line!("debug record failed: {e}");
                         std::process::exit(2);
                     }
                 });
@@ -408,11 +507,11 @@ pub fn run() {
                             ..shell.settings()
                         };
                         match shell.update_settings(s) {
-                            Ok(s) => eprintln!("cortex: debug target {:?}", s.target),
-                            Err(e) => eprintln!("cortex: debug target refused: {e}"),
+                            Ok(s) => log_line!("debug target {:?}", s.target),
+                            Err(e) => log_line!("debug target refused: {e}"),
                         }
                     }
-                    None => eprintln!("cortex: CORTEX_DEBUG_TARGET={spec} not understood"),
+                    None => log_line!("CORTEX_DEBUG_TARGET={spec} not understood"),
                 }
             }
             // On the main thread, so this runs now: levels reach the main window at once.
@@ -429,8 +528,14 @@ pub fn run() {
             }
             Ok(())
         })
-        .build(tauri::generate_context!())
-        .expect("error while building the Cortex app");
+        .build(tauri::generate_context!());
+    let app = match app {
+        Ok(app) => app,
+        Err(e) => {
+            log_line!("could not start: {e}");
+            std::process::exit(1);
+        }
+    };
 
     app.run(|app, event| match event {
         // Quit finalizes a running recording and writes pending settings first, off the
