@@ -46,6 +46,8 @@ use crate::shell::{Outbound, Shell};
 ///   IPC commands, then quit (debug builds; see `debug_live.rs`).
 /// - `CORTEX_DEBUG_UPDATE_URL` (+ `CORTEX_DEBUG_UPDATE_INSTALL=1`): check a local update feed
 ///   at launch, and install what it finds (loopback URLs only; see `updater.rs`).
+/// - `CORTEX_DEBUG_TRACE=1`: print every IPC command (with the time a synchronous one held
+///   the main thread) and every window move, resize, scale and focus change to stderr.
 ///
 /// Used by `scripts/desktop/perf-compare.sh`.
 #[derive(Default)]
@@ -161,6 +163,27 @@ fn debug_open(app: &tauri::AppHandle, what: &str) {
     }
 }
 
+/// `CORTEX_DEBUG_TRACE=1`, read once.
+pub(crate) fn trace_on() -> bool {
+    static ON: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
+    *ON.get_or_init(|| std::env::var("CORTEX_DEBUG_TRACE").is_ok_and(|v| v == "1"))
+}
+
+/// `CORTEX_DEBUG_TRACE`: one line per window geometry or focus change.
+fn trace_window_event(w: &tauri::Window, e: &tauri::WindowEvent) {
+    use tauri::WindowEvent as E;
+    let what = match e {
+        E::Moved(p) => format!("moved to {},{}", p.x, p.y),
+        E::Resized(s) => format!("resized to {}x{}", s.width, s.height),
+        E::ScaleFactorChanged { scale_factor, .. } => format!("scale {scale_factor}"),
+        E::Focused(f) => format!("focused {f}"),
+        E::CloseRequested { .. } => "close requested".into(),
+        E::Destroyed => "destroyed".into(),
+        _ => return,
+    };
+    eprintln!("cortex: trace window {} {what}", w.label());
+}
+
 pub fn run() {
     // A child started by `Shell::permission_report`: answer and exit before any UI starts.
     if std::env::args().nth(1).as_deref() == Some(shell::SCREEN_PREFLIGHT_ARG) {
@@ -168,18 +191,39 @@ pub fn run() {
         std::process::exit(if granted { 0 } else { 1 });
     }
     let ipc = ipc::builder();
+    let handler = ipc.invoke_handler();
 
     let app = tauri::Builder::default()
         // Used from Rust only (`updater.rs`); no window is granted an updater permission.
         .plugin(tauri_plugin_updater::Builder::new().build())
-        .invoke_handler(ipc.invoke_handler())
+        .invoke_handler(move |invoke| {
+            if !trace_on() {
+                return handler(invoke);
+            }
+            let (cmd, label) = (
+                invoke.message.command().to_string(),
+                invoke.message.webview().label().to_string(),
+            );
+            let t = std::time::Instant::now();
+            let r = handler(invoke);
+            eprintln!(
+                "cortex: trace ipc {cmd} from {label} ({} us on the calling thread)",
+                t.elapsed().as_micros()
+            );
+            r
+        })
         // The default app menu plus "Help › Show the Tour".
         .menu(tour::app_menu)
         .on_menu_event(|app, event| tour::on_menu_event(app, &event))
         // The Trim window plays recordings from here (see `trim::media_protocol`).
         .register_asynchronous_uri_scheme_protocol("cortex-media", trim::media_protocol)
         // Window state read from engine threads comes from this cache (see `ipc::VisibleWindows`).
-        .on_window_event(|w, _| ipc::window_changed(w.app_handle()))
+        .on_window_event(|w, e| {
+            if trace_on() {
+                trace_window_event(w, e);
+            }
+            ipc::window_changed(w.app_handle())
+        })
         .setup(move |app| {
             ipc.mount_events(app);
             app.manage(quit::Quit::default());
@@ -282,6 +326,26 @@ pub fn run() {
                 });
             }
             if let Some(main) = app.get_webview_window("main") {
+                if trace_on() {
+                    eprintln!(
+                        "cortex: trace main window scale {:?} position {:?} size {:?} monitors {:?}",
+                        main.scale_factor(),
+                        main.outer_position(),
+                        main.outer_size(),
+                        app.available_monitors().map(|ms| ms
+                            .iter()
+                            .map(|m| format!(
+                                "{} {}x{}@{},{} scale {}",
+                                m.name().map_or("?", |n| n.as_str()),
+                                m.size().width,
+                                m.size().height,
+                                m.position().x,
+                                m.position().y,
+                                m.scale_factor()
+                            ))
+                            .collect::<Vec<_>>())
+                    );
+                }
                 if debug.hide_main {
                     let _ = main.hide();
                 } else if debug.front {

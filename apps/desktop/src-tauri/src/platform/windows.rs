@@ -56,7 +56,12 @@ impl DesktopEngine for WindowsEngine {
     ) -> Result<Box<dyn PreviewSurface>, String> {
         // Runs once at setup on the main thread: the main window stays out of recordings
         // (the engine also hides every Cortex window when a recording starts).
-        if let Some(h) = raw(window)
+        // Debug builds with CORTEX_DEBUG_CAPTURABLE=1 leave it capturable, so test runs
+        // can screenshot it.
+        let capturable = cfg!(debug_assertions)
+            && std::env::var("CORTEX_DEBUG_CAPTURABLE").is_ok_and(|v| v == "1");
+        if !capturable
+            && let Some(h) = raw(window)
             && let Err(e) = shell::exclude_from_capture(h)
         {
             eprintln!("cortex: {e}");
