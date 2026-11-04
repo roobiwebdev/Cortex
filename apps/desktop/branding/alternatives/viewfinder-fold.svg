@@ -1,0 +1,25 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024">
+  <!-- Alternative concept B: viewfinder corner brackets, one cortex fold and the record dot.
+       To switch: copy this over ../icon.svg, adapt icon-full-bleed.svg, mark.svg and tray-template.svg,
+       then run ../render.sh. -->
+  <defs>
+  <linearGradient id="bg" x1="0" y1="0" x2="0" y2="1">
+    <stop offset="0" stop-color="#263039"/><stop offset="1" stop-color="#10151a"/>
+  </linearGradient>
+  <linearGradient id="teal" x1="0" y1="0" x2="0" y2="1">
+    <stop offset="0" stop-color="#61d8e5"/><stop offset="1" stop-color="#28a0b8"/>
+  </linearGradient>
+  <radialGradient id="red" cx="0.4" cy="0.35" r="0.75">
+    <stop offset="0" stop-color="#ff7175"/><stop offset="1" stop-color="#e2383e"/>
+  </radialGradient>
+  <radialGradient id="glow" cx="0.5" cy="0.45" r="0.6">
+    <stop offset="0" stop-color="#1fb5cc" stop-opacity="0.22"/><stop offset="1" stop-color="#1fb5cc" stop-opacity="0"/>
+  </radialGradient>
+  </defs>
+  <rect x="100" y="100" width="824" height="824" rx="185" fill="url(#bg)"/>
+  <rect x="100" y="100" width="824" height="824" rx="185" fill="url(#glow)"/>
+  <rect x="102" y="102" width="820" height="820" rx="183" fill="none" stroke="#fff" stroke-opacity="0.08" stroke-width="4"/>
+  <path d="M262 412V262H412M612 262H762V412M762 612V762H612M412 762H262V612" fill="none" stroke="url(#teal)" stroke-width="60" stroke-linecap="round" stroke-linejoin="round"/>
+  <path d="M392 446C392 372 470 344 512 392C554 344 632 372 632 446" fill="none" stroke="url(#teal)" stroke-width="44" stroke-linecap="round" stroke-linejoin="round"/>
+  <circle cx="512" cy="566" r="96" fill="url(#red)"/>
+</svg>

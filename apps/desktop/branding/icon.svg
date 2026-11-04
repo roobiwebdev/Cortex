@@ -1,0 +1,32 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024">
+  <!-- Cortex app icon, macOS shape: an 824 px tile on Apple's 1024 grid (100 px margin).
+       The mark is a heavy "C" ring in brand teal (hue 188) around the red record dot. -->
+  <defs>
+    <linearGradient id="tile" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#263039"/>
+      <stop offset="1" stop-color="#10151a"/>
+    </linearGradient>
+    <radialGradient id="glow" cx="0.5" cy="0.45" r="0.6">
+      <stop offset="0" stop-color="#1fb5cc" stop-opacity="0.22"/>
+      <stop offset="1" stop-color="#1fb5cc" stop-opacity="0"/>
+    </radialGradient>
+    <linearGradient id="teal" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#61d8e5"/>
+      <stop offset="1" stop-color="#28a0b8"/>
+    </linearGradient>
+    <radialGradient id="rec" cx="0.4" cy="0.35" r="0.75">
+      <stop offset="0" stop-color="#ff7175"/>
+      <stop offset="1" stop-color="#e2383e"/>
+    </radialGradient>
+    <filter id="shadow" x="-10%" y="-10%" width="120%" height="125%">
+      <feDropShadow dx="0" dy="10" stdDeviation="14" flood-color="#000" flood-opacity="0.3"/>
+    </filter>
+  </defs>
+  <g filter="url(#shadow)">
+    <rect x="100" y="100" width="824" height="824" rx="185" fill="url(#tile)"/>
+  </g>
+  <rect x="100" y="100" width="824" height="824" rx="185" fill="url(#glow)"/>
+  <rect x="102" y="102" width="820" height="820" rx="183" fill="none" stroke="#fff" stroke-opacity="0.08" stroke-width="4"/>
+  <path d="M664.6 342.6A228 228 0 1 0 664.6 681.4" fill="none" stroke="url(#teal)" stroke-width="128" stroke-linecap="round"/>
+  <circle cx="512" cy="512" r="92" fill="url(#rec)"/>
+</svg>
