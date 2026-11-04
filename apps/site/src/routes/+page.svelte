@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { onMount, type Component } from 'svelte';
+	import { onMount, tick, type Component } from 'svelte';
 	import icon from '#lib/assets/icon.webp';
 	import shareImage from '#lib/assets/og.jpg';
 	import AreaCard from '#lib/cards/AreaCard.svelte';
@@ -13,7 +13,7 @@
 	import Showcase from '#lib/demo/Showcase.svelte';
 	import { Player } from '#lib/demo/player.svelte.js';
 	import { play } from '#lib/demo/sound.js';
-	import { reveal } from '#lib/motion.svelte.js';
+	import { reducedMotion, reveal } from '#lib/motion.svelte.js';
 	import { detectLinuxArch, detectPlatform, type Platform } from '#lib/platform.js';
 	import { theme } from '#lib/theme.svelte.js';
 	import {
@@ -25,6 +25,7 @@
 		DOWNLOADS,
 		FEATURES,
 		GITHUB_URL,
+		INSTALL_COMMANDS,
 		LICENSES_PATH,
 		LINUX_ARCH_LABEL,
 		LINUX_READY,
@@ -38,7 +39,6 @@
 		TITLE,
 		VERSION,
 		WINDOWS_SIGNED,
-		type Download,
 		type DownloadOs,
 		type LinuxArch
 	} from '#lib/site.js';
@@ -92,18 +92,39 @@
 	let linux = $derived(DOWNLOADS.linux[linuxArch]);
 	let linuxReady = $derived(LINUX_READY[linuxArch]);
 
-	/** The visitor's own primary installer, for the nav pill. */
-	let primary = $derived<Download | null>(
-		platform === 'windows'
-			? win.exe
-			: platform === 'linux'
-				? linuxReady
-					? linux.appimage
-					: null
-				: platform === 'mac'
-					? mac.dmg
-					: null
-	);
+	/** Whether the visitor's own system has a build to install, for the nav pill. */
+	const isReady = (os: DownloadOs) => os !== 'linux' || linuxReady;
+	let installable = $derived(platform === 'mac' || platform === 'windows' || (platform === 'linux' && linuxReady));
+
+	// Where to paste the one-command install, per OS.
+	const SHELL: Record<DownloadOs, string> = { mac: 'Terminal', windows: 'PowerShell', linux: 'Terminal' };
+	// What the script does, per OS (static/install.sh and install.ps1).
+	const FAST_NOTE: Record<DownloadOs, string> = {
+		mac: `Downloads ${NAME}, copies it to your Applications folder and opens it.`,
+		windows: `Downloads ${NAME}, installs it for your user and opens it.`,
+		linux: `Downloads ${NAME}, installs it for your user and opens it.`
+	};
+
+	/**
+	 * The hero button and the nav pill: open the visitor's install tab, scroll to it and point at
+	 * the one-command box, instead of downloading straight away. The href stays #install, so the
+	 * link still works before the page has hydrated.
+	 */
+	let flash = $state(false);
+	let flashTimer: ReturnType<typeof setTimeout> | undefined;
+	async function goToInstall(event: MouseEvent) {
+		event.preventDefault();
+		if (platform !== 'other') tab = platform;
+		await tick();
+		document
+			.getElementById('install')
+			?.scrollIntoView({ behavior: reducedMotion.current ? 'instant' : 'smooth', block: 'start' });
+		if (platform === 'other') return;
+		document.getElementById(`fast-${tab}`)?.focus({ preventScroll: true });
+		flash = true;
+		clearTimeout(flashTimer);
+		flashTimer = setTimeout(() => (flash = false), 2000);
+	}
 
 	// Windows and Linux use Ctrl+Shift where macOS uses ⇧⌘ (the engines register exactly these).
 	let pc = $derived(platform === 'windows' || platform === 'linux');
@@ -261,17 +282,43 @@
 		linux: linuxSteps
 	});
 
+	/** Copies through a hidden text field, for browsers without the Clipboard API (or plain http). */
+	function copyFallback(text: string): boolean {
+		const field = document.createElement('textarea');
+		field.value = text;
+		field.setAttribute('readonly', '');
+		field.style.position = 'fixed';
+		field.style.opacity = '0';
+		document.body.append(field);
+		field.select();
+		let done = false;
+		try {
+			done = document.execCommand('copy');
+		} catch {
+			done = false;
+		}
+		field.remove();
+		return done;
+	}
+
 	let copied = $state<string | null>(null);
+	// Read out by the aria-live region, so screen readers hear that the copy worked.
+	let announcement = $state('');
 	async function copy(text: string) {
+		let done = false;
 		try {
 			await navigator.clipboard.writeText(text);
-			copied = text;
-			setTimeout(() => {
-				if (copied === text) copied = null;
-			}, 1600);
+			done = true;
 		} catch {
-			// Clipboard blocked: the command stays selectable.
+			done = copyFallback(text);
 		}
+		// When both fail the command stays selectable.
+		announcement = done ? 'Copied to the clipboard' : 'Couldn’t copy. Select the command and copy it.';
+		if (done) copied = text;
+		setTimeout(() => {
+			if (copied === text) copied = null;
+			announcement = '';
+		}, 1600);
 	}
 
 	/** Arrow keys move between the OS tabs, as the WAI-ARIA tabs pattern expects. */
@@ -346,29 +393,34 @@
 
 {#snippet heroDownload()}
 	{#if platform === 'windows'}
-		<a class="download" href={win.exe.url}>{@render osIcon('windows')} Download for Windows</a>
+		<a class="download" href="#install" onclick={goToInstall}>{@render osIcon('windows')} Install for Windows</a>
 		<p class="meta">
-			Version {VERSION} · <span class="beta">Beta</span> · Windows 11, or Windows 10 (version 2004 or newer), 64-bit · or the
-			<a href={win.msi.url}>.msi</a>
+			Version {VERSION} · <span class="beta">Beta</span> · Windows 11, or Windows 10 (version 2004 or newer), 64-bit
+		</p>
+		<p class="alt">
+			<a href={win.exe.url}>Download installer</a> · <a href={win.msi.url}>.msi</a> ·
+			<a href="#install">Other platforms</a>
 		</p>
 	{:else if platform === 'linux' && !linuxReady}
 		<span class="download soon" aria-disabled="true">{@render osIcon('linux')} Linux · Coming soon</span>
 		<p class="meta">Version {VERSION} · The Linux build is on its way. Mac and Windows are ready now.</p>
+		<p class="alt"><a href="#install">Other platforms</a></p>
 	{:else if platform === 'linux'}
-		<a class="download" href={linux.appimage.url}>{@render osIcon('linux')} Download AppImage</a>
+		<a class="download" href="#install" onclick={goToInstall}>{@render osIcon('linux')} Install for Linux</a>
 		<p class="meta">
-			Version {VERSION} · <span class="beta">Beta</span> · {LINUX_ARCH_LABEL[linuxArch]} · {LINUX_DISTROS} · or the
-			<a href={linux.deb.url}>.deb</a> · <a href={linux.rpm.url}>.rpm</a>
+			Version {VERSION} · <span class="beta">Beta</span> · {LINUX_ARCH_LABEL[linuxArch]} · {LINUX_DISTROS}
+		</p>
+		<p class="alt">
+			<a href={linux.appimage.url}>Download installer</a> · <a href={linux.deb.url}>.deb</a> ·
+			<a href={linux.rpm.url}>.rpm</a> · <a href="#install">Other platforms</a>
 		</p>
 	{:else if platform === 'mac'}
-		<a class="download" href={mac.dmg.url}>{@render osIcon('mac')} Download for macOS</a>
+		<a class="download" href="#install" onclick={goToInstall}>{@render osIcon('mac')} Install for macOS</a>
 		<p class="meta">Version {VERSION} · {ARCH} · macOS {MIN_MACOS} or later</p>
+		<p class="alt"><a href={mac.dmg.url}>Download installer</a> · <a href="#install">Other platforms</a></p>
 	{:else}
-		<a class="download" href="#install">See downloads</a>
+		<a class="download" href="#install" onclick={goToInstall}>See downloads</a>
 		<p class="meta">{NAME} runs on Mac, Windows and Linux computers.</p>
-	{/if}
-	{#if platform !== 'other'}
-		<a class="other" href="#install">Other platforms</a>
 	{/if}
 {/snippet}
 
@@ -412,11 +464,7 @@
 					/>
 				</svg>
 			</button>
-			{#if primary}
-				<a class="pill" href={primary.url}>Download</a>
-			{:else}
-				<a class="pill" href="#install">Get {NAME}</a>
-			{/if}
+			<a class="pill" href="#install" onclick={goToInstall}>{installable ? 'Download' : `Get ${NAME}`}</a>
 		</div>
 	</div>
 </nav>
@@ -535,6 +583,47 @@
 
 		{#each OSES as os (os)}
 			<div class="panel" role="tabpanel" id="panel-{os}" aria-labelledby="tab-{os}" hidden={tab !== os}>
+				{#if os === 'linux'}
+					<div class="arch" role="radiogroup" aria-label="Processor">
+						{#each LINUX_ARCHES as arch (arch)}
+							<button type="button" role="radio" aria-checked={linuxArch === arch} onclick={() => (linuxArch = arch)}>
+								{LINUX_ARCH_LABEL[arch]}
+							</button>
+						{/each}
+					</div>
+				{/if}
+				<div
+					class={{ fast: true, soon: !isReady(os), flash: flash && tab === os }}
+					id="fast-{os}"
+					role="group"
+					aria-labelledby="fast-title-{os}"
+					tabindex="-1"
+				>
+					<h3 id="fast-title-{os}">Fastest: one command, no warnings</h3>
+					{#if isReady(os)}
+						<p>Open {SHELL[os]} and paste:</p>
+						<div class="code">
+							<code>{INSTALL_COMMANDS[os]}</code>
+							<button
+								type="button"
+								class="copy"
+								onclick={() => copy(INSTALL_COMMANDS[os])}
+								aria-label="Copy the {OS_LABEL[os]} install command"
+							>
+								{copied === INSTALL_COMMANDS[os] ? 'Copied' : 'Copy'}
+							</button>
+						</div>
+						<p class="note">
+							{FAST_NOTE[os]} No security pop-ups, because the file isn’t downloaded by a browser.
+						</p>
+					{:else}
+						<p>The one-command install for this Linux build is on its way.</p>
+						<div class="code" aria-disabled="true">
+							<code>{LINUX_ARCH_LABEL[linuxArch]} · Coming soon</code>
+						</div>
+					{/if}
+				</div>
+				<h3 class="or">Or download the installer</h3>
 				<div class="get">
 					{#if os === 'mac'}
 						<a class="download" href={mac.dmg.url}>{@render osIcon('mac')} Download {mac.dmg.label}</a>
@@ -546,13 +635,6 @@
 							needs admin
 						</p>
 					{:else}
-						<div class="arch" role="radiogroup" aria-label="Processor">
-							{#each LINUX_ARCHES as arch (arch)}
-								<button type="button" role="radio" aria-checked={linuxArch === arch} onclick={() => (linuxArch = arch)}>
-									{LINUX_ARCH_LABEL[arch]}
-								</button>
-							{/each}
-						</div>
 						{#if linuxReady}
 							<a class="download" href={linux.appimage.url}>{@render osIcon('linux')} Download AppImage</a>
 							<p class="files">
@@ -590,6 +672,7 @@
 				</ol>
 			</div>
 		{/each}
+		<p class="sr-only" role="status" aria-live="polite">{announcement}</p>
 
 		<div class="availability" {@attach reveal}>
 			<h3>Feature availability</h3>
@@ -843,7 +926,6 @@
 		scale: 1.03;
 	}
 
-	.meta a,
 	.files a {
 		color: var(--fg);
 		text-underline-offset: 2px;
@@ -1058,14 +1140,28 @@
 		font: 11px/14px var(--mono);
 	}
 
-	.other {
+	.alt {
+		margin: -8px 0 0;
 		color: var(--muted);
 		font-size: 13px;
+	}
+
+	.alt a {
+		color: var(--muted);
 		text-underline-offset: 2px;
 	}
 
-	.other:hover {
+	.alt a:hover {
 		color: var(--fg);
+	}
+
+	.sr-only {
+		position: absolute;
+		width: 1px;
+		height: 1px;
+		overflow: hidden;
+		clip-path: inset(50%);
+		white-space: nowrap;
 	}
 
 	.beta {
@@ -1147,8 +1243,73 @@
 	.panel {
 		display: grid;
 		grid-template-columns: 300px minmax(0, 1fr);
-		gap: 40px;
+		gap: 24px 40px;
 		margin-top: 28px;
+	}
+
+	.panel > .arch,
+	.fast,
+	.or {
+		grid-column: 1 / -1;
+	}
+
+	.panel > .arch {
+		justify-self: start;
+		margin-bottom: -10px;
+	}
+
+	/* The one-command install, at the top of each tab. */
+	.fast {
+		max-width: 720px;
+		padding: 20px 22px 22px;
+		border-radius: 16px;
+		background: var(--card);
+		box-shadow: var(--card-edge);
+		transition: box-shadow 0.3s;
+	}
+
+	.fast.flash {
+		box-shadow:
+			var(--card-edge),
+			0 0 0 2px var(--brand),
+			0 10px 30px var(--brand-glow);
+	}
+
+	.fast:focus:not(:focus-visible) {
+		outline: none;
+	}
+
+	.fast > p {
+		margin: 6px 0 12px;
+		color: var(--muted);
+		font-size: 14px;
+		line-height: 22px;
+	}
+
+	.fast > p.note {
+		margin: 12px 0 0;
+		font-size: 13px;
+		line-height: 20px;
+	}
+
+	.fast .code {
+		background: color-mix(in srgb, var(--fg) 5%, transparent);
+		box-shadow: none;
+	}
+
+	/* Wraps on a phone instead of pushing the page sideways. */
+	.fast .code code {
+		overflow-wrap: anywhere;
+		white-space: normal;
+	}
+
+	.fast.soon .code {
+		opacity: 0.55;
+	}
+
+	.or {
+		margin-top: 8px;
+		font-size: 14px;
 	}
 
 	.panel[hidden] {
