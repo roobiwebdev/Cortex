@@ -30,14 +30,7 @@ import {
 } from "./onboarding/panels";
 import type { ChipState } from "./onboarding/permission-chip";
 import { OnboardingStage, type CaptureMode } from "./onboarding/stage";
-import {
-  gatedPermission,
-  PLATFORM_FACTS,
-  resumeIndex,
-  TOUR_COPY,
-  TOUR_STEPS,
-  type TourStepId,
-} from "./onboarding/steps";
+import { gatedPermission, PLATFORM_FACTS, resumeIndex, tourCopy, tourSteps, type TourStepId } from "./onboarding/steps";
 
 const inTauri = isTauri();
 /** The harness shows review controls (platform, next answer, reset) unless `?clean` is set. */
@@ -96,7 +89,7 @@ function usePermissionReport(active: boolean): PermissionReport | null {
 
 /**
  * SOURCE OF TRUTH KEYWORDS: OnboardingWindow, first-run tour, onboarding, guided tour, permissions, Show the Tour, onboardingCompleted
- * WHAT:  The nine-step first-run tour in the 880×560 onboarding window: welcome, permissions,
+ * WHAT:  The first-run tour (up to nine steps) in the 880×560 onboarding window: welcome, permissions,
  *        what to record, camera, the record shortcut, files, Quick trim, replay and live, done.
  *        A live animated stage on the left; kicker, headline, lede and the real control on
  *        the right; a dot pager and Back / Continue below.
@@ -111,7 +104,10 @@ export function OnboardingWindow({ cameraStream, navigate }: SurfaceProps) {
   const e = useEngine();
   const platform = usePlatform();
   const completed = e.settings.onboardingCompleted;
-  const [index, setIndex] = React.useState(() => (completed ? 0 : resumeIndex(readStoredStep())));
+  // Only the steps this engine can do: no Quick trim or replay step where they don't exist.
+  const caps = e.capabilities;
+  const steps = React.useMemo(() => tourSteps(caps), [caps]);
+  const [index, setIndex] = React.useState(() => (completed ? 0 : resumeIndex(readStoredStep(), steps.length)));
   const [captureMode, setCaptureMode] = React.useState<CaptureMode>("area");
   const [hotkeyPressed, setHotkeyPressed] = React.useState(false);
   // The permission whose prompt (or System Settings) is open right now.
@@ -127,9 +123,9 @@ export function OnboardingWindow({ cameraStream, navigate }: SurfaceProps) {
     [],
   );
 
-  const step: TourStepId = TOUR_STEPS[index] ?? "welcome";
-  const last = TOUR_STEPS.length - 1;
-  const copy = TOUR_COPY[platform][step];
+  const step: TourStepId = steps[index] ?? "welcome";
+  const last = steps.length - 1;
+  const copy = React.useMemo(() => tourCopy(platform, caps), [platform, caps])[step];
   const facts = PLATFORM_FACTS[platform];
   const titleId = React.useId();
 
@@ -244,7 +240,7 @@ export function OnboardingWindow({ cameraStream, navigate }: SurfaceProps) {
   }, [advance, back]);
 
   const kicker =
-    step === "welcome" || step === "done" ? copy.kicker : `Step ${index + 1} of ${TOUR_STEPS.length} · ${copy.kicker}`;
+    step === "welcome" || step === "done" ? copy.kicker : `Step ${index + 1} of ${steps.length} · ${copy.kicker}`;
 
   return (
     <section
@@ -325,7 +321,12 @@ export function OnboardingWindow({ cameraStream, navigate }: SurfaceProps) {
               />
             )}
             {step === "capture" && (
-              <CaptureBody mode={captureMode} onMode={setCaptureMode} onTryArea={() => navigate("region")} />
+              <CaptureBody
+                mode={captureMode}
+                caps={caps}
+                onMode={setCaptureMode}
+                onTryArea={() => navigate("region")}
+              />
             )}
             {step === "camera" && <CameraBody e={e} />}
             {step === "shortcut" && <ShortcutBody platform={platform} pressed={hotkeyPressed} />}
@@ -339,8 +340,8 @@ export function OnboardingWindow({ cameraStream, navigate }: SurfaceProps) {
         </div>
 
         <footer className="flex h-[72px] shrink-0 items-center gap-3 px-10">
-          <ol className="flex flex-1 items-center gap-1.5" aria-label={`Step ${index + 1} of ${TOUR_STEPS.length}`}>
-            {TOUR_STEPS.map((s, i) => (
+          <ol className="flex flex-1 items-center gap-1.5" aria-label={`Step ${index + 1} of ${steps.length}`}>
+            {steps.map((s, i) => (
               <li key={s} aria-current={i === index ? "step" : undefined}>
                 <button
                   type="button"

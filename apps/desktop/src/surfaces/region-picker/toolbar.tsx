@@ -61,6 +61,7 @@ const MODES: ReadonlyArray<{ value: PickMode; label: React.ReactNode; title: str
  */
 export function RegionToolbar({
   mode,
+  modes,
   onMode,
   primaryLabel,
   canConfirm,
@@ -72,6 +73,8 @@ export function RegionToolbar({
   children,
 }: {
   mode: PickMode;
+  /** The modes this engine can record; the others are not offered. */
+  modes: readonly PickMode[];
   onMode: (m: PickMode) => void;
   primaryLabel: string;
   canConfirm: boolean;
@@ -103,7 +106,12 @@ export function RegionToolbar({
         )}
       >
         <div className="flex items-center gap-2">
-          <Segmented<PickMode> aria-label="Capture mode" value={mode} onValueChange={onMode} options={MODES} />
+          <Segmented<PickMode>
+            aria-label="Capture mode"
+            value={mode}
+            onValueChange={onMode}
+            options={MODES.filter((m) => modes.includes(m.value))}
+          />
           <div className="ml-auto flex items-center gap-1.5">
             <Button variant="ghost" onClick={onCancel} className="text-muted-foreground">
               Cancel

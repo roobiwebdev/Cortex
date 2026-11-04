@@ -1,12 +1,12 @@
 import * as React from "react";
-import { Check, Monitor, SquareDashed } from "lucide-react";
+import { AppWindow, Check, Info, Monitor, SquareDashed } from "lucide-react";
 
 import { Button } from "@starter/ui/components/button";
 import { Segmented } from "@starter/ui/components/segmented";
 import { cn } from "@starter/ui/lib/utils";
 
 import { engine } from "../../lib/engine";
-import type { CaptureTarget, EngineState } from "../../lib/types";
+import type { CaptureTarget, EngineState, PlatformCapabilities } from "../../lib/types";
 import { MockScreen } from "../../prototype/mock-screen";
 import type { SurfaceId } from "../../prototype/surfaces";
 import { AppIconTile } from "../region-picker/app-icon";
@@ -22,12 +22,28 @@ function tabFor(target: CaptureTarget): CaptureTab {
   return target.kind === "region" ? "area" : target.kind;
 }
 
+const TAB_LABEL: Record<CaptureTab, string> = { display: "Display", window: "Window", app: "App", area: "Area" };
+
+/** The kinds this engine records: a tab whose capability is off is not offered at all. */
+function tabsFor(caps: PlatformCapabilities): CaptureTab[] {
+  const on: Record<CaptureTab, boolean> = {
+    display: caps.displayCapture,
+    window: caps.windowCapture,
+    app: caps.appCapture,
+    area: caps.regionCapture,
+  };
+  return (["display", "window", "app", "area"] as const).filter((t) => on[t]);
+}
+
 /**
  * SOURCE OF TRUTH KEYWORDS: CaptureSection, capture target picker, display list, window list, app capture, area
  * WHAT:  The sidebar's capture picker: Display | Window | App | Area, each with its own list,
- *        writing the chosen source to `settings.target`.
+ *        writing the chosen source to `settings.target`. Only the kinds the engine can record
+ *        are offered; with the system picker (Linux) the screen or window is chosen in the
+ *        system dialog when recording starts, and the panel says so.
  * WHY:   One place to choose what is recorded (CAP-02, CAP-06, CAP-07); the app and area
  *        kinds are new in Cortex. Lists are cards so long names truncate with a hover title.
+ *        Capabilities, not OS checks, decide the tabs, so a new engine needs no UI change.
  * WHERE: main window sidebar, CAPTURE section.
  */
 export function CaptureSection({
@@ -41,11 +57,16 @@ export function CaptureSection({
   navigate: (id: SurfaceId) => void;
 }) {
   const target = e.settings.target;
-  const [tab, setTab] = React.useState<CaptureTab>(() => tabFor(target));
+  const caps = e.capabilities;
+  const system = caps.sourcePicker === "system";
+  const tabs = tabsFor(caps);
+  const [picked, setTab] = React.useState<CaptureTab>(() => tabFor(target));
+  // A stored kind this engine can't record (an app target on Linux) shows the first tab.
+  const tab = tabs.includes(picked) ? picked : (tabs[0] ?? "display");
   const chooseTab = (t: CaptureTab) => {
     setTab(t);
     // Windows come and go: list what is open now.
-    if (t === "window" || t === "app") engine.refreshDevices();
+    if (!system && (t === "window" || t === "app")) engine.refreshDevices();
   };
 
   return (
@@ -56,13 +77,15 @@ export function CaptureSection({
         className="w-full bg-foreground/[0.06]"
         value={tab}
         onValueChange={chooseTab}
-        options={[
-          { value: "display", label: "Display" },
-          { value: "window", label: "Window" },
-          { value: "app", label: "App" },
-          { value: "area", label: "Area" },
-        ]}
+        options={tabs.map((t) => ({ value: t, label: TAB_LABEL[t] }))}
       />
+
+      {system && (tab === "display" || tab === "window") && (
+        <p className="flex gap-1.5 px-1 text-[12px] leading-4 text-muted-foreground">
+          <Info className="mt-px size-3.5 shrink-0" aria-hidden />
+          You’ll choose a screen or window in the system dialog when you start recording.
+        </p>
+      )}
 
       {tab === "display" && (
         <SourceList label="Displays">
@@ -76,14 +99,30 @@ export function CaptureSection({
                   <Monitor className="size-4" />
                 </span>
               }
-              title={d.name}
-              detail={`Display ${i + 1} · ${d.width} × ${d.height}`}
+              title={system ? "A screen" : d.name}
+              detail={system ? "Chosen in the system dialog" : `Display ${i + 1} · ${d.width} × ${d.height}`}
             />
           ))}
         </SourceList>
       )}
 
-      {tab === "window" && (
+      {tab === "window" && system && (
+        <SourceList label="Window">
+          <SourceCard
+            selected={target.kind === "window"}
+            onSelect={() => set({ kind: "window", windowId: 0 })}
+            leading={
+              <span className="grid size-8 place-items-center rounded-[8px] bg-accent text-accent-foreground">
+                <AppWindow className="size-4" />
+              </span>
+            }
+            title="A window"
+            detail="Chosen in the system dialog"
+          />
+        </SourceList>
+      )}
+
+      {tab === "window" && !system && (
         <SourceList label="Open windows">
           {e.windows.map((w) => (
             <SourceCard
@@ -149,7 +188,9 @@ function AreaPanel({ e, navigate }: { e: EngineState; navigate: (id: SurfaceId) 
           </div>
         ) : (
           <div className="text-[12px] leading-4 text-muted-foreground">
-            Record part of a display. Drag a rectangle, or pick a window to snap to it.
+            {e.capabilities.sourcePicker === "system"
+              ? "Record part of the screen you share. Drag a rectangle; the screen is chosen when you start."
+              : "Record part of a display. Drag a rectangle, or pick a window to snap to it."}
           </div>
         )}
       </div>

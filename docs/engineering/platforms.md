@@ -44,7 +44,7 @@ The contract is split in two, by what it depends on.
 | `movContainer`                     | yes       | no (MP4 only)                                 | yes (`qtmux`)                                                       |
 | `cameraTrack`                      | yes       | no                                            | yes (a second video track in the file, MP4 or MOV)                  |
 
-The stub for other targets reports everything off. `movContainer` and `cameraTrack` were added with the Windows engine; expect more fields as engines arrive. The UI does not read `sourcePicker` yet: on Linux the display list holds one entry, "Screen chosen in the system dialog", and recording it opens the portal. Outside macOS the settings default to MP4 and `~/Videos/Cortex` (`rec_core::settings::DEFAULT_CONTAINER`, `DEFAULT_OUTPUT_DIR`).
+The stub for other targets reports everything off. `movContainer` and `cameraTrack` were added with the Windows engine; expect more fields as engines arrive. The UI hides each capture kind whose capability is off (App on Windows and Linux), and hides Quick trim, the replay buffer, Go live and the Live & Replay settings where those are off; the tour drops its Quick trim and replay steps the same way (`tourSteps`). With `sourcePicker: system` (Linux) the display list holds one stand-in entry and the capture picker says the screen or window is chosen in the system dialog; recording opens the portal. Outside macOS the settings default to MP4 and `~/Videos/Cortex` (`rec_core::settings::DEFAULT_CONTAINER`, `DEFAULT_OUTPUT_DIR`).
 
 ## Inventory: every place the shell touched macOS code
 
@@ -188,7 +188,7 @@ Not as it is. In `rec-engine-macos/src/live`, the RTMP client (`rtmp.rs`) is mos
 - **App capture** records one window, not the app.
 - **Window resize**: the frame keeps the size the window had at the start.
 - **The preview** is a placeholder; Cortex shows no live picture on Windows yet.
-- **Hotkey labels** in the UI still read ⇧⌘R and ⇧⌘S. They are written out in about 15 places (menubar panel, HUD, record bar, sources sidebar, live settings, onboarding) with no shared label function, so a per-platform label needs a small helper first (for example `shortcutLabel("record")` reading `capabilities.os`).
+- **Hotkey labels** come from `apps/desktop/src/lib/shortcuts.ts` (`formatShortcut`, drawn by `components/shortcut-kbd.tsx`): ⇧⌘R on macOS, Ctrl+Shift+R on Windows and Linux. OS words (File Explorer, Recycle Bin, notification area) come from `lib/platform-words.ts`.
 - **Title bars**: `titleBarStyle: "Overlay"` is macOS-only, so Windows shows its own title bar above the app's.
 
 ## Linux engine
@@ -281,8 +281,8 @@ A recording is one GStreamer pipeline: screen (cropped for an area, scaled to th
 ### Limits worth knowing
 
 - **Wayland:** the app cannot list windows (the Window list is empty; the portal picks), cannot keep its HUD and countdown out of a recording, and cannot place its own windows (HUD spot, toasts corner, region picker overlay).
-- **The UI** does not read `sourcePicker` yet; recording "Display 1" opens the portal.
-- **Hotkey labels** still read ⇧⌘R (as on Windows).
+- **The UI** reads `sourcePicker`: the capture picker offers Display, Window and Area, says the screen or window is chosen in the system dialog when recording starts, and the region picker offers only Area. There is no way to open the portal before recording yet; the restore token remembers the last choice.
+- **Hotkey labels** read Ctrl+Shift+R (`lib/shortcuts.ts`).
 
 ## Candidate crates and licences
 

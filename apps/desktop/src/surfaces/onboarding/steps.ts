@@ -1,6 +1,8 @@
-import type { Permission, PlatformOs } from "../../lib/types";
+import { PLATFORM_WORDS } from "../../lib/platform-words.ts";
+import { formatShortcut, shortcutKeys, shortcutSpoken } from "../../lib/shortcuts.ts";
+import type { Permission, PlatformCapabilities, PlatformOs } from "../../lib/types";
 
-/** The tour, in order. The same steps on every platform; their copy differs. */
+/** The tour, in order. Every step on macOS; `tourSteps` drops the ones a platform can't do. */
 export const TOUR_STEPS = [
   "welcome",
   "permissions",
@@ -15,7 +17,7 @@ export const TOUR_STEPS = [
 export type TourStepId = (typeof TOUR_STEPS)[number];
 
 export interface StepCopy {
-  /** Short uppercase label above the headline, after "Step n of 9". */
+  /** Short uppercase label above the headline, after "Step n of m". */
   kicker: string;
   title: string;
   lede: string;
@@ -74,7 +76,7 @@ export interface PlatformFacts {
 }
 
 /**
- * SOURCE OF TRUTH KEYWORDS: TOUR_COPY, PLATFORM_FACTS, onboarding copy, tour steps, per-platform, macos, windows, linux
+ * SOURCE OF TRUTH KEYWORDS: PLATFORM_FACTS, tourCopy, onboarding copy, tour steps, per-platform, macos, windows, linux
  * WHAT:  Every word of the first-run tour, per platform, plus the platform facts its
  *        controls need (permission rows, shortcut keys, default folder, key store).
  * WHY:   The tour must read right on macOS now and on Windows and Linux later. Keeping
@@ -115,16 +117,16 @@ export const PLATFORM_FACTS: Record<PlatformOs, PlatformFacts> = {
       "After you allow screen recording, macOS may ask you to reopen Cortex. The tour picks up where you left off.",
       "Every few weeks macOS asks again to confirm. Choose Allow.",
     ],
-    settingsApp: "System Settings",
-    recordKeys: ["⇧", "⌘", "R"],
-    replayKeys: ["⇧", "⌘", "S"],
-    recordKeysText: "⇧⌘R",
-    replayKeysText: "⇧⌘S",
-    recordKeysLabel: "Shift Command R",
-    replayKeysLabel: "Shift Command S",
-    defaultFolder: "~/Movies/Cortex",
-    revealLabel: "Show in Finder",
-    keyStore: "the macOS Keychain",
+    settingsApp: PLATFORM_WORDS.macos.settingsApp,
+    recordKeys: shortcutKeys("record", "macos"),
+    replayKeys: shortcutKeys("replay", "macos"),
+    recordKeysText: formatShortcut("record", "macos"),
+    replayKeysText: formatShortcut("replay", "macos"),
+    recordKeysLabel: shortcutSpoken("record", "macos"),
+    replayKeysLabel: shortcutSpoken("replay", "macos"),
+    defaultFolder: PLATFORM_WORDS.macos.defaultFolder,
+    revealLabel: PLATFORM_WORDS.macos.revealLabel,
+    keyStore: PLATFORM_WORDS.macos.keyStore,
     reopenHint: "Reopen this tour any time from Help › Show the Tour, or from Settings › General.",
     homeNote: "Cortex lives in your menu bar. Closing a window keeps it running.",
   },
@@ -152,16 +154,16 @@ export const PLATFORM_FACTS: Record<PlatformOs, PlatformFacts> = {
       "Recording the screen needs no permission on Windows. Windows may draw a thin border around what is being recorded.",
       "Both switches live in Settings › Privacy & security. Turn on “Let desktop apps access” for each.",
     ],
-    settingsApp: "Settings",
-    recordKeys: ["Ctrl", "Shift", "R"],
-    replayKeys: ["Ctrl", "Shift", "S"],
-    recordKeysText: "Ctrl+Shift+R",
-    replayKeysText: "Ctrl+Shift+S",
-    recordKeysLabel: "Control Shift R",
-    replayKeysLabel: "Control Shift S",
-    defaultFolder: "Videos\\Cortex",
-    revealLabel: "Show in Explorer",
-    keyStore: "Windows Credential Manager",
+    settingsApp: PLATFORM_WORDS.windows.settingsApp,
+    recordKeys: shortcutKeys("record", "windows"),
+    replayKeys: shortcutKeys("replay", "windows"),
+    recordKeysText: formatShortcut("record", "windows"),
+    replayKeysText: formatShortcut("replay", "windows"),
+    recordKeysLabel: shortcutSpoken("record", "windows"),
+    replayKeysLabel: shortcutSpoken("replay", "windows"),
+    defaultFolder: PLATFORM_WORDS.windows.defaultFolder,
+    revealLabel: PLATFORM_WORDS.windows.revealLabel,
+    keyStore: PLATFORM_WORDS.windows.keyStore,
     reopenHint: "Reopen this tour any time from Help › Show the tour, or from Settings › General.",
     homeNote: "Cortex lives in the notification area. Closing a window keeps it running.",
   },
@@ -197,16 +199,16 @@ export const PLATFORM_FACTS: Record<PlatformOs, PlatformFacts> = {
       "On Wayland this is the desktop portal: pick a screen or window, then Share.",
       "Flatpak and Snap installs may ask for the camera and mic on first use.",
     ],
-    settingsApp: "Settings",
-    recordKeys: ["Ctrl", "Shift", "R"],
-    replayKeys: ["Ctrl", "Shift", "S"],
-    recordKeysText: "Ctrl+Shift+R",
-    replayKeysText: "Ctrl+Shift+S",
-    recordKeysLabel: "Control Shift R",
-    replayKeysLabel: "Control Shift S",
-    defaultFolder: "~/Videos/Cortex",
-    revealLabel: "Open folder",
-    keyStore: "your system keyring",
+    settingsApp: PLATFORM_WORDS.linux.settingsApp,
+    recordKeys: shortcutKeys("record", "linux"),
+    replayKeys: shortcutKeys("replay", "linux"),
+    recordKeysText: formatShortcut("record", "linux"),
+    replayKeysText: formatShortcut("replay", "linux"),
+    recordKeysLabel: shortcutSpoken("record", "linux"),
+    replayKeysLabel: shortcutSpoken("replay", "linux"),
+    defaultFolder: PLATFORM_WORDS.linux.defaultFolder,
+    revealLabel: PLATFORM_WORDS.linux.revealLabel,
+    keyStore: PLATFORM_WORDS.linux.keyStore,
     reopenHint: "Reopen this tour any time from Help › Show the tour, or from Settings › General.",
     homeNote: "Cortex lives in the system tray. Closing a window keeps it running.",
   },
@@ -230,8 +232,33 @@ const permissionsCopy: Record<PermissionModel, StepCopy> = {
   },
 };
 
-function copyFor(p: PlatformOs): Record<TourStepId, StepCopy> {
+/** What the tour reads from the engine's capabilities. */
+export type TourCaps = Pick<
+  PlatformCapabilities,
+  "appCapture" | "sourcePicker" | "captureExclusion" | "cameraTrack" | "quickTrim" | "replayBuffer" | "liveStreaming"
+>;
+
+/**
+ * SOURCE OF TRUTH KEYWORDS: tourSteps, tourCopy, TourCaps, capability-aware tour, Quick trim step, replay step
+ * WHAT:  The steps this engine can show (no Quick trim step without `quickTrim`, no replay and
+ *        live step without either), and their copy, which only promises what it can do.
+ * WHY:   Windows and Linux lack Quick trim, the replay buffer, Go live and app capture today;
+ *        a tour that demos them would teach people features they can't find.
+ * WHERE: OnboardingWindow; checked by steps.test.ts.
+ */
+export function tourSteps(caps: TourCaps): readonly TourStepId[] {
+  return TOUR_STEPS.filter(
+    (s) => (s !== "trim" || caps.quickTrim) && (s !== "replay-live" || caps.replayBuffer || caps.liveStreaming),
+  );
+}
+
+export function tourCopy(p: PlatformOs, caps: TourCaps): Record<TourStepId, StepCopy> {
   const f = PLATFORM_FACTS[p];
+  const ownWindows = caps.captureExclusion ? " Cortex never records its own windows." : "";
+  const captureLede =
+    caps.sourcePicker === "system"
+      ? `A whole screen, one window, or an area you draw. You pick the screen or window in the system dialog when you start recording.${ownWindows}`
+      : `A whole display, one window, an area you draw${caps.appCapture ? ", or every window of one app" : ""}.${ownWindows}`;
   return {
     welcome: {
       kicker: "Welcome to Cortex",
@@ -242,12 +269,14 @@ function copyFor(p: PlatformOs): Record<TourStepId, StepCopy> {
     capture: {
       kicker: "What to record",
       title: "Pick what to record",
-      lede: "A whole display, one window, an area you draw, or every window of one app. Cortex never records its own windows.",
+      lede: captureLede,
     },
     camera: {
       kicker: "Camera",
       title: "Put yourself in the corner",
-      lede: "Choose a shape and drag the bubble to any corner. Cortex can also keep the raw camera as its own track for editing later.",
+      lede: caps.cameraTrack
+        ? "Choose a shape and drag the bubble to any corner. Cortex can also keep the raw camera as its own track for editing later."
+        : "Choose a shape and drag the bubble to any corner.",
     },
     shortcut: {
       kicker: "Shortcut",
@@ -277,12 +306,6 @@ function copyFor(p: PlatformOs): Record<TourStepId, StepCopy> {
   };
 }
 
-export const TOUR_COPY: Record<PlatformOs, Record<TourStepId, StepCopy>> = {
-  macos: copyFor("macos"),
-  windows: copyFor("windows"),
-  linux: copyFor("linux"),
-};
-
 /**
  * Whether Continue must wait on this step: only macOS's Screen Recording grant gates the
  * tour, because nothing records without it.
@@ -293,8 +316,8 @@ export function gatedPermission(p: PlatformOs, step: TourStepId): Permission | n
   return PLATFORM_FACTS[p].permissionModel === "tcc" && required ? required.permission : null;
 }
 
-/** Where a resumed tour starts: the stored step if it is valid, else the first. */
-export function resumeIndex(stored: string | null): number {
+/** Where a resumed tour of `count` steps starts: the stored step if it is valid, else the first. */
+export function resumeIndex(stored: string | null, count: number = TOUR_STEPS.length): number {
   const n = stored === null ? Number.NaN : Number(stored);
-  return Number.isInteger(n) && n >= 0 && n < TOUR_STEPS.length ? n : 0;
+  return Number.isInteger(n) && n >= 0 && n < count ? n : 0;
 }

@@ -1,5 +1,9 @@
 import { useSyncExternalStore } from "react";
 
+import { isTauri } from "@tauri-apps/api/core";
+
+import { harnessPlatform, subscribePlatform } from "./platform";
+import { PLATFORM_WORDS } from "./platform-words";
 import { errorToast, pushToastTo, replayToast, savedToast } from "./toasts";
 import type {
   EngineState,
@@ -7,6 +11,8 @@ import type {
   Permission,
   PermissionReport,
   PermissionState,
+  PlatformCapabilities,
+  PlatformOs,
   RecorderSettings,
   Recording,
   StreamDest,
@@ -223,6 +229,83 @@ let state: EngineState = {
 };
 
 const listeners = new Set<() => void>();
+/**
+ * What each engine reports (`mac_capabilities`, `windows_capabilities`, `linux_capabilities`
+ * with a working PC), so the harness platform switch shows each platform's real screens.
+ */
+const CAPABILITIES: Record<PlatformOs, PlatformCapabilities> = {
+  macos: state.capabilities,
+  windows: {
+    ...state.capabilities,
+    os: "windows",
+    appCapture: false,
+    perAppAudio: false,
+    prores: false,
+    preview: "fallback",
+    liveStreaming: false,
+    replayBuffer: false,
+    quickTrim: false,
+    movContainer: false,
+    cameraTrack: false,
+  },
+  linux: {
+    ...state.capabilities,
+    os: "linux",
+    appCapture: false,
+    sourcePicker: "system",
+    perAppAudio: false,
+    captureExclusion: false,
+    prores: false,
+    preview: "none",
+    liveStreaming: false,
+    replayBuffer: false,
+    quickTrim: false,
+  },
+};
+const MAC_SOURCES = { displays: state.displays, windows: state.windows, apps: state.apps };
+
+/** Harness: switch the mock to another platform's capabilities, sources and default folder. */
+function applyPlatform(os: PlatformOs) {
+  const was = state.capabilities.os;
+  if (os === was) return;
+  const caps = CAPABILITIES[os];
+  const s = state.settings;
+  const settings: RecorderSettings = {
+    ...s,
+    outputDir: s.outputDir === PLATFORM_WORDS[was].defaultFolder ? PLATFORM_WORDS[os].defaultFolder : s.outputDir,
+    container: caps.movContainer ? s.container : "mp4",
+    replayEnabled: caps.replayBuffer && s.replayEnabled,
+    // A target the platform can't record falls back to the first display.
+    target: s.target.kind === "app" && !caps.appCapture ? { kind: "display", displayId: 1 } : s.target,
+  };
+  // Linux lists one stand-in display (the portal picks the real one) and no windows or apps.
+  const sources =
+    caps.sourcePicker === "system"
+      ? {
+          displays: [
+            {
+              id: 1,
+              name: "Screen chosen in the system dialog",
+              width: 1920,
+              height: 1080,
+              frame: { x: 0, y: 0, w: 1920, h: 1080 },
+              scale: 1,
+            },
+          ],
+          windows: [],
+          apps: [],
+        }
+      : { ...MAC_SOURCES, apps: caps.appCapture ? MAC_SOURCES.apps : [] };
+  state = { ...state, ...sources, capabilities: caps, settings };
+}
+if (!isTauri()) {
+  applyPlatform(harnessPlatform());
+  subscribePlatform(() => {
+    applyPlatform(harnessPlatform());
+    for (const l of listeners) l();
+  });
+}
+
 function set(patch: Partial<EngineState>) {
   state = { ...state, ...patch };
   for (const l of listeners) l();
