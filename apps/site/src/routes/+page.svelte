@@ -27,6 +27,7 @@
 		GITHUB_URL,
 		LICENSES_PATH,
 		LINUX_ARCH_LABEL,
+		LINUX_ARM64_READY,
 		LINUX_DISTROS,
 		MIN_MACOS,
 		NAME,
@@ -89,10 +90,19 @@
 	const mac = DOWNLOADS.mac.universal;
 	const win = DOWNLOADS.windows.x86_64;
 	let linux = $derived(DOWNLOADS.linux[linuxArch]);
+	let linuxReady = $derived(linuxArch === 'x86_64' || LINUX_ARM64_READY);
 
 	/** The visitor's own primary installer, for the nav pill. */
 	let primary = $derived<Download | null>(
-		platform === 'windows' ? win.exe : platform === 'linux' ? linux.appimage : platform === 'mac' ? mac.dmg : null
+		platform === 'windows'
+			? win.exe
+			: platform === 'linux'
+				? linuxReady
+					? linux.appimage
+					: null
+				: platform === 'mac'
+					? mac.dmg
+					: null
 	);
 
 	// Windows and Linux use Ctrl+Shift where macOS uses ⇧⌘ (the engines register exactly these).
@@ -341,6 +351,9 @@
 			Version {VERSION} · <span class="beta">Beta</span> · Windows 11, or Windows 10 (version 2004 or newer), 64-bit · or the
 			<a href={win.msi.url}>.msi</a>
 		</p>
+	{:else if platform === 'linux' && !linuxReady}
+		<span class="download soon" aria-disabled="true">{@render osIcon('linux')} Linux arm64 · Coming soon</span>
+		<p class="meta">Version {VERSION} · The arm64 build is on its way; the x86_64 build is ready.</p>
 	{:else if platform === 'linux'}
 		<a class="download" href={linux.appimage.url}>{@render osIcon('linux')} Download AppImage</a>
 		<p class="meta">
@@ -540,11 +553,16 @@
 								</button>
 							{/each}
 						</div>
-						<a class="download" href={linux.appimage.url}>{@render osIcon('linux')} Download AppImage</a>
-						<p class="files">
-							or the <a href={linux.deb.url}>.deb</a> (Ubuntu, Debian) ·
-							<a href={linux.rpm.url}>.rpm</a> (Fedora, openSUSE)
-						</p>
+						{#if linuxReady}
+							<a class="download" href={linux.appimage.url}>{@render osIcon('linux')} Download AppImage</a>
+							<p class="files">
+								or the <a href={linux.deb.url}>.deb</a> (Ubuntu, Debian) ·
+								<a href={linux.rpm.url}>.rpm</a> (Fedora, openSUSE)
+							</p>
+						{:else}
+							<span class="download soon" aria-disabled="true">{@render osIcon('linux')} arm64 · Coming soon</span>
+							<p class="files">The arm64 build is on its way. The x86_64 build is ready now.</p>
+						{/if}
 					{/if}
 					<h3 class="req-title">Requires</h3>
 					<ul class="req">
@@ -815,6 +833,11 @@
 		box-shadow: 0 10px 30px var(--brand-glow);
 	}
 
+	.download.soon {
+		opacity: 0.55;
+		cursor: default;
+		pointer-events: none;
+	}
 	.download:hover {
 		background: var(--brand-hover);
 		scale: 1.03;
