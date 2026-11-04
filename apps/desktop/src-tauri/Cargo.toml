@@ -26,6 +26,8 @@ tauri-specta = { version = "=2.0.0-rc.26", features = ["derive", "typescript"] }
 rec-core = { path = "../../../crates/rec-core", features = ["specta"] }
 # Native TLS: the OS trust store on every platform (Security.framework, SChannel, OpenSSL).
 tauri-plugin-updater = { version = "2.14", default-features = false, features = ["native-tls", "system-proxy", "zip"] }
+# One running copy: a second launch focuses the first (MIT OR Apache-2.0). See lib.rs.
+tauri-plugin-single-instance = "2.5.5"
 
 # The macOS engine and window behaviour. Other targets build the stub in
 # src/platform/unsupported.rs (see docs/engineering/platforms.md).

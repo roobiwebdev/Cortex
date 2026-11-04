@@ -191,9 +191,22 @@ pub fn run() {
         std::process::exit(if granted { 0 } else { 1 });
     }
     let ipc = ipc::builder();
+    let debug = DebugRun::from_env();
     let handler = ipc.invoke_handler();
 
-    let app = tauri::Builder::default()
+    let mut builder = tauri::Builder::default();
+    // First, as the plugin requires: a second copy hands over to the running one and exits
+    // before it creates any window. On Windows two copies would share the WebView2 data
+    // folder, and the second one died with "The requested resource is in use".
+    // Debug runs with their own data folder skip it, so scratch runs (perf-compare, the
+    // update test) start next to an installed Cortex instead of focusing it.
+    if debug.data_dir.is_none() {
+        builder = builder.plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| {
+            eprintln!("cortex: Cortex was opened again; showing the main window");
+            windows::show_main(app);
+        }));
+    }
+    let app = builder
         // Used from Rust only (`updater.rs`); no window is granted an updater permission.
         .plugin(tauri_plugin_updater::Builder::new().build())
         .invoke_handler(move |invoke| {
@@ -228,7 +241,6 @@ pub fn run() {
             ipc.mount_events(app);
             app.manage(quit::Quit::default());
             tour::setup(app);
-            let debug = DebugRun::from_env();
             // ~/Library/Application Support/dev.roobi.cortex/settings.json
             let data_dir = match debug.data_dir.clone() {
                 Some(d) => d,
