@@ -546,12 +546,20 @@ impl<B: Backend> Core<B> {
                 self.backend.free_disk_bytes(&dir),
             )
         });
+        // The backend can learn what this PC supports after startup (a probe that runs in
+        // the background); pass the change on so the UI shows the real options.
+        let caps = read_os.then(|| self.backend.capabilities());
         let pending = self.run(|i, ev| {
             if self.quit.load(Ordering::SeqCst) {
-                None
-            } else {
-                i.tick(&self.backend, os, ev)
+                return None;
             }
+            if let Some(c) = caps
+                && c != i.state.capabilities
+            {
+                i.state.capabilities = c;
+                ev.push(EngineEvent::StateChanged(i.state.clone()));
+            }
+            i.tick(&self.backend, os, ev)
         });
         if let Some(p) = pending
             && let Err(e) = self.start_now(p)
