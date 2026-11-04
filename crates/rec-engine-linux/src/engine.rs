@@ -321,8 +321,8 @@ impl Inner {
                         id: name.clone(),
                         name,
                         path: m.file.display().to_string(),
-                        // The timeline's length (pauses cut): frames dropped under load leave
-                        // gaps in the file but do not shorten it.
+                        // What the file holds (pauses cut), from the buffers the gates kept:
+                        // frames dropped under load leave gaps but do not shorten it.
                         duration_secs: if stats.recorded_secs > 0.0 {
                             stats.recorded_secs
                         } else {
