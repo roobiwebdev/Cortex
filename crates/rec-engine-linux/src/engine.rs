@@ -811,6 +811,9 @@ impl RecorderEngine for LinuxEngine {
             if let Some(a) = &i.recording {
                 a.sess.pause();
             }
+            // The clock in the state is exact at the cut, not up to a tick old.
+            let p = i.progress();
+            i.state.set_progress(&p);
             i.set_status(s, ev);
             Ok(())
         })
@@ -822,6 +825,9 @@ impl RecorderEngine for LinuxEngine {
             if let Some(a) = &i.recording {
                 a.sess.resume();
             }
+            // The clock in the state is exact at the cut, not up to a tick old.
+            let p = i.progress();
+            i.state.set_progress(&p);
             i.set_status(s, ev);
             Ok(())
         })
