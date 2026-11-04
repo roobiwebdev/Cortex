@@ -1576,6 +1576,17 @@
 			display: flex;
 		}
 
+		/* Full width for the command, with Copy under it, so it breaks at the spaces. */
+		.fast .code {
+			flex-wrap: wrap;
+			justify-content: flex-end;
+			padding: 10px 6px 6px 12px;
+		}
+
+		.fast .code code {
+			flex-basis: 100%;
+		}
+
 		.tab {
 			flex: 1;
 			justify-content: center;
