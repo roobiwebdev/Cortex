@@ -8,12 +8,17 @@
 //!        after the lock is released" rule, same bounded shutdown), and it must be testable
 //!        on a Mac, where Windows APIs can't run. So the OS work sits behind `Backend` and
 //!        `Session`; the real ones are in `win/`, the tests use a fake.
+//!        Slow OS work never runs under the engine lock: `Backend::start` (D3D device,
+//!        capture, sink writer: seconds, or a hang) runs between a "starting" token taken
+//!        under the lock and the re-lock that installs the session, and `state()` reads a
+//!        snapshot without the lock. The shell's `engine_state` command is synchronous on
+//!        the UI thread, so a held lock froze the whole window.
 //! WHERE: `WindowsEngine` (= `Engine<win::WinBackend>`) in the Tauri shell's
 //!        `platform/windows.rs`; the unit tests below.
 
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::{Arc, Mutex};
+use std::sync::{Arc, Mutex, RwLock};
 use std::time::{Duration, Instant};
 
 use rec_core::api::{Action, EngineError, EngineEvent, EventSink, RecorderEngine, transition};
@@ -120,6 +125,14 @@ struct Finishing {
     discard: bool,
 }
 
+/// A start in progress: everything `Backend::start` needs, taken under the lock. `id`
+/// matches `Inner::starting` until a cancel, a discard or a shutdown clears it.
+struct PendingStart {
+    id: u64,
+    req: SessionRequest,
+    dropped_note: Option<String>,
+}
+
 struct Inner {
     opts: EngineOptions,
     settings: RecorderSettings,
@@ -127,6 +140,9 @@ struct Inner {
     countdown_until: Option<Instant>,
     recording: Option<Active>,
     finishing: Option<Finishing>,
+    /// The id of the `PendingStart` whose backend start is running (outside the lock).
+    starting: Option<u64>,
+    start_seq: u64,
     ticks: u64,
     last_levels: Instant,
 }
@@ -166,8 +182,15 @@ impl Inner {
         transition(self.state.status, a)
     }
 
-    fn begin_recording<B: Backend>(&mut self, b: &B, ev: &mut Events) -> Result<(), EngineError> {
-        let started = (|| {
+    /// Everything before `Backend::start`, under the lock: plan the sources, make the
+    /// folder, name the file, and take the "starting" token. On error the engine is idle.
+    fn prepare_start<B: Backend>(
+        &mut self,
+        b: &B,
+        ev: &mut Events,
+    ) -> Result<PendingStart, EngineError> {
+        self.countdown_until = None;
+        let prepared = (|| {
             let plan = plan_sources(
                 self.settings.scene,
                 self.settings.mic_enabled,
@@ -180,47 +203,86 @@ impl Inner {
                 EngineError::failed(format!("Could not create {}: {e}", dir.display()))
             })?;
             let file = dir.join(timestamped_name("rec", FILE_EXT, b.local_time()));
-            let req = SessionRequest {
-                file: file.clone(),
-                settings: self.settings.clone(),
-                plan: plan.clone(),
-                test_pattern: self.opts.test_pattern,
-                exclude_self: self.opts.require_self_exclusion,
-                max_duration_secs: self.opts.max_duration_secs,
-            };
-            let s = b.start(&req)?;
-            if let Some(note) = dropped_note(&plan.dropped) {
-                ev.push(EngineEvent::Error {
-                    message: note,
-                    recoverable: true,
-                });
-            }
-            for note in &s.notes {
-                ev.push(EngineEvent::Error {
-                    message: note.clone(),
-                    recoverable: true,
-                });
-            }
-            Ok::<_, EngineError>(Active {
-                sess: s.session,
-                info: s.info,
-                file,
-                created_ms: now_ms(),
-            })
+            let dropped_note = dropped_note(&plan.dropped);
+            Ok::<_, EngineError>((
+                SessionRequest {
+                    file,
+                    settings: self.settings.clone(),
+                    plan,
+                    test_pattern: self.opts.test_pattern,
+                    exclude_self: self.opts.require_self_exclusion,
+                    max_duration_secs: self.opts.max_duration_secs,
+                },
+                dropped_note,
+            ))
         })();
-        self.countdown_until = None;
-        match started {
-            Ok(a) => {
-                self.recording = Some(a);
-                self.state.set_progress(&Progress::default());
-                self.set_status(EngineStatus::Recording, ev);
-                Ok(())
+        match prepared {
+            Ok((req, dropped_note)) => {
+                self.start_seq += 1;
+                self.starting = Some(self.start_seq);
+                Ok(PendingStart {
+                    id: self.start_seq,
+                    req,
+                    dropped_note,
+                })
             }
             Err(e) => {
                 self.set_status(EngineStatus::Idle, ev);
                 Err(e)
             }
         }
+    }
+
+    /// Back under the lock after `Backend::start`: install the session, or report the
+    /// error. A start that was cancelled meanwhile (cancel, discard, shutdown, or the
+    /// status moved on) hands its session back to be thrown away outside the lock.
+    fn install_start(
+        &mut self,
+        p: &PendingStart,
+        started: Result<Started, EngineError>,
+        ev: &mut Events,
+    ) -> (Result<(), EngineError>, Option<Box<dyn Session>>) {
+        let current = self.starting == Some(p.id) && self.act(Action::Start).is_ok();
+        if self.starting == Some(p.id) {
+            self.starting = None;
+        }
+        if !current {
+            return (Ok(()), started.ok().map(|s| s.session));
+        }
+        match started {
+            Ok(s) => {
+                if let Some(note) = &p.dropped_note {
+                    ev.push(EngineEvent::Error {
+                        message: note.clone(),
+                        recoverable: true,
+                    });
+                }
+                for note in &s.notes {
+                    ev.push(EngineEvent::Error {
+                        message: note.clone(),
+                        recoverable: true,
+                    });
+                }
+                self.recording = Some(Active {
+                    sess: s.session,
+                    info: s.info,
+                    file: p.req.file.clone(),
+                    created_ms: now_ms(),
+                });
+                self.state.set_progress(&Progress::default());
+                self.set_status(EngineStatus::Recording, ev);
+                (Ok(()), None)
+            }
+            Err(e) => {
+                self.set_status(EngineStatus::Idle, ev);
+                (Err(e), None)
+            }
+        }
+    }
+
+    /// Drop a start in progress (its session is thrown away when it arrives).
+    fn cancel_start(&mut self) -> bool {
+        self.starting.take().is_some()
     }
 
     /// Stop the recording; the file is written on a background thread.
@@ -321,8 +383,16 @@ impl Inner {
         p
     }
 
-    fn tick<B: Backend>(&mut self, b: &B, ev: &mut Events) {
+    /// One 30 Hz step. `os`: the grants and free disk space, read outside the lock on
+    /// every 30th tick. Returns a start to run (the countdown ran out).
+    fn tick<B: Backend>(
+        &mut self,
+        b: &B,
+        os: Option<(Permissions, u64)>,
+        ev: &mut Events,
+    ) -> Option<PendingStart> {
         self.ticks += 1;
+        let mut pending = None;
         if self.state.status == EngineStatus::Countdown
             && let Some(until) = self.countdown_until
         {
@@ -331,11 +401,12 @@ impl Inner {
                 .as_secs_f64()
                 .ceil() as u32;
             if left == 0 {
-                if let Err(e) = self.begin_recording(b, ev) {
-                    ev.push(EngineEvent::Error {
+                match self.prepare_start(b, ev) {
+                    Ok(p) => pending = Some(p),
+                    Err(e) => ev.push(EngineEvent::Error {
                         message: format!("Could not start recording: {e}"),
                         recoverable: false,
-                    });
+                    }),
                 }
             } else if left != self.state.countdown_left {
                 self.state.countdown_left = left;
@@ -371,8 +442,8 @@ impl Inner {
             self.state.set_progress(&p);
             ev.push(EngineEvent::Progress(p));
         }
-        if self.ticks.is_multiple_of(30) {
-            let p = state_permissions(&self.opts, b.permissions());
+        if let Some((os, free)) = os {
+            let p = state_permissions(&self.opts, os);
             for perm in Permission::ALL {
                 if p.get(perm) != self.state.permissions.get(perm) {
                     ev.push(EngineEvent::PermissionChanged {
@@ -385,14 +456,16 @@ impl Inner {
                 self.state.permissions = p;
                 ev.push(EngineEvent::StateChanged(self.state.clone()));
             }
-            self.state.free_disk_bytes =
-                b.free_disk_bytes(&self.settings.output_dir_in(&self.opts.home));
+            self.state.free_disk_bytes = free;
         }
+        pending
     }
 }
 
 struct Core<B: Backend> {
     inner: Mutex<Inner>,
+    /// `Inner::state` as of the last `run`: `state()` reads it without the lock.
+    snapshot: RwLock<EngineState>,
     events: EventSink,
     backend: B,
     devices_changed: AtomicBool,
@@ -405,7 +478,12 @@ impl<B: Backend> Core<B> {
         let mut ev = vec![];
         let r = {
             let mut inner = self.inner.lock().unwrap_or_else(|p| p.into_inner());
-            f(&mut inner, &mut ev)
+            let r = f(&mut inner, &mut ev);
+            let mut snap = self.snapshot.write().unwrap_or_else(|p| p.into_inner());
+            if *snap != inner.state {
+                *snap = inner.state.clone();
+            }
+            r
         };
         for e in ev {
             (self.events)(e);
@@ -413,13 +491,35 @@ impl<B: Backend> Core<B> {
         r
     }
 
+    fn snapshot(&self) -> EngineState {
+        self.snapshot
+            .read()
+            .unwrap_or_else(|p| p.into_inner())
+            .clone()
+    }
+
+    /// Run a prepared start: `Backend::start` outside the lock, then install the session.
+    fn start_now(&self, p: PendingStart) -> Result<(), EngineError> {
+        let started = self.backend.start(&p.req);
+        let (r, orphan) = self.run(|i, ev| i.install_start(&p, started, ev));
+        if let Some(sess) = orphan {
+            // Cancelled while starting: nothing was meant to be recorded.
+            let _ = sess.finish();
+            let _ = std::fs::remove_file(&p.req.file);
+        }
+        r
+    }
+
     fn tick(&self) {
-        // Device lists are read outside the lock. While recording they are left alone:
-        // listing windows and cameras costs time the capture threads can use.
-        let (poll, capturing) = self.run(|i, _| {
+        // Device lists, grants and disk space are read outside the lock. While recording
+        // (or starting) the device lists are left alone: listing windows and cameras costs
+        // time the capture threads can use.
+        let (poll, capturing, read_os, dir) = self.run(|i, _| {
             (
                 i.ticks.is_multiple_of(DEVICE_POLL_TICKS),
-                i.state.status != EngineStatus::Idle,
+                i.state.status != EngineStatus::Idle || i.starting.is_some(),
+                (i.ticks + 1).is_multiple_of(30),
+                i.settings.output_dir_in(&i.opts.home),
             )
         });
         if self.devices_changed.swap(false, Ordering::SeqCst) || (poll && !capturing) {
@@ -438,11 +538,27 @@ impl<B: Backend> Core<B> {
                 }
             });
         }
-        self.run(|i, ev| {
-            if !self.quit.load(Ordering::SeqCst) {
-                i.tick(&self.backend, ev);
+        let os = read_os.then(|| {
+            (
+                self.backend.permissions(),
+                self.backend.free_disk_bytes(&dir),
+            )
+        });
+        let pending = self.run(|i, ev| {
+            if self.quit.load(Ordering::SeqCst) {
+                None
+            } else {
+                i.tick(&self.backend, os, ev)
             }
         });
+        if let Some(p) = pending
+            && let Err(e) = self.start_now(p)
+        {
+            (self.events)(EngineEvent::Error {
+                message: format!("Could not start recording: {e}"),
+                recoverable: false,
+            });
+        }
     }
 }
 
@@ -472,6 +588,7 @@ impl<B: Backend> Engine<B> {
         };
         state.free_disk_bytes = backend.free_disk_bytes(&settings.output_dir_in(&opts.home));
         let core = Arc::new(Core {
+            snapshot: RwLock::new(state.clone()),
             inner: Mutex::new(Inner {
                 opts,
                 settings,
@@ -479,6 +596,8 @@ impl<B: Backend> Engine<B> {
                 countdown_until: None,
                 recording: None,
                 finishing: None,
+                starting: None,
+                start_seq: 0,
                 ticks: 0,
                 last_levels: Instant::now(),
             }),
@@ -510,8 +629,9 @@ impl<B: Backend> Engine<B> {
 }
 
 impl<B: Backend> RecorderEngine for Engine<B> {
+    /// Never waits on the engine lock (the shell calls this on the UI thread).
     fn state(&self) -> EngineState {
-        self.core.run(|i, _| i.state.clone())
+        self.core.snapshot()
     }
 
     fn capabilities(&self) -> PlatformCapabilities {
@@ -520,7 +640,10 @@ impl<B: Backend> RecorderEngine for Engine<B> {
 
     fn start(&self, settings: &RecorderSettings) -> Result<(), EngineError> {
         let core = &*self.core;
-        core.run(|i, ev| {
+        let pending = core.run(|i, ev| {
+            if i.starting.is_some() {
+                return Err(EngineError::failed("A recording is already starting"));
+            }
             let settings = settings.clone().validated();
             let countdown = settings.countdown > 0;
             i.act(if countdown {
@@ -534,17 +657,22 @@ impl<B: Backend> RecorderEngine for Engine<B> {
                     Some(Instant::now() + Duration::from_secs(u64::from(i.settings.countdown)));
                 i.state.countdown_left = i.settings.countdown;
                 i.set_status(EngineStatus::Countdown, ev);
-                Ok(())
+                Ok(None)
             } else {
-                i.begin_recording(&core.backend, ev)
+                i.prepare_start(&core.backend, ev).map(Some)
             }
-        })
+        })?;
+        match pending {
+            Some(p) => core.start_now(p),
+            None => Ok(()),
+        }
     }
 
     fn cancel_countdown(&self) -> Result<(), EngineError> {
         self.core.run(|i, ev| {
             let s = i.act(Action::CancelCountdown)?;
             i.countdown_until = None;
+            i.cancel_start();
             i.set_status(s, ev);
             Ok(())
         })
@@ -587,9 +715,14 @@ impl<B: Backend> RecorderEngine for Engine<B> {
 
     fn discard(&self) -> Result<(), EngineError> {
         self.core.run(|i, ev| {
+            // A start without a countdown is still idle: discarding it cancels it.
+            if i.state.status == EngineStatus::Idle && i.cancel_start() {
+                return Ok(());
+            }
             let s = i.act(Action::Discard)?;
             if s == EngineStatus::Idle {
                 i.countdown_until = None;
+                i.cancel_start();
                 i.set_status(s, ev);
             } else {
                 i.begin_finalize(true, ev);
@@ -679,17 +812,19 @@ impl<B: Backend> RecorderEngine for Engine<B> {
         }
         self.core.run(|i, ev| {
             i.countdown_until = None;
+            i.cancel_start();
             if i.recording.is_some() {
                 let _ = i.act(Action::Stop);
                 i.begin_finalize(false, ev);
             }
-            if let Some(f) = &i.finishing {
-                while !f.handle.is_finished() {
-                    std::thread::sleep(Duration::from_millis(20));
-                }
-            }
-            i.finish_done(ev);
         });
+        // Wait for the file outside the lock, so `state()` and the rest still answer.
+        while !self.core.run(|i, ev| {
+            i.finish_done(ev);
+            i.finishing.is_none()
+        }) {
+            std::thread::sleep(Duration::from_millis(20));
+        }
     }
 
     fn set_preview_pixel_size(&self, _width: u32, _height: u32) {}
@@ -769,6 +904,10 @@ mod tests {
         paused: AtomicBool,
         fail: Mutex<Option<String>>,
         requests: Mutex<Vec<SessionRequest>>,
+        /// How long `Backend::start` takes (a slow GPU or encoder).
+        start_delay: Mutex<Duration>,
+        /// Sessions finished (written or thrown away).
+        finished: AtomicU64,
     }
 
     struct FakeSession {
@@ -800,6 +939,7 @@ mod tests {
         }
         fn update(&self, _settings: &RecorderSettings) {}
         fn finish(self: Box<Self>) -> Result<SessionStats, String> {
+            self.log.finished.fetch_add(1, Ordering::SeqCst);
             std::fs::write(&self.file, b"fake mp4").map_err(|e| e.to_string())?;
             Ok(SessionStats {
                 frames: self.log.frames.load(Ordering::SeqCst),
@@ -846,6 +986,8 @@ mod tests {
             if let Ok(mut r) = self.log.requests.lock() {
                 r.push(req.clone());
             }
+            let delay = self.log.start_delay.lock().map(|d| *d).unwrap_or_default();
+            std::thread::sleep(delay);
             Ok(Started {
                 session: Box::new(FakeSession {
                     log: self.log.clone(),
@@ -1129,6 +1271,105 @@ mod tests {
                 .iter()
                 .any(|ev| matches!(ev, EngineEvent::RecordingFinished { .. }))
         );
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    fn settings_in(dir: &Path, countdown: u32) -> RecorderSettings {
+        RecorderSettings {
+            output_dir: dir.display().to_string(),
+            countdown,
+            ..RecorderSettings::default()
+        }
+    }
+
+    fn wait_until(f: impl Fn() -> bool) -> bool {
+        let deadline = Instant::now() + Duration::from_secs(5);
+        while Instant::now() < deadline {
+            if f() {
+                return true;
+            }
+            std::thread::sleep(Duration::from_millis(5));
+        }
+        false
+    }
+
+    #[test]
+    fn state_answers_while_a_slow_start_runs() {
+        let (e, log, _events, dir) = engine(granted());
+        *log.start_delay.lock().unwrap() = Duration::from_secs(2);
+        std::thread::scope(|s| {
+            let starter = s.spawn(|| e.start(&settings_in(&dir, 0)));
+            assert!(wait_until(|| !log.requests.lock().unwrap().is_empty()));
+            // The backend is inside its 2 s start: the UI thread must not wait for it.
+            for _ in 0..5 {
+                let t = Instant::now();
+                let st = e.state();
+                assert!(
+                    t.elapsed() < Duration::from_millis(50),
+                    "state() took {:?}",
+                    t.elapsed()
+                );
+                assert_eq!(st.status, EngineStatus::Idle);
+                std::thread::sleep(Duration::from_millis(20));
+            }
+            assert!(
+                matches!(
+                    e.start(&settings_in(&dir, 0)),
+                    Err(EngineError::Failed { .. })
+                ),
+                "a second start while starting is refused"
+            );
+            starter.join().unwrap().unwrap();
+        });
+        assert_eq!(e.state().status, EngineStatus::Recording);
+        assert_eq!(log.requests.lock().unwrap().len(), 1);
+        e.discard().unwrap();
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn a_countdown_start_runs_outside_the_lock_and_can_be_cancelled() {
+        let (e, log, events, dir) = engine(granted());
+        *log.start_delay.lock().unwrap() = Duration::from_millis(800);
+        e.start(&settings_in(&dir, 1)).unwrap();
+        // The ticker runs out the countdown and starts the backend on its own thread.
+        assert!(wait_until(|| !log.requests.lock().unwrap().is_empty()));
+        let t = Instant::now();
+        assert_eq!(e.state().status, EngineStatus::Countdown);
+        assert!(t.elapsed() < Duration::from_millis(50));
+        e.cancel_countdown().unwrap();
+        assert_eq!(e.state().status, EngineStatus::Idle);
+        // The session that arrives later is thrown away and its file removed.
+        assert!(wait_until(|| log.finished.load(Ordering::SeqCst) == 1));
+        std::thread::sleep(Duration::from_millis(100));
+        assert_eq!(e.state().status, EngineStatus::Idle);
+        assert!(e.state().recordings.is_empty());
+        assert_eq!(std::fs::read_dir(&dir).map(|d| d.count()).unwrap_or(0), 0);
+        assert!(!events.lock().unwrap().iter().any(|ev| matches!(
+            ev,
+            EngineEvent::StateChanged(s) if s.status == EngineStatus::Recording
+        )));
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn discard_during_a_start_cancels_it() {
+        let (e, log, _events, dir) = engine(granted());
+        *log.start_delay.lock().unwrap() = Duration::from_millis(500);
+        std::thread::scope(|s| {
+            let starter = s.spawn(|| e.start(&settings_in(&dir, 0)));
+            assert!(wait_until(|| !log.requests.lock().unwrap().is_empty()));
+            e.discard().unwrap();
+            assert_eq!(starter.join().unwrap(), Ok(()));
+        });
+        assert_eq!(e.state().status, EngineStatus::Idle);
+        assert_eq!(log.finished.load(Ordering::SeqCst), 1);
+        assert_eq!(std::fs::read_dir(&dir).map(|d| d.count()).unwrap_or(0), 0);
+        // The engine starts normally afterwards.
+        *log.start_delay.lock().unwrap() = Duration::ZERO;
+        e.start(&settings_in(&dir, 0)).unwrap();
+        assert_eq!(e.state().status, EngineStatus::Recording);
+        e.discard().unwrap();
         let _ = std::fs::remove_dir_all(dir);
     }
 }
