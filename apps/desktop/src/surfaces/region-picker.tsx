@@ -5,6 +5,7 @@ import { isTauri } from "@tauri-apps/api/core";
 
 import { CoachMark } from "../components/coach-mark";
 import { engine, useEngine } from "../lib/engine";
+import { usePlatformWords } from "../lib/platform";
 import type { CaptureTarget, Display } from "../lib/types";
 import { onPageShown } from "../lib/visibility";
 import type { SurfaceProps } from "../prototype/surfaces";
@@ -94,6 +95,17 @@ export function RegionPicker(props: SurfaceProps) {
 
 function RegionPickerBody({ navigate }: SurfaceProps) {
   const e = useEngine();
+  const words = usePlatformWords();
+  const caps = e.capabilities;
+  // With the system picker (Linux) the screen and window are chosen in the system dialog, so
+  // only an area is drawn here; otherwise every kind the engine records.
+  const supported: Record<PickMode, boolean> = {
+    area: caps.regionCapture,
+    window: caps.windowCapture && caps.sourcePicker === "app",
+    app: caps.appCapture,
+    display: caps.displayCapture && caps.sourcePicker === "app",
+  };
+  const modes = (["area", "window", "app", "display"] as const).filter((m) => supported[m]);
   const display = overlayDisplay(e.displays);
   const scale = display.scale > 0 ? display.scale : 1;
   // The picker works in display pixels (what gets recorded); the target is saved in points.
@@ -354,7 +366,7 @@ function RegionPickerBody({ navigate }: SurfaceProps) {
   const hint =
     mode === "area"
       ? rect
-        ? "Drag inside to move · Arrows nudge 1 px (⇧ 10, ⌥ resizes) · ↵ to confirm · Esc to cancel"
+        ? `Drag inside to move · Arrows nudge 1 px (Shift 10, ${words.altKey} resizes) · ↵ to confirm · Esc to cancel`
         : "Drag to select · Shift for square · Space to move · Esc to cancel"
       : mode === "window"
         ? "Click a window on screen or in the list · Esc to cancel"
@@ -475,6 +487,7 @@ function RegionPickerBody({ navigate }: SurfaceProps) {
 
       <RegionToolbar
         mode={mode}
+        modes={modes}
         onMode={changeMode}
         primaryLabel={primaryLabel}
         canConfirm={target !== null}

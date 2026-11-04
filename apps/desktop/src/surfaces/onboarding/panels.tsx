@@ -27,7 +27,7 @@ import { Switch } from "@starter/ui/components/switch";
 import { cn } from "@starter/ui/lib/utils";
 
 import { engine } from "../../lib/engine";
-import type { EngineState, Permission, PipCorner, PlatformOs } from "../../lib/types";
+import type { EngineState, Permission, PipCorner, PlatformCapabilities, PlatformOs } from "../../lib/types";
 import { PIP_SHAPES, ShapeGlyph } from "../main-window/shape-glyph";
 import { PermissionChip, type ChipState } from "./permission-chip";
 import type { CaptureMode } from "./stage";
@@ -227,22 +227,86 @@ function PermissionAction({
   );
 }
 
-const CAPTURE_HINT: Record<CaptureMode, string> = {
-  display: "Everything on one display. Cortex’s own windows are left out.",
-  window: "Follows one window, even when it moves or sits behind others.",
-  area: "Drag a rectangle on any display, or click a window to snap to it.",
-  app: "Every window of one app on that display, including ones it opens later.",
-};
+/** The hint under each capture mode, worded for what the engine can do. */
+function captureHint(mode: CaptureMode, caps: PlatformCapabilities): string {
+  const system = caps.sourcePicker === "system";
+  switch (mode) {
+    case "display":
+      if (system) return "You pick the screen in the system dialog when you start recording.";
+      return caps.captureExclusion
+        ? "Everything on one display. Cortex’s own windows are left out."
+        : "Everything on one display.";
+    case "window":
+      return system
+        ? "You pick the window in the system dialog when you start recording."
+        : "Follows one window, even when it moves or sits behind others.";
+    case "area":
+      return system
+        ? "Drag a rectangle on the screen you will share."
+        : "Drag a rectangle on any display, or click a window to snap to it.";
+    case "app":
+      return "Every window of one app on that display, including ones it opens later.";
+  }
+}
+
+const CAPTURE_OPTIONS: ReadonlyArray<{ value: CaptureMode; label: React.ReactNode }> = [
+  {
+    value: "display",
+    label: (
+      <>
+        <Monitor /> Display
+      </>
+    ),
+  },
+  {
+    value: "window",
+    label: (
+      <>
+        <AppWindow /> Window
+      </>
+    ),
+  },
+  {
+    value: "area",
+    label: (
+      <>
+        <SquareDashed /> Area
+      </>
+    ),
+  },
+  {
+    value: "app",
+    label: (
+      <>
+        <LayoutGrid /> App
+      </>
+    ),
+  },
+];
+
+/** The capture modes this engine offers (App only with `appCapture`, and so on). */
+export function captureModes(caps: PlatformCapabilities): readonly CaptureMode[] {
+  const on: Record<CaptureMode, boolean> = {
+    display: caps.displayCapture,
+    window: caps.windowCapture,
+    area: caps.regionCapture,
+    app: caps.appCapture,
+  };
+  return CAPTURE_OPTIONS.map((o) => o.value).filter((m) => on[m]);
+}
 
 export function CaptureBody({
   mode,
+  caps,
   onMode,
   onTryArea,
 }: {
   mode: CaptureMode;
+  caps: PlatformCapabilities;
   onMode: (m: CaptureMode) => void;
   onTryArea: () => void;
 }) {
+  const modes = captureModes(caps);
   return (
     <>
       <Segmented<CaptureMode>
@@ -250,42 +314,11 @@ export function CaptureBody({
         className="mt-5 w-full"
         value={mode}
         onValueChange={onMode}
-        options={[
-          {
-            value: "display",
-            label: (
-              <>
-                <Monitor /> Display
-              </>
-            ),
-          },
-          {
-            value: "window",
-            label: (
-              <>
-                <AppWindow /> Window
-              </>
-            ),
-          },
-          {
-            value: "area",
-            label: (
-              <>
-                <SquareDashed /> Area
-              </>
-            ),
-          },
-          {
-            value: "app",
-            label: (
-              <>
-                <LayoutGrid /> App
-              </>
-            ),
-          },
-        ]}
+        options={CAPTURE_OPTIONS.filter((o) => modes.includes(o.value))}
       />
-      <p className="mt-2.5 min-h-[36px] text-[12.5px] leading-relaxed text-muted-foreground">{CAPTURE_HINT[mode]}</p>
+      <p className="mt-2.5 min-h-[36px] text-[12.5px] leading-relaxed text-muted-foreground">
+        {captureHint(mode, caps)}
+      </p>
       <div className="mt-2 flex items-center gap-3">
         <Button variant="soft" size="sm" onClick={onTryArea}>
           <SquareDashed /> Try the area picker
@@ -421,10 +454,13 @@ export function FilesBody({ platform, outputDir }: { platform: PlatformOs; outpu
           <b className="font-semibold">Three audio tracks.</b> The mix, system audio and your mic each get their own
           track, so you can fix a level later.
         </Fact>
-        <Fact icon={<ShieldCheck className="size-3.5" />}>
-          <b className="font-semibold">Crash-safe.</b> The file is saved every 2 seconds. A crash or power cut keeps
-          everything up to that point.
-        </Fact>
+        {/* Windows writes a plain MP4 (index at the end), so a crash there still loses the file. */}
+        {platform !== "windows" && (
+          <Fact icon={<ShieldCheck className="size-3.5" />}>
+            <b className="font-semibold">Crash-safe.</b> The file is saved every 2 seconds. A crash or power cut keeps
+            everything up to that point.
+          </Fact>
+        )}
       </ul>
       <Note icon={<Info className="size-3.5" />} className="mt-4">
         Change the folder, format and quality in Settings › Recording.
