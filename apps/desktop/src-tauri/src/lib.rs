@@ -280,6 +280,53 @@ fn trace_window_event(w: &tauri::Window, e: &tauri::WindowEvent) {
     eprintln!("cortex: trace window {} {what}", w.label());
 }
 
+/**
+ * SOURCE OF TRUTH KEYWORDS: watch_main_thread, main thread watchdog, Not Responding, UI freeze, stall log
+ * WHAT:  Pings the UI thread every second and logs when it does not answer for 2 s, and
+ *        again when it recovers, with how long it was stuck.
+ * WHY:   A blocked UI thread is what users see as "Not Responding". The log line and the
+ *        startup step timings around it say what was running, on any user's PC.
+ * WHERE: started at the end of `setup`.
+ */
+fn watch_main_thread(app: tauri::AppHandle) {
+    use std::sync::atomic::{AtomicBool, Ordering};
+    const PING: std::time::Duration = std::time::Duration::from_secs(1);
+    const STALL: std::time::Duration = std::time::Duration::from_secs(2);
+    let spawned = std::thread::Builder::new()
+        .name("ui-watchdog".into())
+        .spawn(move || {
+            loop {
+                std::thread::sleep(PING);
+                let answered = Arc::new(AtomicBool::new(false));
+                let flag = answered.clone();
+                let sent = std::time::Instant::now();
+                if app
+                    .run_on_main_thread(move || flag.store(true, Ordering::SeqCst))
+                    .is_err()
+                {
+                    return;
+                }
+                let mut reported = false;
+                while !answered.load(Ordering::SeqCst) {
+                    std::thread::sleep(std::time::Duration::from_millis(100));
+                    if !reported && sent.elapsed() >= STALL {
+                        log_line!("watchdog: the UI thread has not responded for 2 s");
+                        reported = true;
+                    }
+                }
+                if reported {
+                    log_line!(
+                        "watchdog: the UI thread was blocked for {} ms",
+                        sent.elapsed().as_millis()
+                    );
+                }
+            }
+        });
+    if let Err(e) = spawned {
+        log_line!("could not start the UI watchdog: {e}");
+    }
+}
+
 pub fn run() {
     // A child started by `Shell::permission_report`: answer and exit before any UI starts.
     if std::env::args().nth(1).as_deref() == Some(shell::SCREEN_PREFLIGHT_ARG) {
@@ -304,6 +351,13 @@ pub fn run() {
             windows::show_main(app);
         }));
     }
+    // The default app menu plus "Help › Show the Tour", on macOS only. On Windows and
+    // Linux Tauri puts the app menu inside every window: a stray File/Edit/Window bar that
+    // also made floating windows 20 px taller than asked, which the fitting code kept
+    // correcting. There the tour is reopened from Settings › General.
+    if cfg!(target_os = "macos") {
+        builder = builder.menu(tour::app_menu);
+    }
     let app = builder
         // Before any window exists, so a failure to create one lands in the log.
         .plugin(logfile_plugin(log_dir))
@@ -325,8 +379,6 @@ pub fn run() {
             );
             r
         })
-        // The default app menu plus "Help › Show the Tour".
-        .menu(tour::app_menu)
         .on_menu_event(|app, event| tour::on_menu_event(app, &event))
         // The Trim window plays recordings from here (see `trim::media_protocol`).
         .register_asynchronous_uri_scheme_protocol("cortex-media", trim::media_protocol)
@@ -397,7 +449,9 @@ pub fn run() {
                 None => app.path().app_cache_dir()?,
             };
             app.manage(Arc::new(trim::Library::new(cache_dir, emit.clone())));
+            let t_engine = std::time::Instant::now();
             let shell = Shell::open(opts, settings_path, emit.clone());
+            log_line!("startup: engine ready in {} ms", t_engine.elapsed().as_millis());
             if let Some(message) = &shell.load_error {
                 log_line!("{message}");
                 emit(Outbound::Error {
@@ -412,7 +466,9 @@ pub fn run() {
             app.manage(shell.clone());
             log_startup(app.handle(), shell.clone());
             trim::rescan_later(app.handle());
+            let t_windows = std::time::Instant::now();
             windows::setup(app)?;
+            log_line!("startup: windows set up in {} ms", t_windows.elapsed().as_millis());
             let live = match preview::LivePreview::attach(app, shell.clone(), debug.preview_stats) {
                 Ok(p) => Some(p),
                 Err(e) => {
@@ -486,7 +542,9 @@ pub fn run() {
             }
             // Debug builds only: release builds keep every floating window out of captures.
             let capturable = debug.capturable && cfg!(debug_assertions);
+            let t_floating = std::time::Instant::now();
             floating::init(app, floating, &settings, &data_dir, capturable);
+            log_line!("startup: floating windows in {} ms", t_floating.elapsed().as_millis());
             // First launch: the tour, until it is finished, skipped or closed once. Not in
             // automated runs (debug recordings, hidden main window).
             if debug.record_secs.is_none() && !debug.hide_main {
@@ -517,6 +575,7 @@ pub fn run() {
             // On the main thread, so this runs now: levels reach the main window at once.
             ipc::refresh_visible(app.handle());
             quit::watch_signals(app.handle());
+            watch_main_thread(app.handle().clone());
             #[cfg(debug_assertions)]
             if let Some(what) = debug.open.clone() {
                 let handle = app.handle().clone();

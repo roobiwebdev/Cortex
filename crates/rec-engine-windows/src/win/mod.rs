@@ -38,46 +38,108 @@ pub use devices::privacy_uri;
  * WHERE: `rec_engine_windows::WindowsEngine`.
  */
 pub struct WinBackend {
-    probe: Probe,
+    probe: std::sync::Arc<ProbeSlot>,
     secrets: secrets::CredentialStore,
     fragmented: bool,
 }
 
+/// The probe result, filled in by a background thread. Until it lands, `capabilities`
+/// reports a conservative guess and a recording start waits for it (off the UI thread).
+struct ProbeSlot {
+    value: std::sync::Mutex<Option<Probe>>,
+    ready: std::sync::Condvar,
+    /// Read synchronously (a registry value): cheap and never blocks.
+    build: u32,
+}
+
+/// Screen capture (Windows.Graphics.Capture) arrived in Windows 10 1903, build 18362.
+const BUILD_GRAPHICS_CAPTURE: u32 = 18_362;
+/// How long a recording start waits for a slow probe before going ahead with the guess.
+const PROBE_WAIT: std::time::Duration = std::time::Duration::from_secs(15);
+
 impl WinBackend {
-    /// Probe the PC. `fragmented`: write fragmented MP4 (crash-safe, unverified).
+    /// Starts probing the PC in the background and returns at once. `fragmented`: write
+    /// fragmented MP4 (crash-safe, unverified).
     ///
-    /// The probe runs on its own thread: the shell may call this on the UI thread, whose
-    /// COM apartment (single-threaded, for WebView2) must not be touched.
+    /// Never waits for the probe: the shell builds this on the UI thread, and the probe
+    /// enumerates hardware encoder MFTs, which loads GPU drivers. On a laptop with two
+    /// GPUs (Intel + NVIDIA) that can take seconds or hang in the driver, and waiting for
+    /// it here froze the whole window ("Not Responding") before it ever drew.
     pub fn new(fragmented: bool) -> WinBackend {
-        let probe = std::thread::Builder::new()
+        let slot = std::sync::Arc::new(ProbeSlot {
+            value: std::sync::Mutex::new(None),
+            ready: std::sync::Condvar::new(),
+            build: util::windows_build(),
+        });
+        let fill = slot.clone();
+        let spawned = std::thread::Builder::new()
             .name("win-probe".into())
-            .spawn(|| {
+            .spawn(move || {
+                let t = std::time::Instant::now();
                 util::com_init();
                 let _ = util::mf_startup();
-                Probe {
-                    build: util::windows_build(),
+                let probe = Probe {
+                    build: fill.build,
                     capture: capture::Capture::supported(),
                     hevc: encoder::hevc_encoder_available(),
+                };
+                eprintln!(
+                    "cortex: windows probe took {} ms: {probe:?}",
+                    t.elapsed().as_millis()
+                );
+                if let Ok(mut v) = fill.value.lock() {
+                    *v = Some(probe);
                 }
-            })
-            .ok()
-            .and_then(|t| t.join().ok())
-            .unwrap_or_default();
+                fill.ready.notify_all();
+            });
+        if let Err(e) = spawned {
+            eprintln!("cortex: could not start the windows probe: {e}");
+        }
         WinBackend {
-            probe,
+            probe: slot,
             secrets: secrets::CredentialStore,
             fragmented,
         }
     }
 
+    /// The probe if it has finished, else the guess from the Windows build alone.
     pub fn probe(&self) -> Probe {
-        self.probe
+        self.probe.current()
+    }
+}
+
+impl ProbeSlot {
+    fn guess(&self) -> Probe {
+        Probe {
+            build: self.build,
+            capture: self.build >= BUILD_GRAPHICS_CAPTURE,
+            hevc: false,
+        }
+    }
+
+    fn current(&self) -> Probe {
+        self.value
+            .lock()
+            .ok()
+            .and_then(|v| *v)
+            .unwrap_or_else(|| self.guess())
+    }
+
+    /// Wait up to `limit` for the probe; the guess if it is still running.
+    fn wait(&self, limit: std::time::Duration) -> Probe {
+        let Ok(guard) = self.value.lock() else {
+            return self.guess();
+        };
+        match self.ready.wait_timeout_while(guard, limit, |v| v.is_none()) {
+            Ok((v, _)) => v.unwrap_or_else(|| self.guess()),
+            Err(_) => self.guess(),
+        }
     }
 }
 
 impl Backend for WinBackend {
     fn capabilities(&self) -> PlatformCapabilities {
-        windows_capabilities(&self.probe)
+        windows_capabilities(&self.probe.current())
     }
 
     fn devices(&self) -> Devices {
@@ -91,14 +153,16 @@ impl Backend for WinBackend {
 
     fn start(&self, req: &SessionRequest) -> Result<Started, EngineError> {
         util::com_init();
-        if !self.probe.capture && !req.test_pattern {
+        // Off the UI thread here: waiting for a slow probe only delays this recording.
+        let probe = self.probe.wait(PROBE_WAIT);
+        if !probe.capture && !req.test_pattern {
             return Err(EngineError::Unsupported {
                 message: "Screen capture needs Windows 10 version 1903 or later".into(),
             });
         }
         let gpu = d3d::Gpu::new()
             .map_err(|e| EngineError::failed(util::msg("No Direct3D 11 GPU device", &e)))?;
-        session::start(req, &gpu, &self.probe, self.fragmented)
+        session::start(req, &gpu, &probe, self.fragmented)
     }
 
     fn free_disk_bytes(&self, dir: &Path) -> u64 {
