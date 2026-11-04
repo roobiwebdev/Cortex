@@ -191,6 +191,9 @@ impl SystemIntegration for System {
     fn open_privacy_settings(&self, _permission: Permission) -> Result<(), EngineError> {
         Err(unsupported("Opening the privacy settings"))
     }
+    fn open_url(&self, _url: &str) -> Result<(), EngineError> {
+        Err(unsupported("Opening links"))
+    }
     fn app_icon(&self, _app_id: &str) -> Option<String> {
         None
     }

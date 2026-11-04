@@ -5,6 +5,7 @@ import { Button } from "@starter/ui/components/button";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@starter/ui/components/dialog";
 
 import { BrandMark } from "../../components/brand-mark";
+import { engine } from "../../lib/engine";
 import { usePlatformWords } from "../../lib/platform";
 import { APP_VERSION } from "./general";
 import { SettingsGroup, SettingsRow } from "./parts";
@@ -34,20 +35,29 @@ export function AboutSection() {
         <p className="tabular mt-2 text-[13px] text-muted-foreground">
           Version {APP_VERSION} · {words.requirement}
         </p>
+        <p className="mt-3 text-[13px] text-muted-foreground">
+          Built by{" "}
+          <button
+            type="button"
+            onClick={() => engine.openLink("author")}
+            className="font-medium text-foreground underline decoration-muted-foreground/50 underline-offset-2 transition-colors hover:text-primary hover:decoration-primary focus-visible:rounded-sm focus-visible:ring-3 focus-visible:ring-ring/50 focus-visible:outline-none"
+          >
+            Roobi
+          </button>
+          .
+        </p>
       </div>
 
       <div className="space-y-6">
         <SettingsGroup title="Credits">
-          <SettingsRow
-            label="Recording engine"
-            hint={
-              <>
-                Based on Rec by Michael Shimeles <span className="whitespace-nowrap">(MIT / Apache-2.0)</span>
-              </>
-            }
-          >
-            <Button variant="ghost" size="sm" onClick={() => setOpen(true)}>
-              Licences <ExternalLink />
+          <SettingsRow label="Built by Roobi" hint="Designer and developer of Cortex. roobi.dev">
+            <Button variant="soft" size="sm" onClick={() => engine.openLink("author")}>
+              Visit <ExternalLink />
+            </Button>
+          </SettingsRow>
+          <SettingsRow label="Cortex on GitHub" hint="Downloads, release notes and updates.">
+            <Button variant="ghost" size="sm" onClick={() => engine.openLink("releases")}>
+              Open <ExternalLink />
             </Button>
           </SettingsRow>
           <SettingsRow label="Third-party notices" hint="Fonts, icons and libraries that ship inside Cortex.">

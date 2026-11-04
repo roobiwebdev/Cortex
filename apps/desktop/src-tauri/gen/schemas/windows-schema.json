@@ -273,6 +273,12 @@
           "markdownDescription": "Enables the open_floating command without any pre-configured scope."
         },
         {
+          "description": "Enables the open_link command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-open-link",
+          "markdownDescription": "Enables the open_link command without any pre-configured scope."
+        },
+        {
           "description": "Enables the open_recordings_folder command without any pre-configured scope.",
           "type": "string",
           "const": "allow-open-recordings-folder",
@@ -523,6 +529,12 @@
           "type": "string",
           "const": "deny-open-floating",
           "markdownDescription": "Denies the open_floating command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the open_link command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-open-link",
+          "markdownDescription": "Denies the open_link command without any pre-configured scope."
         },
         {
           "description": "Denies the open_recordings_folder command without any pre-configured scope.",

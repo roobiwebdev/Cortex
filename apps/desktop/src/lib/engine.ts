@@ -10,6 +10,7 @@ import { onPageShown, pageHidden } from "./visibility";
 import type { LevelSource } from "@starter/ui/components/level-meter";
 
 import type {
+  ExternalLink,
   EngineSnapshot,
   EngineState,
   Levels,
@@ -192,6 +193,10 @@ const tauriEngine: typeof mock.engine = {
   },
   openRecordingsFolder() {
     void run(commands.openRecordingsFolder());
+  },
+  /** Opens a fixed web link (author site, downloads page) in the default browser. */
+  openLink(link: ExternalLink) {
+    void run(commands.openLink(link));
   },
   openSystemSettings(p: Permission) {
     void run(commands.openSystemSettings(p));

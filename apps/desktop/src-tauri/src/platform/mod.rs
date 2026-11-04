@@ -121,6 +121,8 @@ pub trait SystemIntegration: Sync {
     fn open_folder(&self, dir: &Path) -> Result<(), EngineError>;
     /// Open the system settings page where a permission is granted.
     fn open_privacy_settings(&self, permission: Permission) -> Result<(), EngineError>;
+    /// Open an https link in the default browser (callers pass fixed URLs only).
+    fn open_url(&self, url: &str) -> Result<(), EngineError>;
     /// A running app's icon as a small PNG `data:` URL, if it has one.
     fn app_icon(&self, app_id: &str) -> Option<String>;
     /// Screen capture is granted to this process now (the relaunch check's child process).

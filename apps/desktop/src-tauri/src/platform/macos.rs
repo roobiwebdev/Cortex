@@ -175,6 +175,9 @@ impl SystemIntegration for System {
     fn open_privacy_settings(&self, permission: Permission) -> Result<(), EngineError> {
         open(&[privacy_pane_url(permission).as_ref()])
     }
+    fn open_url(&self, url: &str) -> Result<(), EngineError> {
+        open(&[std::ffi::OsStr::new(url)])
+    }
     fn app_icon(&self, app_id: &str) -> Option<String> {
         screen::app_icon(app_id)
     }

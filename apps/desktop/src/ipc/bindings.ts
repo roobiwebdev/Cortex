@@ -47,6 +47,8 @@ export const commands = {
 	/**  Show a recording in Finder (only files inside the recordings folder). */
 	revealRecording: (path: string) => typedError<null, EngineError>(__TAURI_INVOKE("reveal_recording", { path })),
 	openRecordingsFolder: () => typedError<null, EngineError>(__TAURI_INVOKE("open_recordings_folder")),
+	/**  Open one of the app's fixed web links in the default browser. */
+	openLink: (link: ExternalLink) => typedError<null, EngineError>(__TAURI_INVOKE("open_link", { link })),
 	/**
 	 *  Save a destination's stream key in the Keychain. The key never comes back to the
 	 *  webview; the returned settings only say `keyStored`.
@@ -331,6 +333,17 @@ export type EngineState_Serialize = {
 };
 
 export type EngineStatus = "idle" | "countdown" | "recording" | "paused" | "finalizing";
+
+/**
+ * 
+ *  * SOURCE OF TRUTH KEYWORDS: ExternalLink, open_link, author link, releases link, Built by Roobi, about links
+ *  * WHAT:  The only web pages the app opens: the author's site and the Cortex downloads page.
+ *  * WHY:   The webview names a link, never a URL, so no page content can make the app open
+ *  *        an arbitrary address. Links open in the default browser, not inside Cortex.
+ *  * WHERE: Settings > About ("Built by Roobi", "Cortex on GitHub").
+ *  
+ */
+export type ExternalLink = "author" | "releases";
 
 /**  Which floating surface `open_floating` shows. */
 export type FloatingSurface = 

@@ -171,6 +171,14 @@ impl SystemIntegration for System {
     fn open_folder(&self, dir: &Path) -> Result<(), EngineError> {
         desktop::open_folder(dir).map_err(EngineError::failed)
     }
+    fn open_url(&self, url: &str) -> Result<(), EngineError> {
+        // Detached: xdg-open can block until the browser exits on some desktops.
+        std::process::Command::new("xdg-open")
+            .arg(url)
+            .spawn()
+            .map(drop)
+            .map_err(|e| EngineError::failed(format!("Could not run xdg-open: {e}")))
+    }
     fn open_privacy_settings(&self, _permission: Permission) -> Result<(), EngineError> {
         Err(EngineError::Unsupported {
             message: "Linux asks for the screen when a recording starts; microphones and cameras need no permission".into(),

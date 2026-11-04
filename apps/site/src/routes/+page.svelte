@@ -706,8 +706,8 @@
 		<img src={icon} width="20" height="20" alt="" />
 		<span>{NAME}</span>
 	</div>
-	<p>Built by <a href={AUTHOR_URL}>{AUTHOR}</a>.</p>
-	<a class="link" href={GITHUB_URL}>
+	<p>Built by <a href={AUTHOR_URL} target="_blank" rel="noopener noreferrer">{AUTHOR}</a>.</p>
+	<a class="link" href={GITHUB_URL} target="_blank" rel="noopener noreferrer">
 		{@render github()}
 		{NAME} on GitHub
 	</a>
