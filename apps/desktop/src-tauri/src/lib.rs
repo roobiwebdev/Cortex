@@ -249,6 +249,11 @@ pub fn run() {
             let to_windows = floating::observer(app.handle().clone(), floating.clone());
             let to_library = trim::observer(app.handle().clone());
             let fan_out = move |o: Outbound| {
+                // Engine errors also reach stderr, so a recording that fails shows why in logs.
+                if let Outbound::Error { message, recoverable } = &o {
+                    let kind = if *recoverable { "recoverable" } else { "fatal" };
+                    eprintln!("cortex: engine error ({kind}): {message}");
+                }
                 to_library(&o);
                 to_windows(&o);
                 to_webviews(o);
