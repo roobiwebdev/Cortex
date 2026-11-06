@@ -55,8 +55,8 @@ export function AboutSection() {
               Visit <ExternalLink />
             </Button>
           </SettingsRow>
-          <SettingsRow label="Cortex on GitHub" hint="Downloads, release notes and updates.">
-            <Button variant="ghost" size="sm" onClick={() => engine.openLink("releases")}>
+          <SettingsRow label="Cortex on GitHub" hint="Open source. Star it, report issues or read the code.">
+            <Button variant="ghost" size="sm" onClick={() => engine.openLink("repository")}>
               Open <ExternalLink />
             </Button>
           </SettingsRow>

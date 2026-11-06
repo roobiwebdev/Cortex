@@ -461,8 +461,8 @@ pub fn open_system_settings(p: Permission) -> Result<(), EngineError> {
 }
 
 /**
- * SOURCE OF TRUTH KEYWORDS: ExternalLink, open_link, author link, releases link, Built by Roobi, about links
- * WHAT:  The only web pages the app opens: the author's site and the Cortex downloads page.
+ * SOURCE OF TRUTH KEYWORDS: ExternalLink, open_link, author link, source repo link, Built by Roobi, about links
+ * WHAT:  The only web pages the app opens: the author's site and the open-source Cortex repo.
  * WHY:   The webview names a link, never a URL, so no page content can make the app open
  *        an arbitrary address. Links open in the default browser, not inside Cortex.
  * WHERE: Settings > About ("Built by Roobi", "Cortex on GitHub").
@@ -471,14 +471,14 @@ pub fn open_system_settings(p: Permission) -> Result<(), EngineError> {
 #[serde(rename_all = "camelCase")]
 pub enum ExternalLink {
     Author,
-    Releases,
+    Repository,
 }
 
 impl ExternalLink {
     pub const fn url(self) -> &'static str {
         match self {
             ExternalLink::Author => "https://roobi.dev",
-            ExternalLink::Releases => "https://github.com/roobiwebdev/cortex-releases",
+            ExternalLink::Repository => "https://github.com/roobiwebdev/Cortex",
         }
     }
 }

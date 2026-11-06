@@ -165,8 +165,8 @@ export const NAME = "Cortex";
 /** Who makes Cortex: the footer line and the JSON-LD author. */
 export const AUTHOR = "Roobi";
 export const AUTHOR_URL = "https://roobi.dev";
-/** The public repo the releases come from; the footer links to it. */
-export const GITHUB_URL = "https://github.com/roobiwebdev/cortex-releases";
+/** The open-source Cortex repo (source, issues, stars); the nav and footer link to it. Downloads stay on RELEASES_URL. */
+export const GITHUB_URL = "https://github.com/roobiwebdev/Cortex";
 /** Open-source notices for the code Cortex is built on (static/licenses.txt), linked in the footer. */
 export const LICENSES_PATH = "/licenses.txt";
 

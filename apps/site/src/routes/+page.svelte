@@ -447,6 +447,9 @@
 			<a class="link" href="#shortcuts">Shortcuts</a>
 			<a class="link" href="#trim">Quick trim</a>
 			<a class="link" href="#install">Install</a>
+			<a class="gh" href={GITHUB_URL} target="_blank" rel="noopener noreferrer" aria-label="Star {NAME} on GitHub">
+				{@render github()}
+			</a>
 			<button
 				type="button"
 				class="theme"
@@ -709,7 +712,7 @@
 	<p>Built by <a href={AUTHOR_URL} target="_blank" rel="noopener noreferrer">{AUTHOR}</a>.</p>
 	<a class="link" href={GITHUB_URL} target="_blank" rel="noopener noreferrer">
 		{@render github()}
-		{NAME} on GitHub
+		Star {NAME} on GitHub
 	</a>
 	<a class="link licenses" href={LICENSES_PATH}>Licenses</a>
 </footer>
@@ -770,6 +773,30 @@
 	.link svg {
 		width: 15px;
 		height: 15px;
+		fill: currentColor;
+	}
+
+	.gh {
+		display: grid;
+		place-items: center;
+		width: 32px;
+		height: 32px;
+		margin-inline: -6px;
+		border-radius: 999px;
+		color: var(--muted);
+		transition:
+			color 0.15s,
+			background-color 0.15s;
+	}
+
+	.gh:hover {
+		background: color-mix(in srgb, var(--fg) 8%, transparent);
+		color: var(--fg);
+	}
+
+	.gh svg {
+		width: 16px;
+		height: 16px;
 		fill: currentColor;
 	}
 
