@@ -350,14 +350,14 @@ export type EngineStatus = "idle" | "countdown" | "recording" | "paused" | "fina
 
 /**
  * 
- *  * SOURCE OF TRUTH KEYWORDS: ExternalLink, open_link, author link, releases link, Built by Roobi, about links
- *  * WHAT:  The only web pages the app opens: the author's site and the Cortex downloads page.
+ *  * SOURCE OF TRUTH KEYWORDS: ExternalLink, open_link, author link, source repo link, Built by Roobi, about links
+ *  * WHAT:  The only web pages the app opens: the author's site and the open-source Cortex repo.
  *  * WHY:   The webview names a link, never a URL, so no page content can make the app open
  *  *        an arbitrary address. Links open in the default browser, not inside Cortex.
  *  * WHERE: Settings > About ("Built by Roobi", "Cortex on GitHub").
  *  
  */
-export type ExternalLink = "author" | "releases";
+export type ExternalLink = "author" | "repository";
 
 /**  Which floating surface `open_floating` shows. */
 export type FloatingSurface = 
